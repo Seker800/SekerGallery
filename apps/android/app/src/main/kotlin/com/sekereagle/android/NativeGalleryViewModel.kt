@@ -1114,7 +1114,11 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         mutable.value =
             snapshot.copy(
                 message = null,
-                items = state.value.items.map { if (it.id == id) it.copy(favorite = target) else it },
+                items =
+                    state.value.items.map {
+                        if (it.id == id) it.copy(favorite = target, rowVersion = it.rowVersion + 1)
+                        else it
+                    },
             )
         val mode = snapshot.mode
         viewModelScope.launch {
@@ -1133,7 +1137,12 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                             state.value.copy(
                                 items =
                                     state.value.items.map {
-                                        if (it.id == id) it.copy(favorite = !target) else it
+                                        if (it.id == id)
+                                            it.copy(
+                                                favorite = !target,
+                                                rowVersion = asset.rowVersion,
+                                            )
+                                        else it
                                     },
                                 message = "收藏操作未完成，已恢复原状态",
                             )
@@ -1151,7 +1160,9 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                         state.value.copy(
                             items =
                                 state.value.items.map {
-                                    if (it.id == id) it.copy(favorite = !target) else it
+                                    if (it.id == id)
+                                        it.copy(favorite = !target, rowVersion = asset.rowVersion)
+                                    else it
                                 },
                             message = "收藏操作未确认完成，请刷新核对后重试：${reason.message.orEmpty()}",
                         )
