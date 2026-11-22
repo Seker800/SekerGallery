@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
-import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.distinctUntilChanged
+
+private const val PAGE_PREFETCH_ITEMS = 12
 
 @Composable
 fun NativeGalleryApp(model: NativeGalleryViewModel, openNative: (String) -> Unit) {
@@ -184,20 +185,20 @@ internal fun NativeLibraryPage(
         }
     }
     SideEffect { renderedWindow = state.windowOffset }
-    val draggingGrid by grid.interactionSource.collectIsDraggedAsState()
     LaunchedEffect(
         active,
         state.windowOffset,
+        state.previousCursor,
         state.loading,
         state.timeline,
         state.error,
-        draggingGrid,
     ) {
         if (!active) return@LaunchedEffect
         snapshotFlow {
-                grid.firstVisibleItemIndex < 6 &&
+                grid.firstVisibleItemIndex < PAGE_PREFETCH_ITEMS &&
                     grid.lastScrolledBackward &&
-                    draggingGrid &&
+                    state.windowOffset > 0 &&
+                    (state.previousCursor != null || state.timeline != null) &&
                     state.error == null
             }
             .distinctUntilChanged()
@@ -224,7 +225,7 @@ internal fun NativeLibraryPage(
                 if (
                     total > 0 &&
                         last >= 0 &&
-                        last >= total - 12 &&
+                        last >= total - PAGE_PREFETCH_ITEMS &&
                         state.cursor != null &&
                         !state.loading &&
                         state.error == null
@@ -433,13 +434,21 @@ internal fun NativeLibraryPage(
                         }
                     }
                 }
-                if (state.loading && !state.refreshing && state.items.isNotEmpty())
+                if (
+                    state.loading &&
+                        !state.refreshing &&
+                        !state.loadingPrevious &&
+                        state.items.isNotEmpty()
+                )
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Box(
                             Modifier.fillMaxWidth().padding(28.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(
+                                Modifier.size(24.dp).testTag("native-next-loading"),
+                                strokeWidth = 2.dp,
+                            )
                         }
                     }
                 if (state.query.isNotBlank() && state.imageSearchStatus == "UNAVAILABLE")
@@ -479,6 +488,16 @@ internal fun NativeLibraryPage(
                     )
                 }
         }
+        if (active && state.loadingPrevious && !state.refreshing)
+            CircularProgressIndicator(
+                Modifier.align(Alignment.TopCenter)
+                    // Keep the indicator in the blank band below the floating top bar.
+                    .padding(top = topInset + 8.dp)
+                    .size(18.dp)
+                    .testTag("native-previous-loading"),
+                strokeWidth = 2.dp,
+                color = NativeMuted,
+            )
         PullToRefreshDefaults.Indicator(
             state = refreshState,
             isRefreshing = state.refreshing,
@@ -548,7 +567,7 @@ internal fun NativeLibrary(
                             Icon(
                                 if (favoriteActive) Icons.Outlined.Favorite
                                 else Icons.Outlined.FavoriteBorder,
-                                "收藏",
+                                "收藏视图",
                                 Modifier.size(23.dp),
                                 tint =
                                     if (favoriteActive) Color(0xFFFF8AA5) else Color.White,

@@ -1,5 +1,15 @@
 # 安卓客户端与手机备份
 
+## 0.9.30 向上翻页双向游标与加载反馈（2026-11-22）
+
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode47、versionName 0.9.30，调试 APK SHA-256 `838f447299b3cd3807ccbdafecdb7c53fe668cef58dffc7b5a271653986b69b4`；当前分支上一轮已是 46／0.9.29，故本轮递增，未降回旧基线的 46。未发布 APK，未推送或部署。
+
+向上补页从“日期边界 + 日内 offset”改为服务端 NEWER 键集游标：向上每页只带 `cursor`，不再带 `before`/`offset`；服务端让跳转页和 `offset > 0` 的深窗口页返回 `previousCursor`，无参数首屏仍为 null。旧服务端没有 `previousCursor` 时保留原日期边界 + offset 兜底，兜底页拿到游标后下一次自动升级。
+
+上下预取距离统一为 12 项；向上不再要求 `draggingGrid`，松手或惯性到顶部即可续页；顶部显示独立加载指示器，底部 spinner 只用于向下。`windowOffset` 按实际新增项数回退，日期滑块、跳转锚点和补页接缝保持。服务端 DTO/契约未改。
+
+验证：API 695 项、安卓 JVM 116 项通过；`android:check` 通过；`NativeReviewTest` 21/21 通过；真实 API 日期排序与向上补页用例通过；固定测试图库预览已恢复。完整 132 项设备套件未全绿：`MobileBackupTest` 多项“备份已暂停”/空反射异常，`NativeGalleryTest` 的收藏/评分旧用例有后台操作竞态；均不在本次翻页路径，未冒充全套设备门禁通过。未在 NAS 上测 p95，未做真实窄屏视觉截图。详见[本轮记录](history/releases/2026-11.md#2026-11-22-安卓向上翻页改用双向游标本地候选未部署)。
+
 ## 0.9.29 手机端收藏、评分、标签管理与编辑副本关系（2026-11-22）
 
 本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode46、versionName 0.9.29，调试 APK SHA-256 `b539c91fbc4b3fdeef4c9e57225ec2c2423d83c74ae850926e21318c1088c8a5`；未发布 APK，已在固定 API36 模拟器做人工验收。

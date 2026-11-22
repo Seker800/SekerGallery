@@ -42,6 +42,8 @@ data class GalleryState(
     val scrollRequest: Int = 0,
     val items: List<NativeAsset> = emptyList(),
     val cursor: String? = null,
+    val previousCursor: String? = null,
+    val loadingPrevious: Boolean = false,
     val query: String = "",
     val imageSearchStatus: String? = null,
     val loading: Boolean = false,
@@ -408,6 +410,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 (current.mode to
                     current.copy(
                         loading = false,
+                        loadingPrevious = false,
                         refreshing = false,
                         optionStatus =
                             current.optionStatus.mapValues { (_, value) ->
@@ -448,6 +451,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 items = emptyList(),
                 loaded = false,
                 cursor = null,
+                previousCursor = null,
+                loadingPrevious = false,
                 selecting = false,
                 selected = emptySet(),
                 viewerId = null,
@@ -469,6 +474,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 items = emptyList(),
                 loaded = false,
                 cursor = null,
+                previousCursor = null,
+                loadingPrevious = false,
                 selecting = false,
                 selected = emptySet(),
                 viewerId = null,
@@ -487,6 +494,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         mutable.value =
             snapshot.copy(
                 loading = true,
+                loadingPrevious = false,
                 refreshing = false,
                 error = null,
                 readRetry = null,
@@ -516,9 +524,12 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                                 it.id
                             },
                         cursor = page.cursor,
+                        previousCursor =
+                            if (next) snapshot.previousCursor else page.previousCursor,
                         imageSearchStatus = page.imageSearchStatus,
                         loaded = true,
                         loading = false,
+                        loadingPrevious = false,
                         refreshing = false,
                     )
                 refreshTransfersWhenIdle()
@@ -561,7 +572,13 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         val request = ++generation
         transferRefreshPending = false
         mutable.value =
-            snapshot.copy(loading = true, refreshing = true, error = null, readRetry = null)
+            snapshot.copy(
+                loading = true,
+                loadingPrevious = false,
+                refreshing = true,
+                error = null,
+                readRetry = null,
+            )
         if (!snapshot.relevance) loadTimeline(snapshot, repo)
         operation = viewModelScope.launch {
             try {
@@ -589,6 +606,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                         relevance = snapshot.relevance,
                     )
                 if (request != generation) return@launch
+                val previousCursor = page.previousCursor
                 val existing = snapshot.items
                 val merged: List<NativeAsset>
                 val nextCursor: String?
@@ -632,10 +650,12 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                     state.value.copy(
                         items = merged.distinctBy { it.id },
                         cursor = nextCursor,
+                        previousCursor = previousCursor,
                         imageSearchStatus = page.imageSearchStatus,
                         loaded = true,
                         selected = state.value.selected.intersect(merged.map { it.id }.toSet()),
                         loading = false,
+                        loadingPrevious = false,
                         refreshing = false,
                     )
                 refreshTransfersWhenIdle()
@@ -660,40 +680,68 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
     fun loadPrevious() {
         val snapshot = state.value
         val repo = repository ?: return
-        val index = snapshot.timeline ?: return
+        if (snapshot.loading || snapshot.busy || snapshot.windowOffset <= 0) return
         if (
-            snapshot.loading ||
-                snapshot.busy ||
-                snapshot.windowOffset <= 0 ||
-                snapshot.query.isNotBlank() ||
+            snapshot.query.isNotBlank() ||
                 snapshot.filters.active ||
                 snapshot.trash ||
                 snapshot.relevance
         )
             return
-        val start = (snapshot.windowOffset - 60).coerceAtLeast(0)
-        val day = index.dayAt(start) ?: return
+        val previous = snapshot.previousCursor
+        val index = snapshot.timeline
+        // Old servers have no previousCursor; fall back to the date boundary + day offset.
+        if (previous == null && index == null) return
         val cancellation = beginPageRead()
         val request = ++generation
         mutable.value =
-            snapshot.copy(loading = true, refreshing = false, error = null, readRetry = null)
+            snapshot.copy(
+                loading = true,
+                loadingPrevious = true,
+                refreshing = false,
+                error = null,
+                readRetry = null,
+            )
         operation = viewModelScope.launch {
             try {
                 val page =
-                    repo.page(
-                        snapshot.mode,
-                        "",
-                        sort = snapshot.sort,
-                        before = day.before,
-                        offset = start - day.offset,
-                        cancellation = cancellation,
-                    )
+                    if (previous != null)
+                        repo.page(
+                            snapshot.mode,
+                            "",
+                            previous,
+                            snapshot.filters,
+                            snapshot.trash,
+                            snapshot.sort,
+                            cancellation = cancellation,
+                        )
+                    else {
+                        val start = (snapshot.windowOffset - 60).coerceAtLeast(0)
+                        val day = index!!.dayAt(start) ?: return@launch
+                        repo.page(
+                            snapshot.mode,
+                            "",
+                            sort = snapshot.sort,
+                            before = day.before,
+                            offset = start - day.offset,
+                            cancellation = cancellation,
+                        )
+                    }
                 if (request != generation) return@launch
+                val existingIds = snapshot.items.map { it.id }.toSet()
+                val added = page.items.count { it.id !in existingIds }
+                val merged = (page.items + snapshot.items).distinctBy { it.id }
                 mutable.value =
                     state.value.copy(
-                        items = (page.items + snapshot.items).distinctBy { it.id },
-                        windowOffset = start,
+                        items = merged,
+                        // A keyset page can be shorter than 60; use the real new-item count so
+                        // the date slider's absolute window offset stays truthful.
+                        windowOffset = (snapshot.windowOffset - added).coerceAtLeast(0),
+                        // An empty page with a cursor is anomalous; stop the chain rather than
+                        // retrying forever without feedback.
+                        previousCursor = if (added == 0) null else page.previousCursor,
                         loading = false,
+                        loadingPrevious = false,
                         refreshing = false,
                     )
                 refreshTransfersWhenIdle()
@@ -706,6 +754,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                         mutable.value =
                             state.value.copy(
                                 loading = false,
+                                loadingPrevious = false,
                                 refreshing = false,
                                 error = e.message ?: "加载较新照片失败，请重试",
                                 readRetry = NativeReadRetry.Previous,
@@ -720,7 +769,12 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         timelineJob?.cancel()
         timelineCancellation = null
         mutable.value = state.value.copy(timeline = null)
-        if (snapshot.query.isNotBlank() || snapshot.filters.active || snapshot.trash || snapshot.relevance)
+        if (
+            snapshot.query.isNotBlank() ||
+                snapshot.filters.active ||
+                snapshot.trash ||
+                snapshot.relevance
+        )
             return
         val cancellation = NativeTransferCancellation().also { timelineCancellation = it }
         timelineJob = viewModelScope.launch {
@@ -762,6 +816,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 items = emptyList(),
                 loaded = false,
                 cursor = null,
+                previousCursor = null,
+                loadingPrevious = false,
                 windowOffset = position,
                 scrollRequest = current.scrollRequest + 1,
                 selecting = false,
@@ -805,6 +861,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 items = emptyList(),
                 loaded = false,
                 cursor = null,
+                previousCursor = null,
+                loadingPrevious = false,
             )
         load()
     }
@@ -1058,6 +1116,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 items = emptyList(),
                 loaded = false,
                 cursor = null,
+                previousCursor = null,
+                loadingPrevious = false,
                 selecting = false,
                 selected = emptySet(),
                 viewerId = null,
@@ -1077,6 +1137,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 items = emptyList(),
                 loaded = false,
                 cursor = null,
+                previousCursor = null,
+                loadingPrevious = false,
                 viewerId = null,
                 accountOpen = false,
                 selecting = false,

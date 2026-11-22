@@ -39,6 +39,8 @@ class NativeReviewTest {
         @Volatile var version = 1
         @Volatile var listDelay = 0L
         @Volatile var revoked = false
+        @Volatile var emitPreviousCursor = true
+        @Volatile var rejectBefore = false
         private val thread =
             Thread {
                     try {
@@ -73,6 +75,12 @@ class NativeReviewTest {
                                 )
                                     503
                                 else if (
+                                    rejectBefore &&
+                                        path.contains("/assets?") &&
+                                        path.contains("before=")
+                                )
+                                    400
+                                else if (
                                     path == "/api/auth/login" ||
                                         (revoked && path.startsWith("/api/auth/"))
                                 )
@@ -93,23 +101,53 @@ class NativeReviewTest {
                                     path.contains("/timeline") ->
                                         """{"days":[{"date":"2026-10-20","before":"2026-10-21T00:00:00Z","count":180,"offset":0}],"total":180}"""
                                     path.contains("/assets?") -> {
-                                        val start =
-                                            Regex("(?:cursor|offset)=([0-9]+)")
+                                        val rawCursor =
+                                            Regex("[?&]cursor=([^&]+)")
                                                 .find(path)
                                                 ?.groupValues
                                                 ?.get(1)
-                                                ?.toInt() ?: 0
+                                                ?.let {
+                                                    java.net.URLDecoder.decode(it, "UTF-8")
+                                                }
+                                        val offset =
+                                            Regex("[?&]offset=([0-9]+)")
+                                                .find(path)
+                                                ?.groupValues
+                                                ?.get(1)
+                                                ?.toLong() ?: 0L
+                                        val newer = rawCursor?.startsWith("newer:") == true
+                                        val older = rawCursor?.startsWith("older:") == true
+                                        val cursorStart =
+                                            rawCursor
+                                                ?.substringAfter(':')
+                                                ?.toLongOrNull()
+                                                ?: rawCursor?.toLongOrNull()
+                                        val start =
+                                            when {
+                                                newer || older -> cursorStart ?: 0L
+                                                else -> offset
+                                            }
+                                        val pageStart =
+                                            if (newer) (start - 60).coerceAtLeast(0) else start
+                                        val pageEnd =
+                                            if (newer) start else minOf(start + 60, 180)
                                         val items =
-                                            (start until minOf(start + 60, 180))
+                                            (pageStart until pageEnd)
                                                 .filterNot { sendFinished && enqueued && it < 2 }
                                                 .joinToString(",") { i ->
                                                     val prefix =
                                                         if (path.startsWith("/api/eagle/"))
                                                             "material"
-                                                        else "asset"
+                                                        else
+                                                            "asset"
                                                     """{"id":"$prefix$i","displayName":"item$i","mimeType":"image/jpeg","lifecycleStatus":"$lifecycle","mediaRevision":1,"rowVersion":$version,"chronologicalAt":"2026-10-20T12:00:00Z","libraryAddedAt":"2026-10-21T12:00:00Z","renditions":[]}"""
                                                 }
-                                        """{"items":[$items],"nextCursor":${if (start + 60 < 180) "\"${start+60}\"" else "null"}}"""
+                                        val previousStart = if (newer) pageStart else start
+                                        val previous =
+                                            if (emitPreviousCursor && previousStart > 0)
+                                                "\"newer:$previousStart\""
+                                            else "null"
+                                        """{"items":[$items],"nextCursor":${if (pageEnd < 180) "\"older:$pageEnd\"" else "null"},"previousCursor":$previous}"""
                                     }
                                     else -> "{}"
                                 }
@@ -190,6 +228,13 @@ class NativeReviewTest {
             assertEquals("SEND", server.writes.single().second.getString("kind"))
             assertFalse(server.writes.single().second.has("ownerId"))
             server.sendFinished = true
+            compose.waitUntil(10000) {
+                compose
+                    .onAllNodesWithText("后台操作记录 1")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+            compose.onNodeWithText("后台操作记录 1").performClick()
             compose.waitUntil(10000) {
                 compose.onAllNodesWithText("已完成 2/2").fetchSemanticsNodes().isNotEmpty()
             }
@@ -431,7 +476,7 @@ class NativeReviewTest {
                 for (label in listOf("删除", "编辑", "分享")) compose
                     .onNodeWithContentDescription(label)
                     .assertExists()
-                compose.onNodeWithContentDescription("照片信息").assertDoesNotExist()
+                compose.onNodeWithContentDescription("照片信息").assertExists()
                 compose.onNodeWithText("1 / 60").assertDoesNotExist()
                 compose.onNodeWithTag("viewer-photo:${asset.id}").performTouchInput { click() }
                 compose.waitUntil(2000) {
@@ -504,6 +549,114 @@ class NativeReviewTest {
                 compose.onNodeWithContentDescription("返回").performClick()
                 compose.onNodeWithTag("native-library").assertExists()
             }
+            main { model.logout() }
+        }
+    }
+
+    @Test
+    fun upwardPagingUsesPreviousCursorAndNeverFallsBackToBefore() {
+        Server().use { server ->
+            val model = model(server)
+            await { model.state.value.timeline?.days?.isNotEmpty() == true }
+            main { model.jumpToDay(model.state.value.timeline!!.days.first(), 60) }
+            await {
+                !model.state.value.loading && model.state.value.items.firstOrNull()?.id == "asset60"
+            }
+            server.rejectBefore = true
+            val pathsBefore = server.paths.size
+            val count = model.state.value.items.size
+            main { model.loadPrevious() }
+            await { !model.state.value.loading && model.state.value.items.size > count }
+            assertTrue(model.state.value.items.any { it.id == "asset0" })
+            assertEquals(0, model.state.value.windowOffset)
+            assertFalse(
+                "upward paging must use the NEWER cursor, not before/offset",
+                server.paths.drop(pathsBefore).any { it.contains("before=") },
+            )
+            main { model.logout() }
+        }
+    }
+
+    @Test
+    fun oldServerWithoutPreviousCursorStillUsesTheOffsetFallback() {
+        Server().use { server ->
+            server.emitPreviousCursor = false
+            val model = model(server)
+            await { model.state.value.timeline?.days?.isNotEmpty() == true }
+            main { model.jumpToDay(model.state.value.timeline!!.days.first(), 60) }
+            await {
+                !model.state.value.loading && model.state.value.items.firstOrNull()?.id == "asset60"
+            }
+            assertNull(model.state.value.previousCursor)
+            val pathsBefore = server.paths.size
+            main { model.loadPrevious() }
+            await { !model.state.value.loading && model.state.value.items.size > 60 }
+            assertTrue(model.state.value.items.any { it.id == "asset0" })
+            assertEquals(0, model.state.value.windowOffset)
+            assertTrue(
+                server.paths.drop(pathsBefore).any { it.contains("before=") },
+            )
+            main { model.logout() }
+        }
+    }
+
+    @Test
+    fun releasingAtTheTopStillRequestsThePreviousPage() {
+        Server().use { server ->
+            val model = model(server)
+            await { model.state.value.timeline?.days?.isNotEmpty() == true }
+            compose.setContent { NativeGalleryApp(model) {} }
+            main { model.jumpToDay(model.state.value.timeline!!.days.first(), 60) }
+            await {
+                !model.state.value.loading && model.state.value.items.firstOrNull()?.id == "asset60"
+            }
+            // A jump itself does not set lastScrolledBackward; simulate an upward scroll and
+            // release. The request must start after release, without a second touch.
+            compose.onNodeWithTag("native-grid").performTouchInput { swipeUp() }
+            compose.onNodeWithTag("native-grid").performTouchInput { swipeDown() }
+            await { model.state.value.windowOffset < 60 }
+            assertEquals(0, model.state.value.windowOffset)
+            main { model.logout() }
+        }
+    }
+
+    @Test
+    fun previousPagingShowsOnlyTheTopIndicator() {
+        Server().use { server ->
+            val model = model(server)
+            await { model.state.value.timeline?.days?.isNotEmpty() == true }
+            compose.setContent { NativeGalleryApp(model) {} }
+            main { model.jumpToDay(model.state.value.timeline!!.days.first(), 60) }
+            await {
+                !model.state.value.loading && model.state.value.items.firstOrNull()?.id == "asset60"
+            }
+            server.listDelay = 1200
+            main { model.loadPrevious() }
+            compose.waitUntil(5000) { model.state.value.loadingPrevious }
+            compose.onNodeWithTag("native-previous-loading").assertExists()
+            compose.onNodeWithTag("native-next-loading").assertDoesNotExist()
+            await { !model.state.value.loadingPrevious && !model.state.value.loading }
+            compose.onNodeWithTag("native-previous-loading").assertDoesNotExist()
+            server.listDelay = 0
+            main { model.logout() }
+        }
+    }
+
+    @Test
+    fun windowOffsetStaysAlignedWithTheFirstVisibleDayAfterUpwardPages() {
+        Server().use { server ->
+            val model = model(server)
+            await { model.state.value.timeline?.days?.isNotEmpty() == true }
+            main { model.jumpToDay(model.state.value.timeline!!.days.first(), 120) }
+            await {
+                !model.state.value.loading && model.state.value.items.firstOrNull()?.id == "asset120"
+            }
+            main { model.loadPrevious() }
+            await { !model.state.value.loading && model.state.value.items.firstOrNull()?.id == "asset60" }
+            val state = model.state.value
+            val day = state.timeline?.dayAt(state.windowOffset)
+            assertNotNull(day)
+            assertEquals(day!!.label, state.items.first().groupDate)
             main { model.logout() }
         }
     }

@@ -114,6 +114,7 @@ data class NativePage(
     val cursor: String?,
     val imageSearchStatus: String? = null,
     val stacks: List<NativeStack> = emptyList(),
+    val previousCursor: String? = null,
 )
 
 /**
@@ -229,23 +230,29 @@ class NativeGalleryRepository(
             val stackByAsset = mutableMapOf<String, NativeStack>()
             for (stack in stacks) for (assetId in stack.assetIds) stackByAsset[assetId] = stack
             NativePage(
-                parsed.map { asset ->
-                    val stack = stackByAsset[asset.id]
-                    if (stack == null) asset
-                    else
-                        asset.copy(
-                            stackId = stack.id,
-                            stackAssetIds = stack.assetIds,
-                            stackBestAssetId = stack.bestAssetId,
-                            stackCoverId = stack.coverId,
-                            stackHasEditedMember = stack.hasEditedMember,
-                        )
-                },
-                result.optString("nextCursor").takeUnless { it.isEmpty() || it == "null" },
-                result.optJSONObject("imageSearch")?.optString("status")?.takeIf {
-                    search.isNotBlank() && it in setOf("READY", "UNAVAILABLE")
-                },
-                stacks,
+                items =
+                    parsed.map { asset ->
+                        val stack = stackByAsset[asset.id]
+                        if (stack == null) asset
+                        else
+                            asset.copy(
+                                stackId = stack.id,
+                                stackAssetIds = stack.assetIds,
+                                stackBestAssetId = stack.bestAssetId,
+                                stackCoverId = stack.coverId,
+                                stackHasEditedMember = stack.hasEditedMember,
+                            )
+                    },
+                cursor = result.optString("nextCursor").takeUnless { it.isEmpty() || it == "null" },
+                imageSearchStatus =
+                    result.optJSONObject("imageSearch")?.optString("status")?.takeIf {
+                        search.isNotBlank() && it in setOf("READY", "UNAVAILABLE")
+                    },
+                stacks = stacks,
+                previousCursor =
+                    result.optString("previousCursor").takeUnless {
+                        it.isEmpty() || it == "null"
+                    },
             )
         }
 

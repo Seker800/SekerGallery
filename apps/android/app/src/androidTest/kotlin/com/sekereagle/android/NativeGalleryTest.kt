@@ -224,7 +224,7 @@ class NativeGalleryTest {
         }
         compose.onNodeWithTag("asset:$first").performTouchInput { longClick() }
         compose.onNodeWithText("评分").performClick()
-        compose.onNodeWithText("3 ★").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("3 星").performClick()
         compose.onNodeWithText("应用").assertIsDisplayed().performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithTag("native-selection-count").fetchSemanticsNodes().isEmpty()
@@ -554,11 +554,14 @@ class NativeGalleryTest {
         if (oldest.offset > 0) {
             compose.waitUntil(15000) { currentModel().state.value.timeline != null }
             val anchor = currentModel().state.value.items.first().id
+            val beforeOffset = currentModel().state.value.windowOffset
+            val beforeCount = currentModel().state.value.items.size
             compose.runOnUiThread { currentModel().loadPrevious() }
             compose.waitUntil(15000) { !currentModel().state.value.loading }
             assertTrue(currentModel().state.value.items.any { it.id == anchor })
+            val added = currentModel().state.value.items.size - beforeCount
             assertEquals(
-                (oldest.offset - 60).coerceAtLeast(0),
+                (beforeOffset - added).coerceAtLeast(0),
                 currentModel().state.value.windowOffset,
             )
         }
