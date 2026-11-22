@@ -44,12 +44,10 @@ class NativeDownloads(
         completed: Int = 0,
     ) {
         if (mutable.value?.running == true || assets.isEmpty()) return
-        require(
-            assets.size <= NativeSelection.LIMIT &&
-                assets.map { it.id }.distinct().size == assets.size
-        )
+        require(assets.isNotEmpty() && assets.map { it.id }.distinct().size == assets.size)
         this.connection = session
         this.mode = mode
+        scope.launch(Dispatchers.IO) { runCatching { store.cleanupPending() } }
         val ticket = generation.incrementAndGet()
         val cancel = NativeTransferCancellation().also { cancellation = it }
         val initial = NativeDownloadState(total = completed + assets.size, completed = completed)

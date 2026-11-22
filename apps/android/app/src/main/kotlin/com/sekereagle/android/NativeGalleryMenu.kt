@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -62,12 +63,20 @@ internal fun NativeGalleryMenu(
                     GallerySort.entries.forEach { order ->
                         MenuRow(
                             order.title,
-                            if (state.sort == order) Icons.Outlined.Check
+                            if (state.sort == order && !state.relevance) Icons.Outlined.Check
                             else Icons.Outlined.Schedule,
                         ) {
                             navigate { model.sort(order) }
                         }
                     }
+                    if (state.query.isNotBlank() || state.filters.smartFolderId.isNotBlank())
+                        MenuRow(
+                            "按相关度排序",
+                            if (state.relevance) Icons.Outlined.Check
+                            else Icons.AutoMirrored.Outlined.Sort,
+                        ) {
+                            navigate { model.sortRelevance() }
+                        }
                     MenuDivider()
                     listOf(3, 4).forEach { columns ->
                         MenuRow(

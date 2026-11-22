@@ -61,7 +61,7 @@ internal class NativeTransferStore(context: Context) {
             runCatching { JSONArray(preferences.getString("queue", "[]")) }.getOrNull()
                 ?: return emptyList()
         // Recover independently: one corrupt row must not discard every other durable batch.
-        return (0 until minOf(rows.length(), 20)).mapNotNull { index ->
+        return (0 until rows.length()).mapNotNull { index ->
             runCatching { parse(rows.getJSONObject(index)) }.getOrNull()
         }
     }
@@ -76,7 +76,7 @@ internal class NativeTransferStore(context: Context) {
             )
         val mode = GalleryMode.valueOf(row.getString("mode"))
         val raw = row.getJSONArray("entries")
-        require(raw.length() in 1..100)
+        require(raw.length() > 0)
         val entries =
             (0 until raw.length()).map { i ->
                 raw.getJSONObject(i).let {

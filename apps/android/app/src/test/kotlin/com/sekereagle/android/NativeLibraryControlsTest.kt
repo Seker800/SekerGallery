@@ -72,15 +72,15 @@ class NativeLibraryControlsTest {
     }
 
     @Test
-    fun selectionIsBoundedAndCannotIncludeUnloadedAssets() {
+    fun selectionCanIncludeEveryLoadedAssetButNeverAnUnloadedOne() {
         val available = (1..120).map { "id-$it" }.toSet()
-        assertEquals(100, NativeSelection.all(available).size)
+        assertEquals(120, NativeSelection.all(available).size)
         assertEquals(emptySet<String>(), NativeSelection.toggle(emptySet(), "foreign", available))
         assertEquals(setOf("id-1"), NativeSelection.toggle(emptySet(), "id-1", available))
         assertTrue(NativeSelection.toggle(setOf("id-1"), "id-1", available).isEmpty())
         assertEquals(
-            100,
-            NativeSelection.toggle(NativeSelection.all(available), "id-120", available).size,
+            120,
+            NativeSelection.toggle(NativeSelection.all(available) - "id-1", "id-1", available).size,
         )
     }
 }

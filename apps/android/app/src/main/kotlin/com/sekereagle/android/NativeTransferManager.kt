@@ -159,16 +159,6 @@ class NativeTransferManager private constructor(context: Context) {
                 )
                 return@command
             }
-            if (mutable.value.batches.size >= 20) {
-                changes.tryEmit(
-                    NativeTransferEvent(
-                        identity.scope,
-                        mode,
-                        message = "传输列表已满，请先清理已完成任务",
-                    )
-                )
-                return@command
-            }
             val batch =
                 NativeTransferBatch(
                     UUID.randomUUID().toString(),
@@ -204,9 +194,10 @@ class NativeTransferManager private constructor(context: Context) {
     }
 
     private fun startService(scope: String) {
-        app.startForegroundService(
-            Intent(app, NativeUploadService::class.java).putExtra("scope", scope)
-        )
+        NativeTransferLauncher.start(app, scope)
+        // A job that is already active does not receive a new onStartJob call; nudge the
+        // serialized queue so resume/retry still starts the next batch.
+        dispatch(scope)
     }
 
     internal fun dispatch(scope: String) = command { next(scope) }
@@ -396,12 +387,6 @@ class NativeTransferManager private constructor(context: Context) {
         val batch = mutable.value.batches.firstOrNull { it.id == id } ?: return@command
         val entry = batch.entries.firstOrNull { it.uri == uri } ?: return@command
         pruneCompleted(batch.scope, keep = 1)
-        if (mutable.value.batches.size >= 20) {
-            changes.tryEmit(
-                NativeTransferEvent(batch.scope, batch.mode, message = "传输列表已满，请先清理已完成任务")
-            )
-            return@command
-        }
         update(id) {
             it.copy(
                 entries = it.entries.filterNot { entry -> entry.uri == uri },

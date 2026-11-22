@@ -58,6 +58,18 @@ export function mobileViewerPresentation(
     ),
   };
 }
+function shareFileName(originalName: string): string {
+  const name = originalName.replace(/\\/g, '/').split('/').pop() ?? 'share.jpg';
+  const dot = name.lastIndexOf('.');
+  const stem = (dot > 0 ? name.slice(0, dot) : name)
+    .split('')
+    .filter((character) => character.charCodeAt(0) >= 32)
+    .join('')
+    .replace(/[:*?"<>|]/g, '')
+    .trim();
+  return `${stem || 'share'}.jpg`;
+}
+
 function MobileViewerActions({
   asset,
   onClose,
@@ -75,7 +87,7 @@ function MobileViewerActions({
   const enqueue = useEnqueueAssetOperation();
   const [pending, setPending] = useState(false),
     [error, setError] = useState(''),
-    [downloadFallback, setDownloadFallback] = useState(false);
+    [fallbackReason, setFallbackReason] = useState<'' | 'unsupported' | 'large'>('');
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -101,8 +113,46 @@ function MobileViewerActions({
     });
   const share = () =>
     run(async () => {
-      if (!navigator.share || asset.byteSize > 32 * 1024 * 1024) {
-        setDownloadFallback(true);
+      setFallbackReason('');
+      if (!navigator.share) {
+        setFallbackReason('unsupported');
+        return;
+      }
+      // Still images use the bounded server rendering; GIF/WebP keep their original animation.
+      const shareImage =
+        asset.mimeType.startsWith('image/') &&
+        asset.mimeType !== 'image/gif' &&
+        asset.mimeType !== 'image/webp';
+      if (shareImage) {
+        let file: File | undefined;
+        try {
+          const response = await fetch(api.getEagleShareImageUrl(asset.id, asset.libraryMode), {
+            credentials: 'same-origin',
+          });
+          if (!response.ok) throw new Error(t('无法生成分享图，请重试。'));
+          const blob = await response.blob();
+          if (blob.type !== 'image/jpeg') throw new Error(t('分享图格式不正确，请重试。'));
+          file = new File([blob], shareFileName(asset.originalName), { type: 'image/jpeg' });
+        } catch (reason) {
+          // A server-side render failure falls back to the original only when it is small enough.
+          if (asset.byteSize > 32 * 1024 * 1024) throw reason;
+        }
+        if (file) {
+          if (!navigator.canShare?.({ files: [file] })) {
+            setFallbackReason('unsupported');
+            return;
+          }
+          try {
+            await navigator.share({ files: [file], title: asset.displayName });
+          } catch (reason) {
+            if (reason instanceof DOMException && reason.name === 'AbortError') return;
+            throw reason;
+          }
+          return;
+        }
+      }
+      if (asset.byteSize > 32 * 1024 * 1024) {
+        setFallbackReason('large');
         return;
       }
       const response = await fetch(api.getEagleAssetContentUrl(asset.id), {
@@ -120,7 +170,7 @@ function MobileViewerActions({
           bytes += part.value.byteLength;
           if (bytes > 32 * 1024 * 1024) {
             await reader.cancel();
-            setDownloadFallback(true);
+            setFallbackReason('large');
             return;
           }
           chunks.push(new Uint8Array(part.value));
@@ -130,7 +180,7 @@ function MobileViewerActions({
       }
       const file = new File(chunks, asset.originalName, { type: asset.mimeType });
       if (!navigator.canShare?.({ files: [file] })) {
-        setDownloadFallback(true);
+        setFallbackReason('unsupported');
         return;
       }
       try {
@@ -144,7 +194,7 @@ function MobileViewerActions({
       <div className={styles.bar} role="toolbar" aria-label={t('图片操作')}>
         <button type="button" disabled={pending} onClick={() => void share()}>
           <IconShare2 />
-          <span>{t('发送')}</span>
+          <span>{t('分享')}</span>
         </button>
         <button type="button" disabled={!onEdit || pending || readOnly} onClick={onEdit}>
           <IconEdit />
@@ -183,13 +233,17 @@ function MobileViewerActions({
           </div>
         </details>
       </div>
-      {downloadFallback && (
+      {fallbackReason && (
         <div className={styles.notice} role="status">
-          <span>{t('当前环境不支持系统分享，可先下载原文件。')}</span>
+          <span>
+            {fallbackReason === 'large'
+              ? t('文件较大，建议先下载原文件。')
+              : t('当前环境不支持系统分享，可先下载原文件。')}
+          </span>
           <button type="button" onClick={() => void download()}>
             {t('下载原文件')}
           </button>
-          <button type="button" onClick={() => setDownloadFallback(false)}>
+          <button type="button" onClick={() => setFallbackReason('')}>
             {t('关闭')}
           </button>
         </div>

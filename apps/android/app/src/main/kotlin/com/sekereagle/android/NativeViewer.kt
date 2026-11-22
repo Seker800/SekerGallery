@@ -57,6 +57,9 @@ fun NativeViewer(
     var deleting by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var shareBusy by remember { mutableStateOf(false) }
+    var shareStage by remember { mutableStateOf("正在准备分享…") }
+    var shareBytes by remember { mutableLongStateOf(0L) }
+    var shareSize by remember { mutableLongStateOf(-1L) }
     var error by remember { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -174,8 +177,11 @@ fun NativeViewer(
                             ViewerTool(Icons.Outlined.Edit, "编辑", !state.busy && !shareBusy) {
                                 editing = true
                             }
-                        ViewerTool(Icons.Outlined.Share, "发送", !state.busy && !shareBusy) {
+                        ViewerTool(Icons.Outlined.Share, "分享", !state.busy && !shareBusy) {
                             shareBusy = true
+                            shareStage = "正在准备分享…"
+                            shareBytes = 0L
+                            shareSize = -1L
                             scope.launch {
                                 try {
                                     shareNativeAsset(
@@ -184,11 +190,16 @@ fun NativeViewer(
                                         state.mode,
                                         asset,
                                         shareCancellation,
+                                        onStage = { shareStage = it },
+                                        onProgress = { bytes, total ->
+                                            shareBytes = bytes
+                                            shareSize = total
+                                        },
                                     )
                                 } catch (reason: kotlinx.coroutines.CancellationException) {
                                     throw reason
                                 } catch (reason: Exception) {
-                                    error = reason.message ?: "发送失败，请重试"
+                                    error = reason.message ?: "分享失败，请重试"
                                 } finally {
                                     shareBusy = false
                                 }
@@ -196,14 +207,48 @@ fun NativeViewer(
                         }
                     }
                 }
+            } else {
+                GlassSurface(
+                    Modifier.align(Alignment.BottomCenter)
+                        .padding(bottom = 12.dp)
+                        .width(minOf(maxWidth * 0.86f, 360.dp))
+                        .height(54.dp)
+                        .testTag("viewer-tools"),
+                    backdrop,
+                    sourceOffset,
+                ) {
+                    Row(
+                        Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 3.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        ViewerTool(Icons.Outlined.Restore, "恢复", !state.busy && !shareBusy) {
+                            model.startSelection(asset.id)
+                            model.changeSelection("restore")
+                        }
+                    }
+                }
             }
         }
         if (shareBusy)
             Surface(Modifier.align(Alignment.Center), color = Color(0xEE18181A)) {
-                Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(22.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Text("正在准备发送原件…")
+                Column(
+                    Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(22.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(shareStage)
+                    }
+                    if (shareSize > 0) {
+                        Spacer(Modifier.height(12.dp))
+                        LinearProgressIndicator(
+                            progress = {
+                                (shareBytes.toDouble() / shareSize).toFloat().coerceIn(0f, 1f)
+                            },
+                            modifier = Modifier.width(220.dp),
+                        )
+                    }
                 }
             }
     }
@@ -226,7 +271,7 @@ fun NativeViewer(
     error?.let { message ->
         AlertDialog(
             onDismissRequest = { error = null },
-            title = { Text("发送未完成") },
+            title = { Text("分享未完成") },
             text = { Text(message) },
             confirmButton = { TextButton({ error = null }) { Text("完成") } },
         )
@@ -289,9 +334,14 @@ internal fun ZoomPhoto(
         try {
             val bitmap =
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    repo.original(context, mode, asset, cancellation, normalize = true).use { source
-                        ->
-                        decodeViewerOriginal(source.file)
+                    val detail = repo.detailImage(context, mode, asset, cancellation)
+                    try {
+                        decodeViewerOriginal(detail.file)
+                    } catch (reason: Exception) {
+                        if (detail.persistent) detail.file.delete()
+                        throw reason
+                    } finally {
+                        detail.close()
                     }
                 }
             cancellation.check()
@@ -299,7 +349,7 @@ internal fun ZoomPhoto(
         } catch (reason: kotlinx.coroutines.CancellationException) {
             throw reason
         } catch (reason: Exception) {
-            if (!cancellation.cancelled) originalError = reason.message ?: "原图读取失败"
+            if (!cancellation.cancelled) originalError = reason.message ?: "高清图读取失败"
         } finally {
             originalLoading = false
         }
@@ -385,7 +435,7 @@ internal fun ZoomPhoto(
         if (demand) {
             if (originalLoading)
                 Text(
-                    "正在加载原图…",
+                    "正在加载高清图…",
                     Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
                     color = Color.White,
                     fontSize = 12.sp,

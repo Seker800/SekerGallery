@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.LabelOff
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -68,7 +69,7 @@ fun NativeSelectionControls(
                         Modifier.fillMaxWidth(),
                         enabled = !state.busy && state.selected.isNotEmpty(),
                     ) {
-                        Icon(Icons.Outlined.Send, null, Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Outlined.Send, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(if (state.mode == GalleryMode.PHOTO) "发送到素材" else "发送到照片")
                     }

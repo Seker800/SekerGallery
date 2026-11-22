@@ -15,11 +15,12 @@ data class NativeFilters(
     val rating: Int? = null,
     val gps: String = "",
     val smartFolderId: String = "",
+    val tagMatch: String = "ANY",
 ) {
     fun validationError(): String? {
-        if (tags.size > 100) return "最多选择 100 个标签"
         if (rating != null && rating !in 1..5) return "评分必须在 1 到 5 星之间"
         if (gps.isNotEmpty() && gps !in setOf("WITH", "WITHOUT")) return "请选择有效的位置条件"
+        if (tagMatch !in setOf("ANY", "ALL")) return "请选择有效的标签匹配方式"
         return try {
             val start = from.takeIf { it.isNotBlank() }?.let(LocalDate::parse)
             val end = to.takeIf { it.isNotBlank() }?.let(LocalDate::parse)
@@ -34,7 +35,7 @@ data class NativeFilters(
         return buildMap {
             if (tags.isNotEmpty()) {
                 put("manualTagIds", tags.sorted().joinToString(","))
-                put("tagMatch", "ANY")
+                put("tagMatch", tagMatch)
             }
             if (camera.isNotBlank()) put("cameraModel", camera)
             if (lens.isNotBlank()) put("lensModel", lens)
@@ -82,7 +83,14 @@ data class NativeFilters(
                     "智能文件夹：${folders.firstOrNull { it.id == smartFolderId }?.label ?: "已选文件夹"}",
                 )
             )
-        tags.sorted().forEach { add(NativeFilterToken("tag:$it", "标签：${names[it] ?: "已选标签"}")) }
+        tags.sorted().forEach {
+            add(
+                NativeFilterToken(
+                    "tag:$it",
+                    "标签：${names[it] ?: "已选标签"}" + if (tagMatch == "ALL") "（全部）" else "",
+                )
+            )
+        }
         if (camera.isNotEmpty()) add(NativeFilterToken("camera", "相机：$camera"))
         if (lens.isNotEmpty()) add(NativeFilterToken("lens", "镜头：$lens"))
         formats.sorted().forEach {
@@ -95,7 +103,8 @@ data class NativeFilters(
     }
 
     val active: Boolean
-        get() = this != NativeFilters()
+        // A match mode without selected tags has no effect and must not count as an active filter.
+        get() = copy(tagMatch = "ANY") != NativeFilters()
 }
 
 internal fun Map<String, String>.querySuffix(): String =
@@ -104,15 +113,12 @@ internal fun Map<String, String>.querySuffix(): String =
     }
 
 object NativeSelection {
-    const val LIMIT = 100
-
-    fun all(available: Set<String>): Set<String> = available.take(LIMIT).toSet()
+    fun all(available: Set<String>): Set<String> = available
 
     fun toggle(selected: Set<String>, id: String, available: Set<String>): Set<String> =
         when {
             id !in available -> selected
             id in selected -> selected - id
-            selected.size >= LIMIT -> selected
             else -> selected + id
         }
 }

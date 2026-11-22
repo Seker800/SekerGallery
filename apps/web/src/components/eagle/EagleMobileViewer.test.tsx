@@ -43,6 +43,7 @@ import { mobileViewerPresentation } from './EagleMobileViewer';
 const mocks = vi.hoisted(() => ({
   api: {
     getEagleAssetContentUrl: vi.fn(() => '/api/photos/assets/one/original'),
+    getEagleShareImageUrl: vi.fn(() => '/api/photos/assets/one/share-image'),
     batchTrashEagleAssets: vi.fn(),
     listEagleManualTags: vi.fn(),
     createEagleManualTag: vi.fn(),
@@ -119,7 +120,7 @@ it('disables mutations for trash previews', () => {
 it('offers an authenticated original download when system sharing is unavailable', async () => {
   vi.stubGlobal('navigator', {});
   show();
-  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  fireEvent.click(screen.getByRole('button', { name: '分享' }));
   expect(await screen.findByRole('status')).toHaveTextContent('系统分享');
   fireEvent.click(screen.getAllByRole('button', { name: '下载原文件' }).at(-1)!);
   await waitFor(() =>
@@ -128,26 +129,44 @@ it('offers an authenticated original download when system sharing is unavailable
     ),
   );
 });
-it('shares the authenticated file, never an unusable private URL', async () => {
+it('shares the bounded 4K rendering for a still image', async () => {
   const share = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { share, canShare: () => true });
-  const fetch = vi.fn().mockResolvedValue(new Response('data'));
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(new Blob(['jpeg'], { type: 'image/jpeg' }), {
+      headers: { 'content-type': 'image/jpeg' },
+    }),
+  );
   vi.stubGlobal('fetch', fetch);
   show();
-  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  fireEvent.click(screen.getByRole('button', { name: '分享' }));
+  await waitFor(() => expect(share).toHaveBeenCalledOnce());
+  expect(fetch).toHaveBeenCalledWith('/api/photos/assets/one/share-image', {
+    credentials: 'same-origin',
+  });
+  expect(share.mock.calls[0][0].files[0].name).toBe('photo.jpg');
+  expect(share.mock.calls[0][0].files[0].type).toBe('image/jpeg');
+});
+it('keeps animated images on their original bytes', async () => {
+  const share = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { share, canShare: () => true });
+  const fetch = vi.fn().mockResolvedValue(new Response('gif'));
+  vi.stubGlobal('fetch', fetch);
+  show({ ...photo, mimeType: 'image/gif', originalName: 'loop.gif' });
+  fireEvent.click(screen.getByRole('button', { name: '分享' }));
   await waitFor(() => expect(share).toHaveBeenCalledOnce());
   expect(fetch).toHaveBeenCalledWith('/api/photos/assets/one/original', {
     credentials: 'same-origin',
   });
-  expect(share.mock.calls[0][0].files[0].name).toBe('photo.png');
+  expect(share.mock.calls[0][0].files[0].name).toBe('loop.gif');
 });
 it('avoids loading a large video into phone memory for sharing', async () => {
   const share = vi.fn(),
     fetch = vi.fn();
   vi.stubGlobal('navigator', { share, canShare: () => true });
   vi.stubGlobal('fetch', fetch);
-  show({ ...photo, byteSize: 64 * 1024 * 1024 });
-  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  show({ ...photo, mimeType: 'video/mp4', originalName: 'clip.mp4', byteSize: 64 * 1024 * 1024 });
+  fireEvent.click(screen.getByRole('button', { name: '分享' }));
   expect(await screen.findByRole('status')).toBeVisible();
   expect(fetch).not.toHaveBeenCalled();
   expect(share).not.toHaveBeenCalled();
@@ -168,8 +187,8 @@ it('stops a changed original whose actual stream exceeds the declared sharing bu
       ),
     ),
   );
-  show();
-  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  show({ ...photo, mimeType: 'video/mp4', originalName: 'clip.mp4' });
+  fireEvent.click(screen.getByRole('button', { name: '分享' }));
   expect(await screen.findByRole('status')).toBeVisible();
   expect(share).not.toHaveBeenCalled();
 });
@@ -190,17 +209,20 @@ it('reports original read failures without sharing an inaccessible file', async 
   const share = vi.fn();
   vi.stubGlobal('navigator', { share });
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
-  show();
-  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  show({ ...photo, mimeType: 'video/mp4', originalName: 'clip.mp4' });
+  fireEvent.click(screen.getByRole('button', { name: '分享' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('无法读取原文件');
   expect(share).not.toHaveBeenCalled();
 });
 it('offers download when the system rejects the file type, and lets the user dismiss it', async () => {
   const share = vi.fn();
   vi.stubGlobal('navigator', { share, canShare: () => false });
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('data')));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(new Response('jpeg', { headers: { 'content-type': 'image/jpeg' } })),
+  );
   show();
-  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  fireEvent.click(screen.getByRole('button', { name: '分享' }));
   expect(await screen.findByRole('status')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: '关闭' }));
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
@@ -213,10 +235,15 @@ it.each(['AbortError', 'NotAllowedError'])(
       share: vi.fn().mockRejectedValue(new DOMException('share rejected', name)),
       canShare: () => true,
     });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('data')));
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(new Response('jpeg', { headers: { 'content-type': 'image/jpeg' } })),
+    );
     show();
-    fireEvent.click(screen.getByRole('button', { name: '发送' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: '发送' })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: '分享' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '分享' })).not.toBeDisabled());
     if (name === 'AbortError') expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     else expect(screen.getByRole('alert')).toHaveTextContent('操作失败');
   },

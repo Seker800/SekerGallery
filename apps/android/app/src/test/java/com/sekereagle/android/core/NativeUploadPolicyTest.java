@@ -16,9 +16,9 @@ public class NativeUploadPolicyTest {
     for (String uri :
         List.of("file:///private/file.jpg", "https://foreign/file.jpg", "content:///missing"))
       assertThrows(IllegalArgumentException.class, () -> NativeUploadPolicy.picked(List.of(uri)));
-    List<String> tooMany = new ArrayList<>();
-    for (int i = 0; i < 101; i++) tooMany.add("content://media/" + i);
-    assertThrows(IllegalArgumentException.class, () -> NativeUploadPolicy.picked(tooMany));
+    List<String> many = new ArrayList<>();
+    for (int i = 0; i < 101; i++) many.add("content://media/" + i);
+    assertEquals(101, NativeUploadPolicy.picked(many).size());
   }
 
   @Test

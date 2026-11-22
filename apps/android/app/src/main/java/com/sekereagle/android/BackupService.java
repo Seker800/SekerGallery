@@ -133,8 +133,13 @@ public final class BackupService extends Service {
 
   /** Restores the failed files to the front of the next run without clearing successful receipts. */
   static void retryFailed(Context context, String scope) {
+    retryFailed(context, scope, null);
+  }
+
+  static void retryFailed(Context context, String scope, String uri) {
     try (BackupJournal journal = new BackupJournal(context)) {
-      journal.retryFailures(scope);
+      if (uri == null || uri.isEmpty()) journal.retryFailures(scope);
+      else journal.retryFailure(scope, uri);
     }
     BackupLauncher.start(context, scope, true);
   }
@@ -352,13 +357,27 @@ public final class BackupService extends Service {
             if (!visitedKeys.add(fileKey)) return;
             if (retriedKeys.contains(fileKey)) return;
             if (item.modified > 0) {
-              if (store.scanCompleted(scope, fileKey, fingerprint)) {
-                countRun("SKIPPED");
-                return;
-              }
               String engineKey =
                   BackupEngine.fileKey(
                       scope, mode, item.uri.toString(), item.size, item.modified);
+              if (store.scanCompleted(scope, fileKey, fingerprint)) {
+                // A full scan re-verifies completed receipts against the server; the ordinary
+                // incremental pass keeps its cheap local shortcut.
+                if (!BackupScanPolicy.verifyCompleted(full, true)) {
+                  countRun("SKIPPED");
+                  return;
+                }
+                BackupEngine.Checkpoint checkpoint = store.load(engineKey);
+                if (checkpoint != null
+                    && checkpoint.confirmed
+                    && checkpoint.terminalError.isEmpty()) {
+                  pendingSkips.add(
+                      new PendingSkip(item, mode, fileKey, fingerprint, checkpoint.hash));
+                } else {
+                  countRun("SKIPPED");
+                }
+                return;
+              }
               BackupEngine.Checkpoint checkpoint = store.load(engineKey);
               if (checkpoint != null
                   && checkpoint.confirmed
@@ -880,10 +899,10 @@ public final class BackupService extends Service {
   @Override
   public void onDestroy() {
     cancelled = true;
-    working.set(false);
+    boolean wasRunning = working.getAndSet(false);
     if (current == this) {
       if (!scope.isEmpty()) {
-        if (working.get() && !settings.flag(scope, "userPaused", false) && !timedOut) {
+        if (wasRunning && !settings.flag(scope, "userPaused", false) && !timedOut) {
           pendingMessage = "备份未完成，下次打开继续";
           flushUpdate();
         }

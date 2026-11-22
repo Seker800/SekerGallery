@@ -48,6 +48,7 @@ internal suspend fun NativeGalleryRepository.original(
     cancellation: NativeTransferCancellation,
     editable: Boolean = false,
     normalize: Boolean = editable,
+    maxBytes: Long = Long.MAX_VALUE,
 ): NativeOriginal =
     withContext(Dispatchers.IO) {
         val base =
@@ -93,6 +94,8 @@ internal suspend fun NativeGalleryRepository.original(
         }
         if (editable && mime !in listOf("image/jpeg", "image/png", "image/webp"))
             throw IOException("此格式暂不支持编辑，请使用可编辑照片或 RAW 显影副本")
+        if (size > maxBytes)
+            throw IOException("文件较大，无法读取，请下载原文件")
         if (normalize && !editable && size > 256L * 1024 * 1024)
             throw IOException("原图超出查看读取预算，请下载原件查看")
         if (editable && size > 64L * 1024 * 1024) throw IOException("照片超出编辑读取预算")
@@ -134,4 +137,69 @@ internal fun decodeViewerOriginal(file: File): android.graphics.Bitmap =
             (info.size.height * ratio).toInt().coerceAtLeast(1),
         )
         decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+    }
+
+/** A decoded-detail source; cached share renderings survive the read, temporary originals do not. */
+internal class NativeDetailFile(val file: java.io.File, private val temporary: Boolean) :
+    AutoCloseable {
+    internal val persistent: Boolean
+        get() = !temporary
+
+    override fun close() {
+        if (temporary) file.delete()
+    }
+}
+
+/**
+ * Detail viewing uses the bounded 4K share rendering for still images. It is small enough to cache
+ * and avoids re-downloading a camera-sized original each time the user zooms; GIF keeps its original
+ * bytes so animation is not flattened.
+ */
+internal suspend fun NativeGalleryRepository.detailImage(
+    context: Context,
+    mode: GalleryMode,
+    asset: NativeAsset,
+    cancellation: NativeTransferCancellation,
+    progress: (Long, Long) -> Unit = { _, _ -> },
+): NativeDetailFile =
+    withContext(Dispatchers.IO) {
+        val animated = asset.mimeType == "image/gif" || asset.mimeType == "image/webp"
+        if (!animated && asset.mimeType.startsWith("image/")) {
+            val directory = File(context.cacheDir, "viewer-detail").apply { mkdirs() }
+            val cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+            directory.listFiles()?.filter { it.lastModified() in 1 until cutoff }?.forEach {
+                it.deleteRecursively()
+            }
+            val name = "share-${asset.id}-${asset.revision}.jpg"
+            val cached = File(directory, name)
+            if (cached.length() > 0) return@withContext NativeDetailFile(cached, false)
+            val temporary = File(directory, ".${name}.part")
+            try {
+                val path =
+                    NativeGalleryPolicy.base(mode.name) +
+                        "/assets/" +
+                        NativeGalleryPolicy.identifier(asset.id) +
+                        "/share-image"
+                temporary.outputStream().use { output ->
+                    connection.downloadShareImage(path, output, cancellation, progress)
+                }
+                cancellation.check()
+                if (!temporary.renameTo(cached)) throw IOException("无法保存高清图")
+                return@withContext NativeDetailFile(cached, false)
+            } catch (reason: Throwable) {
+                temporary.delete()
+                if (reason is kotlinx.coroutines.CancellationException) throw reason
+                if (reason is NativeSession.Failure && reason.status == 401) throw reason
+            }
+        }
+        val original =
+            original(
+                context,
+                mode,
+                asset,
+                cancellation,
+                normalize = !animated,
+                maxBytes = 256L * 1024 * 1024,
+            )
+        NativeDetailFile(original.file, true)
     }

@@ -13,6 +13,30 @@ import java.io.IOException
 class NativeDownloadStore(context: Context) {
     private val resolver = context.applicationContext.contentResolver
 
+    /** Removes rows left pending by a previous process death; no completed download is touched. */
+    fun cleanupPending() {
+        runCatching {
+            resolver.query(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.MediaColumns._ID),
+                MediaStore.MediaColumns.IS_PENDING + "=1 AND " +
+                    MediaStore.MediaColumns.RELATIVE_PATH + "=?",
+                arrayOf(Environment.DIRECTORY_DOWNLOADS + "/SekerEagle/"),
+                null,
+            )?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                while (cursor.moveToNext()) {
+                    val uri =
+                        android.content.ContentUris.withAppendedId(
+                            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                            cursor.getLong(idColumn),
+                        )
+                    resolver.delete(uri, null, null)
+                }
+            }
+        }
+    }
+
     fun save(
         session: NativeSession,
         mode: GalleryMode,

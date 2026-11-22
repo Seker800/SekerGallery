@@ -714,6 +714,10 @@ export const enUS = {
   下载原文件: 'Download original',
   使用收藏标签: 'Uses the Favorites tag',
   发送: 'Send',
+  分享: 'Share',
+  '文件较大，建议先下载原文件。': 'This file is large. Download the original first.',
+  '无法生成分享图，请重试。': 'Could not generate the share image. Please retry.',
+  '分享图格式不正确，请重试。': 'The share image has an unexpected format. Please retry.',
   已收藏: 'Favorited',
   '当前环境不支持系统分享，可先下载原文件。':
     'System sharing is unavailable here. Download the original to share it.',

@@ -29,6 +29,13 @@ public final class BackupScanPolicyTest {
   }
 
   @Test
+  public void completedReceiptsAreRecheckedOnlyOnAFullReconcile() {
+    assertTrue(BackupScanPolicy.verifyCompleted(true, true));
+    assertFalse(BackupScanPolicy.verifyCompleted(false, true));
+    assertFalse(BackupScanPolicy.verifyCompleted(true, false));
+  }
+
+  @Test
   public void changedWindowKeepsOneHourOverlap() {
     assertEquals(3600, BackupScanPolicy.changedAfter(7200));
     assertEquals(0, BackupScanPolicy.changedAfter(1000));

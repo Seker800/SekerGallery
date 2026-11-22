@@ -36,6 +36,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 fun NativeGalleryApp(model: NativeGalleryViewModel, openNative: (String) -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
     val download by model.downloads.state.collectAsStateWithLifecycle()
+    var downloadHidden by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(download) {
+        val current = download
+        if (current == null || !current.running) downloadHidden = false
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     val notificationPermission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -96,8 +101,22 @@ fun NativeGalleryApp(model: NativeGalleryViewModel, openNative: (String) -> Unit
                         }
                     }
                 }
-                if (state.identity != null && download != null)
-                    NativeDownloadDialog(download!!, model.downloads)
+                if (state.identity != null && download != null && !downloadHidden)
+                    NativeDownloadDialog(download!!, model.downloads) { downloadHidden = true }
+                if (state.identity != null && download != null && downloadHidden && download!!.running)
+                    Surface(
+                        Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
+                            .padding(bottom = 88.dp)
+                            .clickable { downloadHidden = false },
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                        color = Color(0xEE29292C),
+                    ) {
+                        Text(
+                            "下载中 ${download!!.completed}/${download!!.total} · 查看进度",
+                            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            fontSize = 13.sp,
+                        )
+                    }
                 if (state.identity != null && state.transfersOpen)
                     NativeTransferScreen(state, model, openNative)
                 if (state.identity != null && state.cacheOpen)
@@ -149,12 +168,13 @@ internal fun NativeLibraryPage(
         // an explicit photo anchor; leave active gestures alone in every other case.
         if (firstKey.startsWith("date:") && firstKey.removePrefix("date:") !in layout.dayStarts) {
             val anchor = visible.firstOrNull { it.key.toString().startsWith("${state.mode}:") }
-            val index =
-                anchor?.key?.toString()?.removePrefix("${state.mode}:")?.let(layout::indexOf)
-            if (index != null && anchor != null)
-                SideEffect {
-                    grid.requestScrollToItem(index, -anchor.offset.y)
-                }
+            if (anchor != null) {
+                val index = anchor.key.toString().removePrefix("${state.mode}:").let(layout::indexOf)
+                if (index != null)
+                    SideEffect {
+                        grid.requestScrollToItem(index, -anchor.offset.y)
+                    }
+            }
         }
     }
     SideEffect { renderedWindow = state.windowOffset }
@@ -320,6 +340,7 @@ internal fun NativeLibraryPage(
                                 Modifier.fillMaxSize(),
                                 ContentScale.Crop,
                                 cacheVersion = asset.cacheVersion,
+                                active = active,
                             )
                             if (state.selecting) {
                                 Icon(

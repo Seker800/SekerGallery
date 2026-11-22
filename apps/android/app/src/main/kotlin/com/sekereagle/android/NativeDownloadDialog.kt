@@ -3,18 +3,30 @@ package com.sekereagle.android
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun NativeDownloadDialog(state: NativeDownloadState, downloads: NativeDownloads) {
+internal fun NativeDownloadDialog(
+    state: NativeDownloadState,
+    downloads: NativeDownloads,
+    onHide: () -> Unit,
+) {
+    var confirmCancel by remember { mutableStateOf(false) }
     AlertDialog(
         containerColor = androidx.compose.ui.graphics.Color(0xFF1C1C1F),
         modifier = Modifier.testTag("native-download-dialog"),
-        onDismissRequest = { if (state.running) downloads.cancel() else downloads.dismiss() },
-        title = { Text(if (state.running) "正在下载原件" else if (state.cancelled) "下载已取消" else "下载结果") },
+        // Closing the dialog must never cancel a running transfer by accident.
+        onDismissRequest = onHide,
+        title = {
+            Text(
+                if (state.running) "正在下载原件"
+                else if (state.cancelled) "下载已取消"
+                else "下载结果"
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
@@ -34,7 +46,12 @@ internal fun NativeDownloadDialog(state: NativeDownloadState, downloads: NativeD
                     } else LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
                 Text("保存到：Download/SekerEagle", color = NativeMuted)
-                Text("下载可在后台继续，通知和此处会保留进度。应用进程被系统终止后，需重新选择未完成项。", color = NativeMuted)
+                Text(
+                    if (state.running)
+                        "关闭此窗口后下载继续，可从通知栏或图库下方进度条重新打开。应用进程被系统终止后，需重新选择未完成项。"
+                    else "应用进程被系统终止后，需重新选择未完成项。",
+                    color = NativeMuted,
+                )
                 if (state.failures.isNotEmpty())
                     Column(Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState())) {
                         Text("${state.failures.size} 项失败", color = MaterialTheme.colorScheme.error)
@@ -47,12 +64,34 @@ internal fun NativeDownloadDialog(state: NativeDownloadState, downloads: NativeD
             }
         },
         confirmButton = {
-            if (state.running) TextButton(downloads::cancel) { Text("取消下载") }
-            else TextButton(downloads::dismiss) { Text("完成") }
+            if (state.running) TextButton(onHide) { Text("后台继续") }
+            else
+                TextButton({
+                    downloads.dismiss()
+                    onHide()
+                }) {
+                    Text("完成")
+                }
         },
         dismissButton = {
-            if (!state.running && (state.failures.isNotEmpty() || state.remaining.isNotEmpty()))
+            if (state.running) TextButton({ confirmCancel = true }) { Text("取消下载") }
+            else if (state.failures.isNotEmpty() || state.remaining.isNotEmpty())
                 TextButton(downloads::retry) { Text("重试未完成项") }
         },
     )
+    if (confirmCancel)
+        AlertDialog(
+            onDismissRequest = { confirmCancel = false },
+            title = { Text("取消下载？") },
+            text = { Text("已经保存的文件会保留，未完成的项目可在结果中重试。") },
+            dismissButton = { TextButton({ confirmCancel = false }) { Text("继续下载") } },
+            confirmButton = {
+                TextButton({
+                    confirmCancel = false
+                    downloads.cancel()
+                }) {
+                    Text("取消下载")
+                }
+            },
+        )
 }

@@ -99,6 +99,11 @@ class NativeGalleryRepository(
         get() = session
 
     private val imagesLock = Any()
+    private val catalogLock = Any()
+    private val optionCache =
+        mutableMapOf<Pair<GalleryMode, NativeOptionSection>, Pair<Long, NativeOptions>>()
+    private val favoriteTagCache = mutableMapOf<GalleryMode, Pair<Long, String?>>()
+    private val favoritePrivacyCache = mutableMapOf<GalleryMode, Pair<Long, Boolean>>()
     private var memoryEpoch = 0
     private val imageVersions = LruCache<String, String>(4096)
     private val imageLoads = Array(32) { Mutex() }
@@ -118,6 +123,7 @@ class NativeGalleryRepository(
         before: String? = null,
         offset: Long = 0,
         cancellation: NativeTransferCancellation? = null,
+        relevance: Boolean = false,
     ): NativePage =
         withContext(Dispatchers.IO) {
             val result =
@@ -126,7 +132,14 @@ class NativeGalleryRepository(
                     NativeGalleryPolicy.listPath(mode.name, search, cursor.orEmpty()).let {
                         if (trash) it.replace("/assets?", "/trash?") else it
                     } +
-                        "&sort=${sort.name}" +
+                        (if (relevance) "" else "&sort=${sort.name}") +
+                        (if (
+                            relevance &&
+                                search.isBlank() &&
+                                filters.smartFolderId.isNotBlank()
+                        )
+                            "&smartFolderOrder=RELEVANCE"
+                        else "") +
                         (before?.let { "&before=" + java.net.URLEncoder.encode(it, "UTF-8") }
                             ?: "") +
                         (if (offset > 0) "&offset=$offset" else "") +
@@ -151,13 +164,18 @@ class NativeGalleryRepository(
         parse(session.json("GET", "$base/assets/$assetId"), mode, sort)
     }
 
-    suspend fun timeline(mode: GalleryMode, sort: GallerySort): NativeTimeline =
+    suspend fun timeline(
+        mode: GalleryMode,
+        sort: GallerySort,
+        cancellation: NativeTransferCancellation? = null,
+    ): NativeTimeline =
         withContext(Dispatchers.IO) {
             val zone = java.net.URLEncoder.encode(ZoneId.systemDefault().id, "UTF-8")
             val json =
                 session.json(
                     "GET",
                     "${NativeGalleryPolicy.base(mode.name)}/assets/timeline?sort=${sort.name}&timeZone=$zone",
+                    cancellation = cancellation,
                 )
             val days = json.getJSONArray("days")
             NativeTimeline(
@@ -190,6 +208,12 @@ class NativeGalleryRepository(
         cancellation: NativeTransferCancellation? = null,
     ): NativeOptions =
         withContext(Dispatchers.IO) {
+            val cacheKey = mode to section
+            synchronized(catalogLock) {
+                    optionCache[cacheKey]
+                        ?.takeIf { System.currentTimeMillis() - it.first < CATALOG_TTL_MS }
+                }
+                ?.let { return@withContext it.second }
             val base = NativeGalleryPolicy.base(mode.name)
             fun strings(json: JSONObject, key: String): List<String> =
                 json
@@ -198,7 +222,8 @@ class NativeGalleryRepository(
                     .orEmpty()
                     .filter { it.isNotBlank() }
                     .distinct()
-            when (section) {
+            val result =
+                when (section) {
                 NativeOptionSection.TAGS -> {
                     // Legacy catalogs include counts and groups for every tag. Keep this larger
                     // read budget local to catalogs; ordinary JSON and media budgets are unchanged.
@@ -268,14 +293,18 @@ class NativeGalleryRepository(
                             }
                 }
             }
+            synchronized(catalogLock) {
+                optionCache[cacheKey] = System.currentTimeMillis() to result
+            }
+            result
         }
 
     /** Favorites are ordinary mode-scoped manual tags; the server remains the source of truth. */
-    suspend fun setFavorite(mode: GalleryMode, id: String, enabled: Boolean) =
+    suspend fun setFavorite(mode: GalleryMode, id: String, enabled: Boolean): String? =
         withContext(Dispatchers.IO) {
             val base = NativeGalleryPolicy.base(mode.name)
             val assetId = NativeGalleryPolicy.identifier(id)
-            fun findTag(): String? {
+            fun fetchTag(): String? {
                 val tags = session.array("$base/manual-tags", 16 * 1024 * 1024)
                 return (0 until tags.length())
                     .asSequence()
@@ -283,7 +312,14 @@ class NativeGalleryRepository(
                     .firstOrNull { it.getString("name") == "收藏" }
                     ?.getString("id")
             }
-            var tagId = findTag()
+            val now = System.currentTimeMillis()
+            val cachedTag = synchronized(catalogLock) { favoriteTagCache[mode] }
+            var tagId =
+                if (cachedTag != null && now - cachedTag.first < CATALOG_TTL_MS) cachedTag.second
+                else
+                    fetchTag().also {
+                        synchronized(catalogLock) { favoriteTagCache[mode] = now to it }
+                    }
             if (enabled && tagId == null) {
                 tagId =
                     try {
@@ -292,29 +328,50 @@ class NativeGalleryRepository(
                             .getString("id")
                     } catch (reason: NativeSession.Failure) {
                         if (reason.status != 409) throw reason
-                        findTag() ?: throw reason
+                        fetchTag() ?: throw reason
                     }
+                synchronized(catalogLock) {
+                    favoriteTagCache[mode] = System.currentTimeMillis() to tagId
+                    optionCache.remove(mode to NativeOptionSection.TAGS)
+                }
             }
             if (tagId != null) {
-                val privacy = session.json("GET", "$base/privacy-settings").getJSONArray("tagIds")
-                require((0 until privacy.length()).none { privacy.getString(it) == tagId }) {
-                    "收藏标签被设为私密，请先在设置中调整。"
-                }
-                session.json(
-                    "POST",
-                    "$base/assets/batch/manual-tags",
-                    JSONObject()
-                        .put("assetIds", org.json.JSONArray(listOf(assetId)))
-                        .put(
-                            "addTagIds",
-                            org.json.JSONArray(if (enabled) listOf(tagId) else emptyList<String>()),
-                        )
-                        .put(
-                            "removeTagIds",
-                            org.json.JSONArray(if (enabled) emptyList<String>() else listOf(tagId)),
-                        ),
-                )
-            }
+                val cachedPrivacy = synchronized(catalogLock) { favoritePrivacyCache[mode] }
+                val isPrivate =
+                    if (cachedPrivacy != null && now - cachedPrivacy.first < CATALOG_TTL_MS)
+                        cachedPrivacy.second
+                    else {
+                        val privacy =
+                            session.json("GET", "$base/privacy-settings").getJSONArray("tagIds")
+                        val value = (0 until privacy.length()).any { privacy.getString(it) == tagId }
+                        synchronized(catalogLock) {
+                            favoritePrivacyCache[mode] = now to value
+                        }
+                        value
+                    }
+                require(!isPrivate) { "收藏标签被设为私密，请先在设置中调整。" }
+                session
+                    .json(
+                        "POST",
+                        "$base/assets/batch/manual-tags",
+                        JSONObject()
+                            .put("assetIds", org.json.JSONArray(listOf(assetId)))
+                            .put(
+                                "addTagIds",
+                                org.json.JSONArray(
+                                    if (enabled) listOf(tagId) else emptyList<String>()
+                                ),
+                            )
+                            .put(
+                                "removeTagIds",
+                                org.json.JSONArray(
+                                    if (enabled) emptyList<String>() else listOf(tagId)
+                                ),
+                            ),
+                    )
+                    .optString("id")
+                    .takeUnless { it.isBlank() || it == "null" }
+            } else null
         }
 
     suspend fun change(
@@ -323,58 +380,73 @@ class NativeGalleryRepository(
         action: String,
         tagIds: Set<String> = emptySet(),
         rating: Int? = null,
-    ) =
+    ): String? =
         withContext(Dispatchers.IO) {
-            require(assets.isNotEmpty() && assets.size <= NativeSelection.LIMIT)
+            require(assets.isNotEmpty())
             val base = NativeGalleryPolicy.base(mode.name)
             val ids = org.json.JSONArray(assets.map { NativeGalleryPolicy.identifier(it.id) })
             when (action) {
                 "trash",
                 "restore" ->
-                    session.json(
-                        "POST",
-                        "$base/assets/batch/$action",
-                        JSONObject().put("assetIds", ids),
-                    )
+                    assetOperations
+                        .enqueue(
+                            mode,
+                            if (action == "trash") "TRASH" else "RESTORE",
+                            assets.map { it.id }.toSet(),
+                        )
+                        .id
                 "tags",
                 "removeTags" ->
-                    session.json(
-                        "POST",
-                        "$base/assets/batch/manual-tags",
-                        JSONObject()
-                            .put("assetIds", ids)
-                            .put(
-                                "addTagIds",
-                                org.json.JSONArray(
-                                    if (action == "tags") tagIds.toList() else emptyList<String>()
+                    session
+                        .json(
+                            "POST",
+                            "$base/assets/batch/manual-tags",
+                            JSONObject()
+                                .put("assetIds", ids)
+                                .put(
+                                    "addTagIds",
+                                    org.json.JSONArray(
+                                        if (action == "tags") tagIds.toList()
+                                        else emptyList<String>()
+                                    ),
+                                )
+                                .put(
+                                    "removeTagIds",
+                                    org.json.JSONArray(
+                                        if (action == "removeTags") tagIds.toList()
+                                        else emptyList<String>()
+                                    ),
                                 ),
-                            )
-                            .put(
-                                "removeTagIds",
-                                org.json.JSONArray(
-                                    if (action == "removeTags") tagIds.toList()
-                                    else emptyList<String>()
-                                ),
-                            ),
-                    )
+                        )
+                        .optString("id")
+                        .takeUnless { it.isBlank() || it == "null" }
                 "rating" ->
-                    session.json(
-                        "PATCH",
-                        "$base/assets/batch",
-                        JSONObject()
-                            .put(
-                                "assets",
-                                org.json.JSONArray(
-                                    assets.map {
-                                        JSONObject()
-                                            .put("assetId", it.id)
-                                            .put("rowVersion", it.rowVersion)
-                                    }
-                                ),
-                            )
-                            .put("rating", rating ?: JSONObject.NULL),
-                    )
+                    session
+                        .json(
+                            "PATCH",
+                            "$base/assets/batch",
+                            JSONObject()
+                                .put(
+                                    "assets",
+                                    org.json.JSONArray(
+                                        assets.map {
+                                            JSONObject()
+                                                .put("assetId", it.id)
+                                                .put("rowVersion", it.rowVersion)
+                                        }
+                                    ),
+                                )
+                                .put("rating", rating ?: JSONObject.NULL),
+                        )
+                        .optString("id")
+                        .takeUnless { it.isBlank() || it == "null" }
                 else -> error("未知操作")
+            }.also {
+                synchronized(catalogLock) {
+                    optionCache.keys.removeAll { it.first == mode }
+                    favoriteTagCache.remove(mode)
+                    favoritePrivacyCache.remove(mode)
+                }
             }
         }
 
@@ -386,6 +458,7 @@ class NativeGalleryRepository(
         path: String,
         full: Boolean,
         sourceVersion: String? = imageVersion(path),
+        cancellation: NativeTransferCancellation? = null,
     ): Bitmap =
         withContext(Dispatchers.IO) {
             val epoch = session.authorizationEpoch()
@@ -451,13 +524,13 @@ class NativeGalleryRepository(
                     val diskHit = bitmap != null
                     if (bitmap == null) {
                         if (id != null && cached != null) disk?.remove(id)
-                        val bytes = session.media(path)
+                        val bytes = session.media(path, cancellation)
                         checkActive()
                         bitmap = decode(bytes)
                         if (id != null) disk?.write(id, bytes, ticket)
                     }
                     checkActive()
-                    val result = bitmap!!
+                    val result = bitmap ?: throw IOException("预览解码失败")
                     synchronized(imagesLock) {
                         checkActive()
                         if (disk == null || ticket == disk.generation) cache.put(key, result)
@@ -475,7 +548,27 @@ class NativeGalleryRepository(
             memoryEpoch++
             cache.evictAll()
             imageVersions.evictAll()
+        }.also {
+            synchronized(catalogLock) {
+                optionCache.clear()
+                favoriteTagCache.clear()
+                favoritePrivacyCache.clear()
+            }
         }
+
+    internal fun invalidateOptions(mode: GalleryMode? = null) {
+        synchronized(catalogLock) {
+            if (mode == null) optionCache.clear()
+            else optionCache.keys.removeAll { it.first == mode }
+        }
+    }
+
+    internal fun invalidateFavorite(mode: GalleryMode) {
+        synchronized(catalogLock) {
+            favoriteTagCache.remove(mode)
+            favoritePrivacyCache.remove(mode)
+        }
+    }
 
     internal fun parse(
         json: JSONObject,
@@ -568,5 +661,9 @@ class NativeGalleryRepository(
             json.optString("mimeType"),
             json.optString("lifecycleStatus"),
         )
+    }
+
+    private companion object {
+        const val CATALOG_TTL_MS = 60_000L
     }
 }

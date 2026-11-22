@@ -22,18 +22,25 @@ fun NativeImage(
     modifier: Modifier = Modifier,
     scale: ContentScale = ContentScale.Fit,
     cacheVersion: String? = null,
+    active: Boolean = true,
 ) {
     val version = cacheVersion ?: repo.imageVersion(path)
     var retry by remember(path, version) { mutableIntStateOf(0) }
     var image by
         remember(repo, path, full, version) { mutableStateOf<android.graphics.Bitmap?>(null) }
     var error by remember(repo, path, version) { mutableStateOf(false) }
-    LaunchedEffect(repo, path, full, version, retry) {
+    val cancellation = remember(repo, path, version, active) { NativeTransferCancellation() }
+    DisposableEffect(cancellation) { onDispose { cancellation.cancel() } }
+    LaunchedEffect(repo, path, full, version, retry, active) {
+        if (!active) {
+            cancellation.cancel()
+            return@LaunchedEffect
+        }
         image = null
         error = false
         if (path != null)
             try {
-                image = repo.image(path, full, version)
+                image = repo.image(path, full, version, cancellation)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

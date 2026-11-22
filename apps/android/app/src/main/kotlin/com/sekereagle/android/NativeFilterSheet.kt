@@ -34,6 +34,7 @@ fun NativeFilterSheet(state: GalleryState, model: NativeGalleryViewModel) {
                             it.rating ?: 0,
                             it.gps,
                             it.smartFolderId,
+                            it.tagMatch,
                         )
                     },
                     restore = {
@@ -47,6 +48,7 @@ fun NativeFilterSheet(state: GalleryState, model: NativeGalleryViewModel) {
                             (it[6] as Int).takeIf { n -> n > 0 },
                             it[7] as String,
                             it.getOrNull(8) as? String ?: "",
+                            it.getOrNull(9) as? String ?: "ANY",
                         )
                     },
                 ),
@@ -147,6 +149,21 @@ fun NativeFilterSheet(state: GalleryState, model: NativeGalleryViewModel) {
                         !state.busy,
                     ) { selected ->
                         if (editingTags) tags = selected else draft = draft.copy(tags = selected)
+                    }
+                    if (!editingTags && draft.tags.isNotEmpty()) {
+                        Text("多个标签如何匹配", color = NativeMuted)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            NativeChoiceChip(
+                                draft.tagMatch == "ANY",
+                                { draft = draft.copy(tagMatch = "ANY") },
+                                { Text("任一标签") },
+                            )
+                            NativeChoiceChip(
+                                draft.tagMatch == "ALL",
+                                { draft = draft.copy(tagMatch = "ALL") },
+                                { Text("全部标签") },
+                            )
+                        }
                     }
                 }
                 if (

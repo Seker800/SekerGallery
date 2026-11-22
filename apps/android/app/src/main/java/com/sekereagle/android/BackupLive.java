@@ -37,12 +37,25 @@ public final class BackupLive {
     public final String scope, message;
     public final boolean running;
     public final List<Row> rows;
+    public final int total, completed, failed, queued;
 
-    Snapshot(String scope, String message, boolean running, List<Row> rows) {
+    Snapshot(
+        String scope,
+        String message,
+        boolean running,
+        List<Row> rows,
+        int total,
+        int completed,
+        int failed,
+        int queued) {
       this.scope = scope;
       this.message = message;
       this.running = running;
       this.rows = rows;
+      this.total = total;
+      this.completed = completed;
+      this.failed = failed;
+      this.queued = queued;
     }
   }
 
@@ -112,10 +125,56 @@ public final class BackupLive {
   }
 
   public static Snapshot snapshot() {
+    return snapshot(600);
+  }
+
+  /**
+   * A bounded projection for the transfer page. Counts cover the whole run, while the row list
+   * keeps active files plus a small completed tail; a 50k-file scan must not copy 50k rows every
+   * 400 ms.
+   */
+  public static Snapshot snapshot(int limit) {
     synchronized (lock) {
-      List<Row> copy = new ArrayList<>(rows.size());
-      for (Row row : rows.values()) copy.add(row.copy());
-      return new Snapshot(scope, message, running, copy);
+      int total = rows.size();
+      int completed = 0;
+      int failed = 0;
+      int queued = 0;
+      List<Row> failedRows = new ArrayList<>();
+      List<Row> uploading = new ArrayList<>();
+      List<Row> waiting = new ArrayList<>();
+      LinkedList<Row> done = new LinkedList<>();
+      for (Row row : rows.values()) {
+        if (row.state.equals(UPLOADED) || row.state.equals(SKIPPED)) {
+          completed++;
+          done.addLast(row);
+          if (done.size() > 100) done.removeFirst();
+        } else if (row.state.equals(FAILED)) {
+          failed++;
+          failedRows.add(row);
+        } else if (row.state.equals(UPLOADING)) {
+          queued++;
+          uploading.add(row);
+        } else {
+          queued++;
+          waiting.add(row);
+        }
+      }
+      int activeLimit = Math.max(1, limit - done.size());
+      List<Row> copy = new ArrayList<>(Math.min(activeLimit, failedRows.size() + uploading.size() + waiting.size()) + done.size());
+      for (Row row : failedRows) {
+        if (copy.size() >= activeLimit) break;
+        copy.add(row.copy());
+      }
+      for (Row row : uploading) {
+        if (copy.size() >= activeLimit) break;
+        copy.add(row.copy());
+      }
+      for (Row row : waiting) {
+        if (copy.size() >= activeLimit) break;
+        copy.add(row.copy());
+      }
+      for (Row row : done) copy.add(row.copy());
+      return new Snapshot(scope, message, running, copy, total, completed, failed, queued);
     }
   }
 }

@@ -109,8 +109,19 @@ class NativeSession private constructor(context: Context, val origin: String) : 
     override fun request(method: String, path: String, body: JSONObject?): JSONObject =
         json(method, path, body)
 
-    fun media(path: String): ByteArray =
-        request("GET", path, null, 16 * 1024 * 1024, true, image = true)
+    fun media(
+        path: String,
+        cancellation: NativeTransferCancellation? = null,
+    ): ByteArray =
+        request(
+            "GET",
+            path,
+            null,
+            16 * 1024 * 1024,
+            true,
+            cancellation = cancellation,
+            image = true,
+        )
 
     /**
      * Opens one authenticated video response that the decoder consumes sequentially. Keeping the
@@ -301,6 +312,48 @@ class NativeSession private constructor(context: Context, val origin: String) : 
             }
         }
 
+    /**
+     * Bounded download of the server-rendered 4K share JPEG. The server sets Content-Length, but a
+     * missing length still stops at the same ceiling instead of reading an unbounded body.
+     */
+    internal fun downloadShareImage(
+        path: String,
+        output: java.io.OutputStream,
+        cancellation: NativeTransferCancellation,
+        progress: (Long, Long) -> Unit,
+    ): Long {
+        require(
+            path.matches(
+                Regex("/api/(photos|eagle)/assets/[a-zA-Z0-9_-]{1,100}/share-image")
+            )
+        )
+        return exchange("GET", path, null, true, "image/jpeg", cancellation = cancellation) {
+            connection,
+            active ->
+            cancellation.check()
+            if (connection.responseCode != 200) throw IOException("分享图生成失败")
+            if (connection.contentType.orEmpty().substringBefore(';').trim() != "image/jpeg")
+                throw IOException("分享图格式不正确")
+            val declared = connection.contentLengthLong
+            if (declared > MAX_SHARE_IMAGE_BYTES) throw IOException("分享图超出大小预算")
+            connection.inputStream.use { input ->
+                val buffer = ByteArray(64 * 1024)
+                var total = 0L
+                while (true) {
+                    active()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    if (total > MAX_SHARE_IMAGE_BYTES) throw IOException("分享图超出大小预算")
+                    output.write(buffer, 0, count)
+                    progress(total, if (declared > 0) declared else -1)
+                }
+                if (declared > 0 && total != declared) throw IOException("分享图下载不完整")
+                total
+            }
+        }
+    }
+
     fun downloadOriginal(
         path: String,
         size: Long,
@@ -446,6 +499,7 @@ class NativeSession private constructor(context: Context, val origin: String) : 
     }
 
     companion object {
+        internal const val MAX_SHARE_IMAGE_BYTES = 32L * 1024 * 1024
         private val sessions = mutableMapOf<String, NativeSession>()
 
         @JvmStatic

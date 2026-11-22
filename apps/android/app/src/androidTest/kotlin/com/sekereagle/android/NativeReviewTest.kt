@@ -178,7 +178,8 @@ class NativeReviewTest {
             compose.onNodeWithText("确认发送").performClick()
             await { !model.state.value.busy && model.state.value.transfersOpen }
             compose.onNodeWithText("已完成 0/2 · 正在处理").assertExists()
-            assertTrue(model.state.value.items.any { it.id == "asset0" })
+            // The accepted operation hides sources immediately; a terminal failure restores them.
+            assertTrue(model.state.value.items.none { it.id == "asset0" || it.id == "asset1" })
             assertEquals(
                 setOf("asset0", "asset1"),
                 (0 until server.writes.single().second.getJSONArray("assetIds").length())
@@ -427,7 +428,7 @@ class NativeReviewTest {
                 val asset = model.state.value.items.first()
                 main { model.openAsset(asset.id) }
                 compose.onNodeWithTag("viewer-top-bar").assertExists()
-                for (label in listOf("删除", "编辑", "发送")) compose
+                for (label in listOf("删除", "编辑", "分享")) compose
                     .onNodeWithContentDescription(label)
                     .assertExists()
                 compose.onNodeWithContentDescription("照片信息").assertDoesNotExist()
@@ -547,8 +548,7 @@ class NativeReviewTest {
                 model.startSelection("asset0")
                 model.selectLoaded((0 until 80).map { "asset$it" }.toSet())
                 model.selectLoaded((80 until 160).map { "asset$it" }.toSet())
-                assertEquals(100, model.state.value.selected.size)
-                assertTrue(model.state.value.message.orEmpty().contains("100"))
+                assertEquals(160, model.state.value.selected.size)
                 model.back()
             }
             server.version = 2
@@ -556,7 +556,11 @@ class NativeReviewTest {
                 model.startSelection("asset130")
                 model.changeSelection("rating", rating = 3)
             }
-            await { !model.state.value.busy && !model.state.value.loading }
+            await {
+                !model.state.value.busy &&
+                    !model.state.value.loading &&
+                    model.state.value.items.getOrNull(130)?.rowVersion == 2
+            }
             assertEquals(
                 "Mutation must retain the loaded window",
                 180,

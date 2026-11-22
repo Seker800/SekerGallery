@@ -303,6 +303,31 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
     }
   }
 
+  /** Resets one failed file without touching other failures or successful receipts. */
+  void retryFailure(String scope, String uri) {
+    SQLiteDatabase db = getWritableDatabase();
+    db.beginTransaction();
+    try (Cursor cursor =
+        db.rawQuery(
+            "SELECT mode,size,modified FROM scan_progress WHERE scope=? AND uri=? AND result='FAILED'",
+            new String[] {scope, uri})) {
+      if (cursor.moveToFirst()) {
+        String mode = cursor.getString(0);
+        long size = cursor.getLong(1);
+        long modified = cursor.getLong(2);
+        String engineKey =
+            BackupEngine.fileKey(scope, mode, uri, size, modified);
+        db.delete("files", "key=? AND terminal_error <> ''", new String[] {engineKey});
+        db.execSQL(
+            "UPDATE scan_progress SET attempts=0, last_error='' WHERE scope=? AND uri=? AND result='FAILED'",
+            new Object[] {scope, uri});
+      }
+      db.setTransactionSuccessful();
+    } finally {
+      db.endTransaction();
+    }
+  }
+
   void retryFailures(String scope) {
     SQLiteDatabase db = getWritableDatabase();
     db.beginTransaction();

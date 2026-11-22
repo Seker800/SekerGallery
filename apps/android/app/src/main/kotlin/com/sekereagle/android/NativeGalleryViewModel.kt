@@ -36,6 +36,7 @@ data class GalleryState(
     val restoreFailed: Boolean = false,
     val mode: GalleryMode = GalleryMode.PHOTO,
     val sort: GallerySort = GallerySort.CAPTURED_AT,
+    val relevance: Boolean = false,
     val timeline: NativeTimeline? = null,
     val windowOffset: Long = 0,
     val scrollRequest: Int = 0,
@@ -90,6 +91,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
     private val staleLibraries = mutableSetOf<GalleryMode>()
     private val sendRequests = mutableMapOf<String, String>()
     private var prefetchJob: Job? = null
+    private var prefetchCancellation: NativeTransferCancellation? = null
     private var foreground = true
 
     private fun initialLibrary(identity: NativeIdentity, mode: GalleryMode) =
@@ -103,13 +105,17 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
 
     private fun clearLibraries() {
         cancelOptions()
+        prefetchCancellation?.cancel()
         prefetchJob?.cancel()
+        operationWatch?.cancel()
+        favoriteRequests.clear()
         sendRequests.clear()
         retained.value = emptyMap()
         staleLibraries.clear()
     }
 
     private fun invalidateInactiveLibrary() {
+        prefetchCancellation?.cancel()
         prefetchJob?.cancel()
         staleLibraries.addAll(GalleryMode.entries.filter { it != state.value.mode })
     }
@@ -122,12 +128,13 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         val mode = GalleryMode.entries.first { it != current.mode }
         if (retained.value.containsKey(mode) || prefetchJob?.isActive == true) return
         val snapshot = initialLibrary(identity, mode)
+        val cancellation = NativeTransferCancellation().also { prefetchCancellation = it }
         prefetchJob = viewModelScope.launch {
             try {
-                val page = repo.page(mode, "", sort = snapshot.sort)
+                val page = repo.page(mode, "", sort = snapshot.sort, cancellation = cancellation)
                 val timeline =
                     try {
-                        repo.timeline(mode, snapshot.sort)
+                        repo.timeline(mode, snapshot.sort, cancellation)
                     } catch (reason: CancellationException) {
                         throw reason
                     } catch (reason: Exception) {
@@ -226,9 +233,12 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
     private var optionsGeneration = 0
     private var optionsCancellation: NativeTransferCancellation? = null
     private var timelineJob: Job? = null
+    private var timelineCancellation: NativeTransferCancellation? = null
     private var mutation: Job? = null
     private var generation = 0
     private var transferRefreshPending = false
+    private var operationWatch: Job? = null
+    private val favoriteRequests = mutableSetOf<String>()
 
     private fun refreshTransfersWhenIdle() {
         val current = state.value
@@ -295,6 +305,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         }
         uploadPickerTarget = null
         sessionJob?.cancel()
+        timelineCancellation?.cancel()
         timelineJob?.cancel()
         cancelOperation()
         val request = ++generation
@@ -378,7 +389,9 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         uploadPickerTarget = null
         cancelOperation()
         cancelOptions()
+        timelineCancellation?.cancel()
         timelineJob?.cancel()
+        prefetchCancellation?.cancel()
         prefetchJob?.cancel()
         generation++
         // Retain browsing state, never transient actions or dialogs from the old workspace.
@@ -415,13 +428,35 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
     fun sort(order: GallerySort) {
         val current = state.value
         val identity = current.identity ?: return
-        if (current.busy || current.sort == order) return
+        if (current.busy || (current.sort == order && !current.relevance)) return
         settings.setValue(identity.scope, GallerySort.key(current.mode), order.name)
         cancelOperation()
         generation++
         mutable.value =
             current.copy(
                 sort = order,
+                relevance = false,
+                scrollRequest = current.scrollRequest + 1,
+                items = emptyList(),
+                loaded = false,
+                cursor = null,
+                selecting = false,
+                selected = emptySet(),
+                viewerId = null,
+                error = null,
+            )
+        load()
+    }
+
+    fun sortRelevance() {
+        val current = state.value
+        if (current.busy || current.relevance) return
+        cancelOperation()
+        generation++
+        mutable.value =
+            current.copy(
+                relevance = true,
+                timeline = null,
                 scrollRequest = current.scrollRequest + 1,
                 items = emptyList(),
                 loaded = false,
@@ -449,7 +484,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 readRetry = null,
                 windowOffset = if (!next && before == null) 0 else snapshot.windowOffset,
             )
-        if (!next) loadTimeline(snapshot, repo)
+        if (!next && !snapshot.relevance) loadTimeline(snapshot, repo)
         operation = viewModelScope.launch {
             try {
                 val page =
@@ -463,6 +498,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                         before,
                         offset,
                         cancellation = cancellation,
+                        relevance = snapshot.relevance,
                     )
                 if (request != generation) return@launch
                 mutable.value =
@@ -507,7 +543,9 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /** Re-read the loaded window atomically so stable item keys retain the visible anchor. */
-    fun refresh() {
+    fun refresh() = refreshWindow(false)
+
+    private fun refreshWindow(deep: Boolean) {
         val snapshot = state.value
         val repo = repository ?: return
         if (snapshot.busy || snapshot.loading) return
@@ -516,44 +554,79 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         transferRefreshPending = false
         mutable.value =
             snapshot.copy(loading = true, refreshing = true, error = null, readRetry = null)
-        loadTimeline(snapshot, repo)
+        if (!snapshot.relevance) loadTimeline(snapshot, repo)
         operation = viewModelScope.launch {
             try {
-                val items = mutableListOf<NativeAsset>()
-                var cursor: String? = null
-                var imageSearchStatus: String? = null
-                do {
-                    val page =
-                        repo.page(
-                            snapshot.mode,
-                            snapshot.query,
-                            cursor,
-                            snapshot.filters,
-                            snapshot.trash,
-                            snapshot.sort,
-                            offset =
-                                if (
-                                    cursor == null &&
-                                        snapshot.query.isBlank() &&
-                                        !snapshot.filters.active &&
-                                        !snapshot.trash
-                                )
-                                    snapshot.windowOffset
-                                else 0,
-                            cancellation = cancellation,
-                        )
-                    items.addAll(page.items)
-                    cursor = page.cursor
-                    imageSearchStatus = page.imageSearchStatus
-                } while (cursor != null && items.size < maxOf(60, snapshot.items.size))
+                // Calibrate only the loaded window's first page. Deep pages stay as they are; a
+                // full-window reread made every foreground proportional to how far the user had
+                // scrolled and could issue hundreds of list requests.
+                val firstOffset =
+                    if (
+                        snapshot.query.isBlank() &&
+                            !snapshot.filters.active &&
+                            !snapshot.trash
+                    )
+                        snapshot.windowOffset
+                    else 0
+                var page =
+                    repo.page(
+                        snapshot.mode,
+                        snapshot.query,
+                        null,
+                        snapshot.filters,
+                        snapshot.trash,
+                        snapshot.sort,
+                        offset = firstOffset,
+                        cancellation = cancellation,
+                        relevance = snapshot.relevance,
+                    )
                 if (request != generation) return@launch
+                val existing = snapshot.items
+                val merged: List<NativeAsset>
+                val nextCursor: String?
+                if (deep) {
+                    // Failure recovery is the only path allowed to re-read the whole window; it
+                    // is needed to restore optimistically removed items and stale row versions.
+                    val items = mutableListOf<NativeAsset>()
+                    var cursor: String? = null
+                    while (true) {
+                        items.addAll(page.items)
+                        cursor = page.cursor
+                        if (request != generation) return@launch
+                        if (cursor == null || items.size >= maxOf(60, existing.size)) break
+                        page =
+                            repo.page(
+                                snapshot.mode,
+                                snapshot.query,
+                                cursor,
+                                snapshot.filters,
+                                snapshot.trash,
+                                snapshot.sort,
+                                offset = 0,
+                                cancellation = cancellation,
+                                relevance = snapshot.relevance,
+                            )
+                    }
+                    merged = items.distinctBy { it.id }
+                    nextCursor = cursor
+                } else {
+                    val existingIds = existing.map { it.id }.toSet()
+                    val freshById = page.items.associateBy { it.id }
+                    merged =
+                        if (page.items.isEmpty()) emptyList()
+                        else if (existing.isEmpty()) page.items
+                        else
+                            page.items.filterNot { it.id in existingIds } +
+                                existing.map { freshById[it.id] ?: it }
+                    nextCursor = if (existing.isEmpty()) page.cursor else snapshot.cursor
+                }
                 mutable.value =
                     state.value.copy(
-                        items = items.distinctBy { it.id },
-                        cursor = cursor,
-                        imageSearchStatus = imageSearchStatus,
+                        items = merged.distinctBy { it.id },
+                        cursor = nextCursor,
+                        imageSearchStatus = page.imageSearchStatus,
                         loaded = true,
-                        selected = state.value.selected.intersect(items.map { it.id }.toSet()),
+                        selected = state.value.selected.intersect(merged.map { it.id }.toSet()),
                         loading = false,
                         refreshing = false,
                     )
@@ -586,7 +659,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 snapshot.windowOffset <= 0 ||
                 snapshot.query.isNotBlank() ||
                 snapshot.filters.active ||
-                snapshot.trash
+                snapshot.trash ||
+                snapshot.relevance
         )
             return
         val start = (snapshot.windowOffset - 60).coerceAtLeast(0)
@@ -634,12 +708,16 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
     }
 
     private fun loadTimeline(snapshot: GalleryState, repo: NativeGalleryRepository) {
+        timelineCancellation?.cancel()
         timelineJob?.cancel()
+        timelineCancellation = null
         mutable.value = state.value.copy(timeline = null)
-        if (snapshot.query.isNotBlank() || snapshot.filters.active || snapshot.trash) return
+        if (snapshot.query.isNotBlank() || snapshot.filters.active || snapshot.trash || snapshot.relevance)
+            return
+        val cancellation = NativeTransferCancellation().also { timelineCancellation = it }
         timelineJob = viewModelScope.launch {
             try {
-                val timeline = repo.timeline(snapshot.mode, snapshot.sort)
+                val timeline = repo.timeline(snapshot.mode, snapshot.sort, cancellation)
                 val current = state.value
                 if (
                     current.identity == snapshot.identity &&
@@ -647,7 +725,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                         current.sort == snapshot.sort &&
                         current.query.isBlank() &&
                         !current.filters.active &&
-                        !current.trash
+                        !current.trash &&
+                        !current.relevance
                 )
                     mutable.value = current.copy(timeline = timeline)
             } catch (e: CancellationException) {
@@ -665,7 +744,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 current.timeline?.days?.contains(day) != true ||
                 current.query.isNotBlank() ||
                 current.filters.active ||
-                current.trash
+                current.trash ||
+                current.relevance
         )
             return
         val position = ordinal.coerceIn(day.offset, day.offset + day.count - 1)
@@ -702,6 +782,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
             current.copy(
                 query = query,
                 imageSearchStatus = null,
+                relevance = query.isNotBlank() || filters.smartFolderId.isNotBlank(),
+                timeline = null,
                 scrollRequest = current.scrollRequest + 1,
                 filters = filters,
                 filterPanel = null,
@@ -960,6 +1042,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         mutable.value =
             state.value.copy(
                 filters = filters,
+                relevance = state.value.query.isNotBlank() || filters.smartFolderId.isNotBlank(),
+                timeline = null,
                 scrollRequest = state.value.scrollRequest + 1,
                 filterPanel = null,
                 items = emptyList(),
@@ -977,6 +1061,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         mutable.value =
             state.value.copy(
                 trash = value,
+                relevance = false,
                 scrollRequest = state.value.scrollRequest + 1,
                 filters = NativeFilters(),
                 query = "",
@@ -1001,11 +1086,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         val s = state.value
         if (s.busy) return
         val selected = NativeSelection.toggle(s.selected, id, s.items.map { it.id }.toSet())
-        mutable.value =
-            s.copy(
-                selected = selected,
-                message = if (selected == s.selected && id !in s.selected) "每次最多选择 100 项" else null,
-            )
+        mutable.value = s.copy(selected = selected)
     }
 
     fun selectLoaded(ids: Set<String> = state.value.items.map { it.id }.toSet()) {
@@ -1018,10 +1099,6 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 selected =
                     if (allSelected) s.selected - available
                     else NativeSelection.all(s.selected + available),
-                message =
-                    if (!allSelected && (s.selected + available).size > NativeSelection.LIMIT)
-                        "每次最多选择 100 项，超出部分未选择"
-                    else null,
             )
     }
 
@@ -1030,38 +1107,59 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         val repo = repository ?: return
         val asset = snapshot.items.firstOrNull { it.id == id } ?: return
         if (snapshot.busy || snapshot.trash) return
-        cancelOperation()
-        val request = ++generation
+        if (id in favoriteRequests) return
+        val target = !asset.favorite
+        favoriteRequests.add(id)
+        // Optimistic icon state; the received operation is reconciled below.
         mutable.value =
-            snapshot.copy(busy = true, loading = false, refreshing = false, message = null)
-        mutation =
-            viewModelScope.launch {
-                try {
-                    repo.setFavorite(snapshot.mode, id, !asset.favorite)
-                    val updated = repo.detail(snapshot.mode, id, snapshot.sort)
-                    if (generation != request) return@launch
+            snapshot.copy(
+                message = null,
+                items = state.value.items.map { if (it.id == id) it.copy(favorite = target) else it },
+            )
+        val mode = snapshot.mode
+        viewModelScope.launch {
+            var watched = false
+            try {
+                val operationId = repo.setFavorite(mode, id, target)
+                staleLibraries.add(mode)
+                if (operationId == null) return@launch
+                watched = true
+                watchOperation(
+                    mode,
+                    operationId,
+                    onFailure = {
+                        repo.invalidateFavorite(mode)
+                        mutable.value =
+                            state.value.copy(
+                                items =
+                                    state.value.items.map {
+                                        if (it.id == id) it.copy(favorite = !target) else it
+                                    },
+                                message = "收藏操作未完成，已恢复原状态",
+                            )
+                    },
+                    onDone = { favoriteRequests.remove(id) },
+                )
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                if (session === repo.connection && reason is NativeSession.Failure && reason.status == 401)
+                    expire()
+                else {
+                    repo.invalidateFavorite(mode)
                     mutable.value =
                         state.value.copy(
-                            busy = false,
-                            items = state.value.items.map { if (it.id == id) updated else it },
+                            items =
+                                state.value.items.map {
+                                    if (it.id == id) it.copy(favorite = !target) else it
+                                },
+                            message = "收藏操作未确认完成，请刷新核对后重试：${reason.message.orEmpty()}",
                         )
-                    // Tag options and active rule-folder membership must be re-read on leaving the
-                    // viewer.
-                    staleLibraries.add(snapshot.mode)
-                } catch (reason: CancellationException) {
-                    throw reason
-                } catch (reason: Exception) {
-                    if (generation == request) {
-                        if (reason is NativeSession.Failure && reason.status == 401) expire()
-                        else
-                            mutable.value =
-                                state.value.copy(
-                                    busy = false,
-                                    message = "收藏操作未确认完成，请刷新核对后重试：${reason.message.orEmpty()}",
-                                )
-                    }
                 }
+            } finally {
+                if (!watched) favoriteRequests.remove(id)
             }
+        }
     }
 
     internal suspend fun readAssetOperations(): List<NativeAssetOperation> {
@@ -1095,18 +1193,21 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         mutation =
             viewModelScope.launch {
                 try {
-                    repo.assetOperations.send(snapshot.mode, snapshot.selected, operationId)
+                    val accepted = repo.assetOperations.send(snapshot.mode, snapshot.selected, operationId)
                     if (generation != request) return@launch
                     sendRequests.remove(key)
                     invalidateInactiveLibrary()
+                    val sentIds = snapshot.selected
                     mutable.value =
                         state.value.copy(
                             busy = false,
                             selecting = false,
                             selected = emptySet(),
                             transfersOpen = true,
+                            items = state.value.items.filterNot { it.id in sentIds },
                             message = "已加入后台发送队列，可在传输列表查看结果。",
                         )
+                    watchOperation(snapshot.mode, accepted)
                 } catch (reason: CancellationException) {
                     throw reason
                 } catch (reason: Exception) {
@@ -1132,11 +1233,14 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         cancelOperation()
         val request = ++generation
         mutable.value = s.copy(busy = true, loading = false, refreshing = false, message = null)
+        val candidate = s.mode
         mutation = viewModelScope.launch {
             try {
-                repo.change(s.mode, assets, action, tags, rating)
+                val operationId = repo.change(candidate, assets, action, tags, rating)
                 if (generation != request) return@launch
-                invalidateInactiveLibrary()
+                val removed = action == "trash" || action == "restore"
+                val removedIds = assets.map { it.id }.toSet()
+                val metadataChanged = action in setOf("tags", "removeTags", "rating")
                 mutable.value =
                     state.value.copy(
                         busy = false,
@@ -1144,9 +1248,23 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                         selected = emptySet(),
                         filterPanel = null,
                         viewerId = null,
-                        message = "已完成，共 ${assets.size} 项",
+                        items =
+                            when {
+                                removed -> state.value.items.filterNot { it.id in removedIds }
+                                metadataChanged ->
+                                    state.value.items.map {
+                                        if (it.id in removedIds) it.copy(rowVersion = it.rowVersion + 1)
+                                        else it
+                                    }
+                                else -> state.value.items
+                            },
+                        message = "已提交，正在后台应用",
                     )
-                refresh()
+                if (operationId == null) {
+                    refresh()
+                } else {
+                    watchOperation(candidate, operationId)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1166,6 +1284,54 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    private fun watchOperation(
+        mode: GalleryMode,
+        operationId: String,
+        onFailure: (() -> Unit)? = null,
+        onDone: (() -> Unit)? = null,
+    ) {
+        val repo = repository ?: run {
+            onDone?.invoke()
+            return
+        }
+        operationWatch?.cancel()
+        val job =
+            viewModelScope.launch {
+                try {
+                    val result =
+                        withContext(Dispatchers.IO) { repo.assetOperations.await(mode, operationId) }
+                    if (repository !== repo) return@launch
+                    if (result == null) {
+                        if (state.value.mode == mode)
+                            mutable.value =
+                                state.value.copy(
+                                    message = "后台操作仍在处理，可在传输列表查看结果"
+                                )
+                        return@launch
+                    }
+                    val failed = result.failed > 0 || result.state == "STOPPED"
+                    if (failed) onFailure?.invoke()
+                    if (state.value.mode == mode) refreshWindow(failed)
+                    else staleLibraries.add(mode)
+                    mutable.value =
+                        state.value.copy(
+                            message =
+                                if (failed) "操作已结束，其中 ${result.failed} 项失败，请刷新核对"
+                                else "已完成，共 ${result.total} 项"
+                        )
+                } catch (reason: CancellationException) {
+                    throw reason
+                } catch (reason: Exception) {
+                    if (reason is NativeSession.Failure && reason.status == 401) expire()
+                    else if (state.value.mode == mode)
+                        mutable.value =
+                            state.value.copy(message = "后台操作仍未确认，请稍后在传输列表查看")
+                }
+            }
+        job.invokeOnCompletion { onDone?.invoke() }
+        operationWatch = job
+    }
+
     fun dismissMessage() {
         mutable.value = state.value.copy(message = null)
     }
@@ -1182,7 +1348,9 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
 
     private fun expire() {
         clearLibraries()
+        timelineCancellation?.cancel()
         timelineJob?.cancel()
+        operationWatch?.cancel()
         foregroundJob?.cancel()
         mediaCache.invalidate()
         viewModelScope.launch { runCatching { mediaCache.clear() } }
@@ -1303,6 +1471,8 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 settings.flag(identity.scope, "userPaused", false)
         )
             return
+        val lastFinished = settings.value(identity.scope, "lastFinished", "").toLongOrNull() ?: 0L
+        if (System.currentTimeMillis() - lastFinished < 5 * 60 * 1000L) return
         // Partial photo grants are not a complete directory scan; wait for explicit consent
         // instead of silently backing up only the selected subset.
         if (backupNeedsMediaPermission(identity.scope) && !mediaPermissionGranted()) {

@@ -45,7 +45,6 @@ internal fun NativeTagPicker(
     )
     if (matches.isEmpty() && !status.loading && status.error == null)
         Text(if (choices.isEmpty()) "当前模式暂无可用标签" else "没有匹配的标签", color = NativeMuted)
-    if (selected.size >= 100) Text("每次最多选择 100 个标签，请先取消部分选择", color = NativeMuted)
     LazyColumn(Modifier.fillMaxWidth().heightIn(max = maxHeight).testTag("tag-choices")) {
         items(matches, key = { it.id }) { tag ->
             val checked = tag.id in selected
@@ -55,7 +54,7 @@ internal fun NativeTagPicker(
                     .toggleable(
                         value = checked,
                         role = Role.Checkbox,
-                        enabled = enabled && (checked || selected.size < 100),
+                        enabled = enabled,
                         onValueChange = {
                             change(if (checked) selected - tag.id else selected + tag.id)
                         },

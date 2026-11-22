@@ -16,6 +16,11 @@ public final class BackupScanPolicy {
         || now - fullScannedAt >= FULL_INTERVAL_SECONDS;
   }
 
+  /** Completed local receipts are rechecked against the server only on a full reconcile. */
+  public static boolean verifyCompleted(boolean full, boolean scanCompleted) {
+    return full && scanCompleted;
+  }
+
   public static long changedAfter(long scannedAt) {
     return scannedAt <= OVERLAP_SECONDS ? 0 : scannedAt - OVERLAP_SECONDS;
   }

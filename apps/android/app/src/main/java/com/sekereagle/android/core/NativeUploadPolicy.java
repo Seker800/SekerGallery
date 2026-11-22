@@ -20,7 +20,6 @@ public final class NativeUploadPolicy {
       }
       unique.add(value);
     }
-    if (unique.size() > 100) throw new IllegalArgumentException("每次最多上传 100 个文件，请分批选择");
     return new ArrayList<>(unique);
   }
 

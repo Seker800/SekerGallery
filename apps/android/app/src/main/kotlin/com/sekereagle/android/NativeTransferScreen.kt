@@ -207,7 +207,7 @@ fun NativeTransferScreen(
                     )
                 )
             }
-            failures.forEach { failure ->
+            failures.take(500).forEach { failure ->
                 if (failure.uri !in seen)
                     rows.add(
                         TransferRowView(
@@ -236,6 +236,18 @@ fun NativeTransferScreen(
                     }
                 }
         }
+    val uploadCounts =
+        remember(batches) {
+            var total = 0
+            var done = 0
+            var failed = 0
+            for (batch in batches) {
+                total += batch.entries.size
+                done += batch.progress?.completedEntries?.size ?: 0
+                failed += batch.progress?.issues?.size ?: 0
+            }
+            Triple(total, done, failed)
+        }
     val uploadRows =
         remember(batches, queue.activeId) {
             batches.flatMap { batch ->
@@ -245,6 +257,7 @@ fun NativeTransferScreen(
                     val issue = progress?.issues?.firstOrNull { it.entry.uri == entry.uri }
                     val done = entry.uri in progress?.completedEntries.orEmpty()
                     val uploading = active && progress != null && progress.current == entry.name
+                    val activeProgress = if (uploading) progress else null
                     val state =
                         when {
                             done -> STATE_DONE
@@ -257,23 +270,25 @@ fun NativeTransferScreen(
                         "${batch.id}:${entry.uri}",
                         entry.uri,
                         entry.name,
-                        if (uploading) progress!!.size else entry.size,
+                        activeProgress?.size ?: entry.size,
                         state,
                         when {
                             issue != null -> issue.reason
-                            uploading -> progress!!.stage
+                            activeProgress != null -> activeProgress.stage
                             batch.paused -> batch.message
                             else -> batch.message
                         },
-                        if (uploading) progress!!.bytes else 0,
+                        activeProgress?.bytes ?: 0,
                         batch.id,
                     )
                 }
             }
                 .sortedBy { it.rank }
+                .take(600)
         }
     val autoFailures = autoRows.count { it.state == STATE_FAILED }
-    val uploadFailed = uploadRows.count { it.state == STATE_FAILED }
+    val uploadFailed = uploadCounts.third
+    val uploadQueued = (uploadCounts.first - uploadCounts.second - uploadCounts.third).coerceAtLeast(0)
     val uploadWorking = batches.any { it.id == queue.activeId || it.waiting }
     val uploadResumable = batches.any { it.id != queue.activeId && it.unfinished.isNotEmpty() }
     val uploadDoneBatches = batches.filter { it.unfinished.isEmpty() }
@@ -312,12 +327,12 @@ fun NativeTransferScreen(
                     liveRunning = live.running && live.scope == identity.scope,
                     liveMessage = live.message,
                     rows = autoRows,
-                    failed = autoFailures,
+                    failed = maxOf(autoFailures, failures.size),
                     completedOpen = completedOpen,
                     onCompletedOpen = { completedOpen = it },
                     onStart = ::scanAndBackup,
                     onPause = { BackupService.pause(context) },
-                    onRetry = { BackupService.retryFailed(context, identity.scope) },
+                    onRetry = { uri -> BackupService.retryFailed(context, identity.scope, uri) },
                     onClearFailures = {
                         if (live.running || backup.running)
                             permissionMessage = "请先暂停当前备份"
@@ -325,12 +340,18 @@ fun NativeTransferScreen(
                     },
                     onSettings = { openNative("backup") },
                     permissionMessage = permissionMessage,
+                    total = if (live.scope == identity.scope) live.total else autoRows.size,
+                    done = if (live.scope == identity.scope) live.completed else 0,
+                    queued = if (live.scope == identity.scope) live.queued else 0,
                 )
             else
                 uploadQueueContent(
                     scope = identity.scope,
                     rows = uploadRows,
+                    total = uploadCounts.first,
+                    done = uploadCounts.second,
                     failed = uploadFailed,
+                    queued = uploadQueued,
                     working = uploadWorking,
                     resumable = uploadResumable,
                     doneBatches = uploadDoneBatches.size,
@@ -422,17 +443,19 @@ private fun LazyListScope.autoBackupContent(
     liveRunning: Boolean,
     liveMessage: String,
     rows: List<TransferRowView>,
+    total: Int,
+    done: Int,
+    queued: Int,
     failed: Int,
     completedOpen: Boolean,
     onCompletedOpen: (Boolean) -> Unit,
     onStart: () -> Unit,
     onPause: () -> Unit,
-    onRetry: () -> Unit,
+    onRetry: (String?) -> Unit,
     onClearFailures: () -> Unit,
     onSettings: () -> Unit,
     permissionMessage: String?,
 ) {
-    val done = rows.count { it.state == STATE_DONE }
     item {
         GlassSurface(Modifier.fillMaxWidth(), radius = 22) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -453,13 +476,13 @@ private fun LazyListScope.autoBackupContent(
                 )
                 if (liveRunning && rows.isNotEmpty()) {
                     Text(
-                        "已完成 $done / ${rows.size}",
+                        "已完成 $done / $total",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     LinearProgressIndicator(
                         progress = {
-                            if (rows.isEmpty()) 0f
-                            else (done.toFloat() / rows.size).coerceIn(0f, 1f)
+                            if (total <= 0) 0f
+                            else (done.toFloat() / total).coerceIn(0f, 1f)
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -469,7 +492,7 @@ private fun LazyListScope.autoBackupContent(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (liveRunning) TextButton(onPause) { Text("暂停") }
                     else if (backup.enabled) TextButton(onStart) { Text("立即备份") }
-                    if (failed > 0) TextButton(onRetry) { Text("重试失败 $failed") }
+                    if (failed > 0) TextButton({ onRetry(null) }) { Text("重试失败 $failed") }
                     if (failed > 0) TextButton(onClearFailures) { Text("清除失败") }
                 }
                 if (backup.paused) Text("备份已暂停，点「立即备份」继续", color = NativeMuted)
@@ -480,7 +503,7 @@ private fun LazyListScope.autoBackupContent(
             }
         }
     }
-    if (rows.isEmpty())
+    if (rows.isEmpty() && total == 0)
         item {
             Text(
                 "暂无自动备份记录。打开「立即备份」后，这里会逐个显示正在检查和上传的文件。",
@@ -488,9 +511,25 @@ private fun LazyListScope.autoBackupContent(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+    val visibleQueued =
+        rows.count {
+            it.state == STATE_QUEUED || it.state == STATE_PAUSED || it.state == STATE_UPLOADING
+        }
+    if (queued > visibleQueued)
+        item {
+            Text(
+                "另有 ${queued - visibleQueued} 项在排队，列表只显示最近的活动项。",
+                color = NativeMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     val visible = rows.filter { it.state != STATE_DONE }
     items(visible, key = { it.key }) {
-        TransferRow(it, onRetry = if (it.state == STATE_FAILED) onRetry else null)
+        TransferRow(
+            it,
+            onRetry =
+                if (it.state == STATE_FAILED) ({ onRetry(it.uri.toString()) }) else null,
+        )
     }
     if (done > 0) {
         item {
@@ -504,7 +543,10 @@ private fun LazyListScope.autoBackupContent(
 private fun LazyListScope.uploadQueueContent(
     scope: String,
     rows: List<TransferRowView>,
+    total: Int,
+    done: Int,
     failed: Int,
+    queued: Int,
     working: Boolean,
     resumable: Boolean,
     doneBatches: Int,
@@ -516,9 +558,7 @@ private fun LazyListScope.uploadQueueContent(
     onClearCompleted: () -> Unit,
     onRetryEntry: (String, Uri) -> Unit,
 ) {
-    val done = rows.count { it.state == STATE_DONE }
     val uploading = rows.count { it.state == STATE_UPLOADING }
-    val queued = rows.count { it.state == STATE_QUEUED || it.state == STATE_PAUSED }
     item {
         GlassSurface(Modifier.fillMaxWidth(), radius = 22) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -532,7 +572,7 @@ private fun LazyListScope.uploadQueueContent(
                     },
                     style = MaterialTheme.typography.titleMedium,
                 )
-                if (rows.isNotEmpty())
+                if (total > 0)
                     Text(
                         "已完成 $done · 排队 $queued · 失败 $failed",
                         color = NativeMuted,
@@ -569,10 +609,18 @@ private fun LazyListScope.uploadQueueContent(
             }
         }
     }
-    if (rows.isEmpty())
+    if (rows.isEmpty() && total == 0)
         item {
             Text(
                 "暂无手动上传任务。可从图库右上角选择上传，提交后继续浏览。",
+                color = NativeMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    if (total > rows.size)
+        item {
+            Text(
+                "共 $total 个文件，列表只显示当前活动项；已完成 $done 个。",
                 color = NativeMuted,
                 style = MaterialTheme.typography.bodySmall,
             )

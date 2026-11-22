@@ -55,11 +55,20 @@ class NativeSearchPolicyTest {
                 NativeFilters(rating = 0),
                 NativeFilters(rating = 6),
                 NativeFilters(gps = "ANY"),
-                NativeFilters(tags = (0..100).map { "$it" }.toSet()),
+                NativeFilters(tags = setOf("a"), tagMatch = "NONE"),
             )) {
             assertNotNull(filters.validationError())
             assertThrows(IllegalArgumentException::class.java) { filters.parameters() }
         }
+    }
+
+    @Test
+    fun tagMatchSupportsAnyOrAllWithoutChangingTheTagIdentity() {
+        val all = NativeFilters(tags = setOf("b", "a"), tagMatch = "ALL")
+        assertEquals("ALL", all.parameters()["tagMatch"])
+        assertTrue(all.active)
+        assertFalse(NativeFilters(tagMatch = "ALL").active)
+        assertEquals("ANY", NativeFilters(tags = setOf("a")).parameters()["tagMatch"])
     }
 
     @Test
