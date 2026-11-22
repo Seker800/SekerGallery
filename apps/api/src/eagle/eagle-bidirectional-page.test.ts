@@ -74,3 +74,58 @@ test('jumped lists can prepend nearest newer rows without crossing owner, privac
     assert.equal((head as unknown as { previousCursor: string | null }).previousCursor, null);
   }
 });
+
+test('photo stack projection reports whether the group contains an edited copy', async () => {
+  const date = new Date('2026-01-02T00:00:00.000Z');
+  const rows = ['a', 'b'].map((id) => ({
+    id,
+    libraryAddedAt: date,
+    chronologicalAt: date,
+    createdAt: date,
+    renditions: [],
+    manualTagLinks: [],
+    byteSize: 0n,
+    libraryMode: 'PHOTO',
+    lifecycleStatus: 'READY',
+    mimeType: 'image/jpeg',
+    photoMetadata: { captureMetadataInherited: id === 'b' },
+  }));
+  const group = {
+    id: 'stack',
+    bestAssetId: 'a',
+    bestSelectedByUser: false,
+    members: [
+      {
+        assetId: 'a',
+        asset: {
+          lifecycleStatus: 'READY',
+          createdAt: date,
+          chronologicalAt: date,
+          mimeType: 'image/jpeg',
+          photoMetadata: { captureMetadataInherited: false },
+        },
+      },
+      {
+        assetId: 'b',
+        asset: {
+          lifecycleStatus: 'READY',
+          createdAt: date,
+          chronologicalAt: date,
+          mimeType: 'image/jpeg',
+          photoMetadata: { captureMetadataInherited: true },
+        },
+      },
+    ],
+  };
+  const service = new EagleService(
+    {
+      eagleAsset: { findMany: async () => rows },
+      eaglePhotoGroup: { findMany: async () => [group] },
+    } as never,
+    undefined,
+    'PHOTO',
+  );
+  const result = await service.listAssets('owner', { limit: 2 });
+  assert.equal(result.photoStacks?.[0]?.hasEditedMember, true);
+  assert.equal(result.photoStacks?.[0]?.bestAssetId, 'a');
+});

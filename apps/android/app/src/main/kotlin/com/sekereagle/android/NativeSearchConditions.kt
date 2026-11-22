@@ -28,9 +28,20 @@ fun NativeSearchConditions(
     val conditions: @Composable () -> Unit = {
         if (showKeyword && state.query.isNotEmpty())
             SearchCondition("关键词：${state.query}", "query") { model.search("") }
-        (if (state.searchOpen) state.searchFilters else state.filters)
-            .tokens(state.options.tags, state.options.folders)
-            .forEach { token ->
+        val filters = if (state.searchOpen) state.searchFilters else state.filters
+        val favoriteActive =
+            !state.searchOpen &&
+                state.favoriteTagId != null &&
+                filters.tags == setOf(state.favoriteTagId)
+        val tokens = filters.tokens(state.options.tags, state.options.folders)
+        if (favoriteActive) {
+            val favoriteId = state.favoriteTagId
+            SearchCondition("收藏", "tag:$favoriteId") { model.openFavorites() }
+            tokens.filterNot { it.key == "tag:$favoriteId" }.forEach { token ->
+                SearchCondition(token.label, token.key) { model.removeFilter(token.key) }
+            }
+        } else
+            tokens.forEach { token ->
                 SearchCondition(token.label, token.key) { model.removeFilter(token.key) }
             }
     }

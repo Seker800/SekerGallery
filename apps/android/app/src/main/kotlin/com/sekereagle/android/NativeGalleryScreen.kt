@@ -76,6 +76,7 @@ fun NativeGalleryApp(model: NativeGalleryViewModel, openNative: (String) -> Unit
                         state.filters.active ||
                         state.trash ||
                         state.filterPanel != null ||
+                        state.tagScreenOpen ||
                         state.busy
                 ) {
                     model.back()
@@ -98,6 +99,7 @@ fun NativeGalleryApp(model: NativeGalleryViewModel, openNative: (String) -> Unit
                             if (state.searchOpen) NativeSearch(state, model)
                             if (state.viewerId != null) NativeViewer(state, repo, model)
                             if (state.filterPanel != null) NativeFilterSheet(state, model)
+                            if (state.tagScreenOpen) NativeTagScreen(state, model, repo)
                         }
                     }
                 }
@@ -141,6 +143,10 @@ internal fun NativeLibraryPage(
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val grid = rememberLazyGridState()
     val topInset = 70.dp
+    val favoriteActive =
+        state.query.isBlank() &&
+            state.favoriteTagId != null &&
+            state.filters.tags == setOf(state.favoriteTagId)
     val layout =
         remember(state.items, state.mode, state.trash, state.filters.active, state.query) {
             NativeGridLayout(
@@ -198,6 +204,7 @@ internal fun NativeLibraryPage(
             .collect { if (it) model.loadPrevious() }
     }
     var appliedScrollRequest by rememberSaveable { mutableIntStateOf(state.scrollRequest) }
+    var confirmEmptyTrash by remember { mutableStateOf(false) }
     LaunchedEffect(state.scrollRequest) {
         // A restored composition already has the correct saved grid position. Only explicit
         // navigation (search, sort, filters, trash, date jump) requests a new starting position.
@@ -258,6 +265,12 @@ internal fun NativeLibraryPage(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text("最近删除", Modifier.weight(1f))
+                            TextButton(
+                                { confirmEmptyTrash = true },
+                                enabled = !state.busy && state.items.isNotEmpty(),
+                            ) {
+                                Text("清空", color = MaterialTheme.colorScheme.error)
+                            }
                             TextButton({ model.openTrash(false) }) { Text("返回图库") }
                         }
                     }
@@ -369,6 +382,54 @@ internal fun NativeLibraryPage(
                                         .padding(horizontal = 6.dp, vertical = 2.dp),
                                     fontSize = 11.sp,
                                 )
+                            if (!state.selecting && !state.trash) {
+                                if (asset.favorite)
+                                    Icon(
+                                        Icons.Outlined.Favorite,
+                                        "已收藏",
+                                        Modifier.align(Alignment.TopEnd)
+                                            .padding(6.dp)
+                                            .size(20.dp)
+                                            .background(
+                                                Color.Black.copy(alpha = 0.4f),
+                                                CircleShape,
+                                            )
+                                            .padding(3.dp),
+                                        tint = Color(0xFFFF8AA5),
+                                    )
+                                asset.rating?.let { rating ->
+                                    Text(
+                                        "★$rating",
+                                        Modifier.align(Alignment.TopStart)
+                                            .padding(6.dp)
+                                            .background(
+                                                Color.Black.copy(alpha = 0.45f),
+                                                RoundedCornerShape(6.dp),
+                                            )
+                                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                                val version =
+                                    when {
+                                        asset.edited -> "已编辑"
+                                        asset.stackHasEditedMember -> "原片"
+                                        else -> null
+                                    }
+                                version?.let {
+                                    Text(
+                                        it,
+                                        Modifier.align(Alignment.BottomEnd)
+                                            .padding(6.dp)
+                                            .background(
+                                                Color.Black.copy(alpha = 0.55f),
+                                                RoundedCornerShape(6.dp),
+                                            )
+                                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                                        fontSize = 10.sp,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -410,7 +471,8 @@ internal fun NativeLibraryPage(
                     )
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        if (state.query.isEmpty() && !state.filters.active)
+                        if (favoriteActive) "还没有收藏"
+                        else if (state.query.isEmpty() && !state.filters.active)
                             "这里还没有${state.mode.title}"
                         else "没有找到符合条件的内容",
                         color = NativeMuted,
@@ -432,6 +494,21 @@ internal fun NativeLibraryPage(
                     .padding(top = 90.dp, bottom = 110.dp),
             )
     }
+    if (confirmEmptyTrash)
+        AlertDialog(
+            onDismissRequest = { confirmEmptyTrash = false },
+            title = { Text("清空回收站？") },
+            text = { Text("将永久删除最近删除中的全部项目，删除后不可恢复。") },
+            dismissButton = { TextButton({ confirmEmptyTrash = false }) { Text("取消") } },
+            confirmButton = {
+                TextButton({
+                    confirmEmptyTrash = false
+                    model.emptyTrash()
+                }) {
+                    Text("清空回收站", color = MaterialTheme.colorScheme.error)
+                }
+            },
+        )
 }
 
 @Composable
@@ -461,6 +538,24 @@ internal fun NativeLibrary(
                 Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (!state.trash) {
+                    val favoriteActive =
+                        state.query.isBlank() &&
+                            state.favoriteTagId != null &&
+                            state.filters.tags == setOf(state.favoriteTagId)
+                    GlassSurface(Modifier.size(46.dp), backdrop, sourceOffset) {
+                        IconButton({ model.openFavorites() }, Modifier.fillMaxSize()) {
+                            Icon(
+                                if (favoriteActive) Icons.Outlined.Favorite
+                                else Icons.Outlined.FavoriteBorder,
+                                "收藏",
+                                Modifier.size(23.dp),
+                                tint =
+                                    if (favoriteActive) Color(0xFFFF8AA5) else Color.White,
+                            )
+                        }
+                    }
+                }
                 GlassSurface(Modifier.size(46.dp), backdrop, sourceOffset) {
                     RoundAction(Icons.Outlined.Tune, "视图选项") { menu = NativeLibraryMenu.VIEW }
                 }

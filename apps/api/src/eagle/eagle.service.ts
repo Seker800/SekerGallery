@@ -508,6 +508,9 @@ export class EagleService {
             Math.max(...group.members.map(({ asset }) => asset.chronologicalAt.getTime())),
           ).toISOString(),
           assetIds: group.members.map(({ assetId }) => assetId),
+          hasEditedMember: group.members.some(
+            ({ asset }) => asset.photoMetadata?.captureMetadataInherited === true,
+          ),
           processingAssetIds: group.members
             .filter(({ asset }) => asset.lifecycleStatus === 'PROCESSING')
             .map(({ assetId }) => assetId),

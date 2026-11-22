@@ -150,6 +150,8 @@ fun NativeFilterSheet(state: GalleryState, model: NativeGalleryViewModel) {
                     ) { selected ->
                         if (editingTags) tags = selected else draft = draft.copy(tags = selected)
                     }
+                    if (!editingTags)
+                        TextButton({ model.openTagScreen() }) { Text("管理标签") }
                     if (!editingTags && draft.tags.isNotEmpty()) {
                         Text("多个标签如何匹配", color = NativeMuted)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

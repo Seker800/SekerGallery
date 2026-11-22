@@ -3,6 +3,7 @@ package com.sekereagle.android
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -56,6 +57,8 @@ fun NativeViewer(
     var chrome by remember { mutableStateOf(true) }
     var deleting by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    var detailsOpen by remember { mutableStateOf(false) }
+    var stackOpen by remember { mutableStateOf(false) }
     var shareBusy by remember { mutableStateOf(false) }
     var shareStage by remember { mutableStateOf("正在准备分享…") }
     var shareBytes by remember { mutableLongStateOf(0L) }
@@ -69,6 +72,8 @@ fun NativeViewer(
     LaunchedEffect(pager.settledPage) {
         state.items.getOrNull(pager.settledPage)?.let { model.viewerPage(it.id) }
         zoomed = false
+        detailsOpen = false
+        stackOpen = false
         if (pager.settledPage >= state.items.size - 4) model.load(true)
     }
     val backdrop = rememberGraphicsLayer()
@@ -138,7 +143,22 @@ fun NativeViewer(
                             fontSize = 18.sp,
                             maxLines = 2,
                         )
-                        Text(asset.time, fontSize = 13.sp, color = NativeMuted)
+                        Text(
+                            asset.time +
+                                (if (asset.edited) " · 已编辑" else "") +
+                                (if (asset.stackId != null)
+                                    " · 同组 ${asset.stackAssetIds.size} 张"
+                                else ""),
+                            fontSize = 13.sp,
+                            color = NativeMuted,
+                            modifier =
+                                if (asset.stackId != null)
+                                    Modifier.clickable { stackOpen = true }
+                                else Modifier,
+                        )
+                    }
+                    IconButton({ detailsOpen = true }) {
+                        Icon(Icons.Outlined.Info, "照片信息")
                     }
                     if (!asset.video)
                         IconButton({ rotation = (rotation + 90) % 360 }) {
@@ -252,6 +272,27 @@ fun NativeViewer(
                 }
             }
     }
+    if (detailsOpen)
+        NativeAssetDetailSheet(
+            asset = asset,
+            model = model,
+            onDismiss = { detailsOpen = false },
+            onOpenStack = {
+                detailsOpen = false
+                stackOpen = true
+            },
+        )
+    if (stackOpen && asset.stackId != null)
+        NativeStackSheet(
+            asset = asset,
+            mode = state.mode,
+            repo = repo,
+            onSelect = {
+                stackOpen = false
+                model.openStackAsset(it)
+            },
+            onDismiss = { stackOpen = false },
+        )
     if (deleting)
         AlertDialog(
             onDismissRequest = { deleting = false },

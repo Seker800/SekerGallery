@@ -44,6 +44,51 @@ data class NativeAsset(
     val favorite: Boolean = false,
     val mimeType: String = "",
     val lifecycleStatus: String = "",
+    val rating: Int? = null,
+    val tags: List<NativeAssetTag> = emptyList(),
+    val edited: Boolean = false,
+    val stackId: String? = null,
+    val stackAssetIds: List<String> = emptyList(),
+    val stackBestAssetId: String? = null,
+    val stackCoverId: String? = null,
+    val stackHasEditedMember: Boolean = false,
+)
+
+data class NativeAssetTag(val id: String, val name: String, val color: String? = null)
+
+data class NativeTagRecord(
+    val id: String,
+    val name: String,
+    val color: String? = null,
+    val groupId: String? = null,
+    val groupIds: List<String> = emptyList(),
+    val isStarred: Boolean = false,
+    val assetCount: Int = 0,
+    val rowVersion: Int = 1,
+    val privateRule: Boolean = false,
+    val pinyin: String = "",
+    val pinyinInitials: String = "",
+) {
+    val system: Boolean
+        get() = name == "收藏" || name == "已编辑"
+}
+
+data class NativeTagGroupRecord(
+    val id: String,
+    val name: String,
+    val color: String? = null,
+    val description: String? = null,
+    val rowVersion: Int = 1,
+    val tagCount: Int = 0,
+)
+
+data class NativeStack(
+    val id: String,
+    val assetIds: List<String>,
+    val bestAssetId: String,
+    val coverId: String,
+    val hasEditedMember: Boolean,
+    val cover: NativeAsset? = null,
 )
 
 data class NativeDay(val date: String, val before: String, val count: Long, val offset: Long) {
@@ -64,7 +109,12 @@ data class NativeTimeline(val days: List<NativeDay>, val total: Long) {
     }
 }
 
-data class NativePage(val items: List<NativeAsset>, val cursor: String?, val imageSearchStatus: String? = null)
+data class NativePage(
+    val items: List<NativeAsset>,
+    val cursor: String?,
+    val imageSearchStatus: String? = null,
+    val stacks: List<NativeStack> = emptyList(),
+)
 
 /**
  * Older servers only expose extensions. Map the aliases whose stored inspection format differs, so
@@ -147,10 +197,55 @@ class NativeGalleryRepository(
                     cancellation = cancellation,
                 )
             val items = result.getJSONArray("items")
+            val parsed =
+                (0 until items.length()).map { parse(items.getJSONObject(it), mode, sort) }
+            val stacks =
+                result.optJSONArray("photoStacks")?.let { rows ->
+                    (0 until rows.length()).mapNotNull { index ->
+                        val row = rows.getJSONObject(index)
+                        val coverJson = row.optJSONObject("cover")
+                        val cover = coverJson?.let { parse(it, mode, sort) }
+                        val assetIds =
+                            row.optJSONArray("assetIds")?.let { values ->
+                                (0 until values.length()).map { values.getString(it) }
+                            } ?: emptyList()
+                        val best = row.optString("bestAssetId").takeIf {
+                            it.isNotBlank() && it != "null"
+                        }
+                        if (assetIds.size < 2 || best == null) null
+                        else
+                            NativeStack(
+                                row.getString("id"),
+                                assetIds,
+                                best,
+                                coverJson?.optString("id")?.takeIf {
+                                    it.isNotBlank() && it != "null"
+                                } ?: best,
+                                row.optBoolean("hasEditedMember", false),
+                                cover,
+                            )
+                    }
+                } ?: emptyList()
+            val stackByAsset = mutableMapOf<String, NativeStack>()
+            for (stack in stacks) for (assetId in stack.assetIds) stackByAsset[assetId] = stack
             NativePage(
-                (0 until items.length()).map { parse(items.getJSONObject(it), mode, sort) },
+                parsed.map { asset ->
+                    val stack = stackByAsset[asset.id]
+                    if (stack == null) asset
+                    else
+                        asset.copy(
+                            stackId = stack.id,
+                            stackAssetIds = stack.assetIds,
+                            stackBestAssetId = stack.bestAssetId,
+                            stackCoverId = stack.coverId,
+                            stackHasEditedMember = stack.hasEditedMember,
+                        )
+                },
                 result.optString("nextCursor").takeUnless { it.isEmpty() || it == "null" },
-                result.optJSONObject("imageSearch")?.optString("status")?.takeIf { search.isNotBlank() && it in setOf("READY", "UNAVAILABLE") },
+                result.optJSONObject("imageSearch")?.optString("status")?.takeIf {
+                    search.isNotBlank() && it in setOf("READY", "UNAVAILABLE")
+                },
+                stacks,
             )
         }
 
@@ -301,78 +396,92 @@ class NativeGalleryRepository(
 
     /** Favorites are ordinary mode-scoped manual tags; the server remains the source of truth. */
     suspend fun setFavorite(mode: GalleryMode, id: String, enabled: Boolean): String? =
+        setFavoriteAssets(mode, setOf(id), enabled)
+
+    /** Batch favorite uses the same mode-scoped manual tag as the web workspace. */
+    suspend fun setFavoriteAssets(
+        mode: GalleryMode,
+        ids: Set<String>,
+        enabled: Boolean,
+    ): String? =
         withContext(Dispatchers.IO) {
+            require(ids.isNotEmpty())
+            val tagId = ensureFavoriteTag(mode, enabled) ?: return@withContext null
             val base = NativeGalleryPolicy.base(mode.name)
-            val assetId = NativeGalleryPolicy.identifier(id)
-            fun fetchTag(): String? {
-                val tags = session.array("$base/manual-tags", 16 * 1024 * 1024)
-                return (0 until tags.length())
-                    .asSequence()
-                    .map { tags.getJSONObject(it) }
-                    .firstOrNull { it.getString("name") == "收藏" }
-                    ?.getString("id")
-            }
-            val now = System.currentTimeMillis()
-            val cachedTag = synchronized(catalogLock) { favoriteTagCache[mode] }
-            var tagId =
-                if (cachedTag != null && now - cachedTag.first < CATALOG_TTL_MS) cachedTag.second
-                else
-                    fetchTag().also {
-                        synchronized(catalogLock) { favoriteTagCache[mode] = now to it }
-                    }
-            if (enabled && tagId == null) {
-                tagId =
-                    try {
-                        session
-                            .json("POST", "$base/manual-tags", JSONObject().put("name", "收藏"))
-                            .getString("id")
-                    } catch (reason: NativeSession.Failure) {
-                        if (reason.status != 409) throw reason
-                        fetchTag() ?: throw reason
-                    }
-                synchronized(catalogLock) {
-                    favoriteTagCache[mode] = System.currentTimeMillis() to tagId
-                    optionCache.remove(mode to NativeOptionSection.TAGS)
-                }
-            }
-            if (tagId != null) {
-                val cachedPrivacy = synchronized(catalogLock) { favoritePrivacyCache[mode] }
-                val isPrivate =
-                    if (cachedPrivacy != null && now - cachedPrivacy.first < CATALOG_TTL_MS)
-                        cachedPrivacy.second
-                    else {
-                        val privacy =
-                            session.json("GET", "$base/privacy-settings").getJSONArray("tagIds")
-                        val value = (0 until privacy.length()).any { privacy.getString(it) == tagId }
-                        synchronized(catalogLock) {
-                            favoritePrivacyCache[mode] = now to value
-                        }
-                        value
-                    }
-                require(!isPrivate) { "收藏标签被设为私密，请先在设置中调整。" }
-                session
-                    .json(
-                        "POST",
-                        "$base/assets/batch/manual-tags",
-                        JSONObject()
-                            .put("assetIds", org.json.JSONArray(listOf(assetId)))
-                            .put(
-                                "addTagIds",
-                                org.json.JSONArray(
-                                    if (enabled) listOf(tagId) else emptyList<String>()
-                                ),
-                            )
-                            .put(
-                                "removeTagIds",
-                                org.json.JSONArray(
-                                    if (enabled) emptyList<String>() else listOf(tagId)
-                                ),
-                            ),
-                    )
-                    .optString("id")
-                    .takeUnless { it.isBlank() || it == "null" }
-            } else null
+            require(!isPrivateTag(mode, tagId)) { "收藏标签被设为私密，请先在设置中调整。" }
+            session
+                .json(
+                    "POST",
+                    "$base/assets/batch/manual-tags",
+                    JSONObject()
+                        .put(
+                            "assetIds",
+                            org.json.JSONArray(ids.map { NativeGalleryPolicy.identifier(it) }),
+                        )
+                        .put(
+                            "addTagIds",
+                            org.json.JSONArray(if (enabled) listOf(tagId) else emptyList<String>()),
+                        )
+                        .put(
+                            "removeTagIds",
+                            org.json.JSONArray(if (enabled) emptyList<String>() else listOf(tagId)),
+                        ),
+                )
+                .optString("id")
+                .takeUnless { it.isBlank() || it == "null" }
         }
+
+    suspend fun favoriteTagId(mode: GalleryMode): String? =
+        withContext(Dispatchers.IO) { ensureFavoriteTag(mode, false) }
+
+    private suspend fun ensureFavoriteTag(mode: GalleryMode, create: Boolean): String? {
+        val base = NativeGalleryPolicy.base(mode.name)
+        fun fetchTag(): String? {
+            val tags = session.array("$base/manual-tags", 16 * 1024 * 1024)
+            return (0 until tags.length())
+                .asSequence()
+                .map { tags.getJSONObject(it) }
+                .firstOrNull { it.getString("name") == "收藏" }
+                ?.getString("id")
+        }
+        val now = System.currentTimeMillis()
+        val cachedTag = synchronized(catalogLock) { favoriteTagCache[mode] }
+        var tagId =
+            if (cachedTag != null && now - cachedTag.first < CATALOG_TTL_MS) cachedTag.second
+            else
+                fetchTag().also {
+                    synchronized(catalogLock) { favoriteTagCache[mode] = now to it }
+                }
+        if (create && tagId == null) {
+            tagId =
+                try {
+                    session
+                        .json("POST", "$base/manual-tags", JSONObject().put("name", "收藏"))
+                        .getString("id")
+                } catch (reason: NativeSession.Failure) {
+                    if (reason.status != 409) throw reason
+                    fetchTag() ?: throw reason
+                }
+            synchronized(catalogLock) {
+                favoriteTagCache[mode] = System.currentTimeMillis() to tagId
+                optionCache.remove(mode to NativeOptionSection.TAGS)
+            }
+        }
+        return tagId
+    }
+
+    private suspend fun isPrivateTag(mode: GalleryMode, tagId: String): Boolean {
+        val now = System.currentTimeMillis()
+        val cached = synchronized(catalogLock) { favoritePrivacyCache[mode] }
+        if (cached != null && now - cached.first < CATALOG_TTL_MS) return cached.second
+        val privacy =
+            session
+                .json("GET", "${NativeGalleryPolicy.base(mode.name)}/privacy-settings")
+                .getJSONArray("tagIds")
+        val value = (0 until privacy.length()).any { privacy.getString(it) == tagId }
+        synchronized(catalogLock) { favoritePrivacyCache[mode] = now to value }
+        return value
+    }
 
     suspend fun change(
         mode: GalleryMode,
@@ -449,6 +558,216 @@ class NativeGalleryRepository(
                 }
             }
         }
+
+    suspend fun listTags(mode: GalleryMode): List<NativeTagRecord> =
+        withContext(Dispatchers.IO) {
+            val base = NativeGalleryPolicy.base(mode.name)
+            val rows = session.array("$base/manual-tags", 16 * 1024 * 1024)
+            val privacy = privacyTagIds(mode)
+            (0 until rows.length()).mapNotNull { index ->
+                runCatching { parseTag(rows.getJSONObject(index), privacy) }.getOrNull()
+            }
+        }
+
+    suspend fun listTagGroups(mode: GalleryMode): List<NativeTagGroupRecord> =
+        withContext(Dispatchers.IO) {
+            val rows =
+                session.array("${NativeGalleryPolicy.base(mode.name)}/manual-tag-groups", 4 * 1024 * 1024)
+            (0 until rows.length()).mapNotNull { index ->
+                runCatching {
+                        rows.getJSONObject(index).let { row ->
+                            NativeTagGroupRecord(
+                                row.getString("id"),
+                                row.getString("name"),
+                                row.optString("color").takeUnless { it == "null" },
+                                row.optString("description").takeUnless { it == "null" },
+                                row.optInt("rowVersion", 1),
+                                row.optInt("tagCount", 0),
+                            )
+                        }
+                    }
+                    .getOrNull()
+            }
+        }
+
+    suspend fun createTag(mode: GalleryMode, name: String, color: String? = null): NativeTagRecord =
+        withContext(Dispatchers.IO) {
+            val row =
+                session.json(
+                    "POST",
+                    "${NativeGalleryPolicy.base(mode.name)}/manual-tags",
+                    JSONObject().put("name", name).apply {
+                        if (color != null) put("color", color)
+                    },
+                )
+            parseTag(row, emptySet())
+        }
+
+    suspend fun updateTag(
+        mode: GalleryMode,
+        tag: NativeTagRecord,
+        name: String? = null,
+        color: String? = null,
+        groupId: String? = null,
+        isStarred: Boolean? = null,
+    ): String? =
+        withContext(Dispatchers.IO) {
+            val body =
+                JSONObject().put("rowVersion", tag.rowVersion).apply {
+                    name?.let { put("name", it) }
+                    put("color", color ?: JSONObject.NULL)
+                    put("groupId", groupId ?: JSONObject.NULL)
+                    isStarred?.let { put("isStarred", it) }
+                }
+            session
+                .json(
+                    "PATCH",
+                    "${NativeGalleryPolicy.base(mode.name)}/manual-tags/${NativeGalleryPolicy.identifier(tag.id)}",
+                    body,
+                )
+                .optString("id")
+                .takeUnless { it.isBlank() || it == "null" }
+        }
+
+    suspend fun deleteTag(mode: GalleryMode, tag: NativeTagRecord): String? =
+        withContext(Dispatchers.IO) {
+            session
+                .json(
+                    "DELETE",
+                    "${NativeGalleryPolicy.base(mode.name)}/manual-tags/${NativeGalleryPolicy.identifier(tag.id)}",
+                )
+                .optString("id")
+                .takeUnless { it.isBlank() || it == "null" }
+        }
+
+    suspend fun createTagGroup(
+        mode: GalleryMode,
+        name: String,
+        color: String? = null,
+    ): NativeTagGroupRecord =
+        withContext(Dispatchers.IO) {
+            val row =
+                session.json(
+                    "POST",
+                    "${NativeGalleryPolicy.base(mode.name)}/manual-tag-groups",
+                    JSONObject().put("name", name).apply {
+                        if (color != null) put("color", color)
+                    },
+                )
+            parseTagGroup(row)
+        }
+
+    suspend fun updateTagGroup(
+        mode: GalleryMode,
+        group: NativeTagGroupRecord,
+        name: String? = null,
+        color: String? = null,
+        description: String? = null,
+    ): NativeTagGroupRecord =
+        withContext(Dispatchers.IO) {
+            val body =
+                JSONObject().put("rowVersion", group.rowVersion).apply {
+                    name?.let { put("name", it) }
+                    put("color", color ?: JSONObject.NULL)
+                    description?.let { put("description", it) }
+                }
+            parseTagGroup(
+                session.json(
+                    "PATCH",
+                    "${NativeGalleryPolicy.base(mode.name)}/manual-tag-groups/${NativeGalleryPolicy.identifier(group.id)}",
+                    body,
+                )
+            )
+        }
+
+    suspend fun deleteTagGroup(mode: GalleryMode, group: NativeTagGroupRecord): String? =
+        withContext(Dispatchers.IO) {
+            session
+                .json(
+                    "DELETE",
+                    "${NativeGalleryPolicy.base(mode.name)}/manual-tag-groups/${NativeGalleryPolicy.identifier(group.id)}",
+                )
+                .optString("id")
+                .takeUnless { it.isBlank() || it == "null" }
+        }
+
+    suspend fun setRating(
+        mode: GalleryMode,
+        assetId: String,
+        rowVersion: Int,
+        rating: Int?,
+    ): String? =
+        withContext(Dispatchers.IO) {
+            session
+                .json(
+                    "PATCH",
+                    "${NativeGalleryPolicy.base(mode.name)}/assets/${NativeGalleryPolicy.identifier(assetId)}",
+                    JSONObject()
+                        .put("rowVersion", rowVersion)
+                        .put("rating", rating ?: JSONObject.NULL),
+                )
+                .optString("id")
+                .takeUnless { it.isBlank() || it == "null" }
+        }
+
+    suspend fun emptyTrash(mode: GalleryMode): String? =
+        withContext(Dispatchers.IO) {
+            session
+                .json("POST", "${NativeGalleryPolicy.base(mode.name)}/trash/empty", JSONObject())
+                .optString("id")
+                .takeUnless { it.isBlank() || it == "null" }
+        }
+
+    suspend fun setStackBest(mode: GalleryMode, groupId: String, assetId: String): String? =
+        withContext(Dispatchers.IO) {
+            require(mode == GalleryMode.PHOTO)
+            session
+                .json(
+                    "PATCH",
+                    "${NativeGalleryPolicy.base(mode.name)}/photography/groups/${NativeGalleryPolicy.identifier(groupId)}",
+                    JSONObject().put("bestAssetId", NativeGalleryPolicy.identifier(assetId)),
+                )
+                .optString("id")
+                .takeUnless { it.isBlank() || it == "null" }
+        }
+
+    private suspend fun privacyTagIds(mode: GalleryMode): Set<String> {
+        val rows =
+            session
+                .json("GET", "${NativeGalleryPolicy.base(mode.name)}/privacy-settings")
+                .getJSONArray("tagIds")
+        return (0 until rows.length()).map { rows.getString(it) }.toSet()
+    }
+
+    private fun parseTag(row: JSONObject, privacy: Set<String>): NativeTagRecord {
+        val groupIds =
+            row.optJSONArray("groupIds")?.let { values ->
+                (0 until values.length()).map { values.getString(it) }
+            } ?: emptyList()
+        return NativeTagRecord(
+            row.getString("id"),
+            row.getString("name"),
+            row.optString("color").takeUnless { it.isBlank() || it == "null" },
+            row.optString("groupId").takeUnless { it.isBlank() || it == "null" },
+            groupIds,
+            row.optBoolean("isStarred", false),
+            row.optInt("assetCount", 0),
+            row.optInt("rowVersion", 1),
+            privacy.contains(row.optString("id")),
+            row.optString("pinyin"),
+            row.optString("pinyinInitials"),
+        )
+    }
+
+    private fun parseTagGroup(row: JSONObject) =
+        NativeTagGroupRecord(
+            row.getString("id"),
+            row.getString("name"),
+            row.optString("color").takeUnless { it.isBlank() || it == "null" },
+            row.optString("description").takeUnless { it.isBlank() || it == "null" },
+            row.optInt("rowVersion", 1),
+            row.optInt("tagCount", 0),
+        )
 
     internal val assetOperations = NativeAssetOperations(session)
 
@@ -530,7 +849,7 @@ class NativeGalleryRepository(
                         if (id != null) disk?.write(id, bytes, ticket)
                     }
                     checkActive()
-                    val result = bitmap ?: throw IOException("预览解码失败")
+                    val result = bitmap
                     synchronized(imagesLock) {
                         checkActive()
                         if (disk == null || ticket == disk.generation) cache.put(key, result)
@@ -638,6 +957,16 @@ class NativeGalleryRepository(
                     if (sort == GallerySort.ADDED_AT) "libraryAddedAt" else "chronologicalAt"
                 )
             ) ?: date
+        val tags =
+            json.optJSONArray("manualTags")?.let { rows ->
+                (0 until rows.length()).mapNotNull { index ->
+                    val row = rows.getJSONObject(index)
+                    val tagId = row.optString("id").takeIf { it.isNotBlank() && it != "null" }
+                    val name = row.optString("name").takeIf { it.isNotBlank() && it != "null" }
+                    if (tagId == null || name == null) null
+                    else NativeAssetTag(tagId, name, row.optString("color").takeUnless { it == "null" })
+                }
+            } ?: emptyList()
         return NativeAsset(
             id,
             json.optString("displayName", json.optString("originalName")),
@@ -655,11 +984,12 @@ class NativeGalleryRepository(
             movie?.optLong("byteSize") ?: 0,
             NativeCity.label(json),
             stamp,
-            json.optJSONArray("manualTags")?.let { tags ->
-                (0 until tags.length()).any { tags.getJSONObject(it).optString("name") == "收藏" }
-            } ?: false,
+            tags.any { it.name == "收藏" },
             json.optString("mimeType"),
             json.optString("lifecycleStatus"),
+            json.optInt("rating", 0).takeIf { it > 0 },
+            tags,
+            json.optJSONObject("photoMetadata")?.optBoolean("captureMetadataInherited") == true,
         )
     }
 

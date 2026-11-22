@@ -4622,6 +4622,7 @@ export interface components {
       bestAssetId: string;
       bestSelectedByUser: boolean;
       assetIds: string[];
+      hasEditedMember: boolean;
       cover: components['schemas']['EagleAssetListResponseDto'];
     };
     EagleColorCoverageResponseDto: {

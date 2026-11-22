@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.HorizontalDivider
@@ -90,6 +91,7 @@ internal fun NativeGalleryMenu(
                 } else {
                     if (!state.trash)
                         MenuRow("上传", Icons.Outlined.FileUpload) { navigate(chooseUpload) }
+                    MenuRow("标签管理", Icons.AutoMirrored.Outlined.Label) { navigate(model::openTagScreen) }
                     MenuRow("缓存设置", Icons.Outlined.Storage) { navigate(model::openCache) }
                     MenuRow("传输列表", Icons.Outlined.SyncAlt) { navigate(model::openTransfers) }
                     MenuRow("备份设置", Icons.Outlined.CloudUpload) {

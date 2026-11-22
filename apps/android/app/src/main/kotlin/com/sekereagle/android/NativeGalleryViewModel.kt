@@ -67,6 +67,8 @@ data class GalleryState(
     val busy: Boolean = false,
     val message: String? = null,
     val trash: Boolean = false,
+    val tagScreenOpen: Boolean = false,
+    val favoriteTagId: String? = null,
 ) {
     val optionsLoading
         get() = optionStatus.values.any { it.loading }
@@ -109,6 +111,9 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         prefetchJob?.cancel()
         operationWatch?.cancel()
         favoriteRequests.clear()
+        ratingRequests.clear()
+        favoriteBatchPending = false
+        trashEmptyPending = false
         sendRequests.clear()
         retained.value = emptyMap()
         staleLibraries.clear()
@@ -239,6 +244,9 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
     private var transferRefreshPending = false
     private var operationWatch: Job? = null
     private val favoriteRequests = mutableSetOf<String>()
+    private val ratingRequests = mutableSetOf<String>()
+    private var favoriteBatchPending = false
+    private var trashEmptyPending = false
 
     private fun refreshTransfersWhenIdle() {
         val current = state.value
@@ -910,6 +918,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         mutable.value =
             when {
                 s.busy -> return true
+                s.tagScreenOpen -> s.copy(tagScreenOpen = false)
                 s.cacheOpen -> s.copy(cacheOpen = false)
                 s.transfersOpen -> s.copy(transfersOpen = false)
                 s.filterPanel != null -> {
@@ -1171,6 +1180,219 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 if (!watched) favoriteRequests.remove(id)
             }
         }
+    }
+
+    fun openFavorites() {
+        val snapshot = state.value
+        if (snapshot.busy) return
+        val repo = repository ?: return
+        val mode = snapshot.mode
+        viewModelScope.launch {
+            try {
+                val tagId =
+                    snapshot.favoriteTagId
+                        ?: withContext(Dispatchers.IO) { repo.favoriteTagId(mode) }
+                if (state.value.mode != mode) return@launch
+                if (tagId == null) {
+                    mutable.value = state.value.copy(message = "还没有收藏")
+                    return@launch
+                }
+                val current = state.value
+                val active =
+                    current.query.isBlank() && current.filters.tags == setOf(tagId)
+                val next =
+                    if (active) current.filters.copy(tags = emptySet())
+                    else current.filters.copy(tags = setOf(tagId), tagMatch = "ANY")
+                mutable.value = current.copy(favoriteTagId = tagId)
+                applyFilters(next)
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                if (reason is NativeSession.Failure && reason.status == 401) expire()
+                else mutable.value = state.value.copy(message = "收藏暂时不可用：${reason.message.orEmpty()}")
+            }
+        }
+    }
+
+    fun openTagScreen() {
+        val current = state.value
+        if (current.busy) return
+        mutable.value =
+            current.copy(
+                tagScreenOpen = true,
+                accountOpen = false,
+                cacheOpen = false,
+                transfersOpen = false,
+                searchOpen = false,
+                filterPanel = null,
+                viewerId = null,
+                selecting = false,
+                selected = emptySet(),
+            )
+    }
+
+    fun closeTagScreen() {
+        mutable.value = state.value.copy(tagScreenOpen = false)
+    }
+
+    fun toggleSelectedFavorite() {
+        val snapshot = state.value
+        if (snapshot.busy || snapshot.trash || snapshot.selected.isEmpty()) return
+        if (favoriteBatchPending) return
+        val repo = repository ?: return
+        val selected = snapshot.items.filter { it.id in snapshot.selected }
+        if (selected.size != snapshot.selected.size) return
+        val target = !selected.all { it.favorite }
+        val original = selected.associateBy { it.id }
+        val ids = snapshot.selected
+        favoriteBatchPending = true
+        mutable.value =
+            snapshot.copy(
+                busy = true,
+                message = null,
+                items =
+                    snapshot.items.map {
+                        if (it.id in ids) it.copy(favorite = target, rowVersion = it.rowVersion + 1)
+                        else it
+                    },
+            )
+        viewModelScope.launch {
+            try {
+                val operationId = repo.setFavoriteAssets(snapshot.mode, ids, target)
+                mutable.value =
+                    state.value.copy(
+                        busy = false,
+                        message = if (operationId != null) "收藏已提交，正在后台应用" else null,
+                    )
+                if (operationId == null) {
+                    favoriteBatchPending = false
+                    refresh()
+                } else {
+                    watchOperation(
+                        snapshot.mode,
+                        operationId,
+                        onDone = { favoriteBatchPending = false },
+                    )
+                }
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                favoriteBatchPending = false
+                if (reason is NativeSession.Failure && reason.status == 401) expire()
+                else
+                    mutable.value =
+                        state.value.copy(
+                            busy = false,
+                            items =
+                                state.value.items.map {
+                                    val old = original[it.id]
+                                    if (old != null) old else it
+                                },
+                            message = "收藏未完成：${reason.message.orEmpty()}",
+                        )
+            }
+        }
+    }
+
+    fun setRating(id: String, rating: Int?) {
+        val snapshot = state.value
+        if (snapshot.busy || snapshot.trash) return
+        val repo = repository ?: return
+        val asset = snapshot.items.firstOrNull { it.id == id } ?: return
+        if (asset.rating == rating || id in ratingRequests) return
+        ratingRequests.add(id)
+        mutable.value =
+            snapshot.copy(
+                message = null,
+                items =
+                    state.value.items.map {
+                        if (it.id == id) it.copy(rating = rating, rowVersion = it.rowVersion + 1)
+                        else it
+                    },
+            )
+        viewModelScope.launch {
+            try {
+                val operationId = repo.setRating(snapshot.mode, id, asset.rowVersion, rating)
+                if (operationId == null) {
+                    ratingRequests.remove(id)
+                    refresh()
+                } else {
+                    watchOperation(
+                        snapshot.mode,
+                        operationId,
+                        onDone = { ratingRequests.remove(id) },
+                    )
+                }
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                ratingRequests.remove(id)
+                if (reason is NativeSession.Failure && reason.status == 401) expire()
+                else
+                    mutable.value =
+                        state.value.copy(
+                            items =
+                                state.value.items.map {
+                                    if (it.id == id) it.copy(rating = asset.rating, rowVersion = asset.rowVersion)
+                                    else it
+                                },
+                            message = "评分未确认完成，请重试",
+                        )
+            }
+        }
+    }
+
+    fun emptyTrash() {
+        val snapshot = state.value
+        if (snapshot.busy || !snapshot.trash || trashEmptyPending) return
+        val repo = repository ?: return
+        val mode = snapshot.mode
+        trashEmptyPending = true
+        mutable.value = snapshot.copy(busy = true, message = null)
+        viewModelScope.launch {
+            try {
+                val operationId = repo.emptyTrash(mode)
+                if (operationId == null) {
+                    trashEmptyPending = false
+                    mutable.value = state.value.copy(busy = false)
+                    refresh()
+                } else {
+                    mutable.value =
+                        state.value.copy(busy = false, message = "正在清空回收站")
+                    watchOperation(mode, operationId, onDone = { trashEmptyPending = false })
+                }
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                trashEmptyPending = false
+                if (reason is NativeSession.Failure && reason.status == 401) expire()
+                else
+                    mutable.value =
+                        state.value.copy(
+                            busy = false,
+                            message = "清空回收站未完成：${reason.message.orEmpty()}",
+                        )
+            }
+        }
+    }
+
+    fun openStackAsset(asset: NativeAsset) {
+        val current = state.value
+        if (current.items.any { it.id == asset.id }) {
+            openAsset(asset.id)
+            return
+        }
+        val index = current.items.indexOfFirst { it.id == current.viewerId }.coerceAtLeast(0)
+        val items = current.items.toMutableList().apply {
+            add((index + 1).coerceAtMost(size), asset)
+        }
+        mutable.value =
+            current.copy(
+                items = items.distinctBy { it.id },
+                viewerId = asset.id,
+                selecting = false,
+                selected = emptySet(),
+            )
     }
 
     internal suspend fun readAssetOperations(): List<NativeAssetOperation> {

@@ -49,6 +49,7 @@ const stack: EaglePhotoStack = {
   id: 'stack',
   bestAssetId: 'a',
   bestSelectedByUser: false,
+  hasEditedMember: false,
   assetIds: ['a', 'b'],
   cover,
 };

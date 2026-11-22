@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -26,6 +27,9 @@ fun NativeSelectionControls(
 ) {
     var confirm by remember { mutableStateOf(false) }
     var confirmSend by remember { mutableStateOf(false) }
+    var ratingOpen by remember { mutableStateOf(false) }
+    val selectedAssets = state.items.filter { it.id in state.selected }
+    val allFavorite = selectedAssets.isNotEmpty() && selectedAssets.all { it.favorite }
     Box(modifier) {
         GlassSurface(
             Modifier.align(Alignment.TopCenter)
@@ -43,6 +47,19 @@ fun NativeSelectionControls(
                     "已选择 ${state.selected.size} 项",
                     Modifier.weight(1f).testTag("native-selection-count"),
                 )
+                if (!state.trash)
+                    IconButton(
+                        { model.toggleSelectedFavorite() },
+                        enabled = !state.busy && selectedAssets.isNotEmpty(),
+                    ) {
+                        Icon(
+                            if (allFavorite) Icons.Outlined.Favorite
+                            else Icons.Outlined.FavoriteBorder,
+                            if (allFavorite) "取消收藏" else "收藏",
+                            Modifier.size(20.dp),
+                            tint = if (allFavorite) Color(0xFFFF8AA5) else Color.White,
+                        )
+                    }
                 TextButton({ model.selectLoaded() }, enabled = !state.busy) { Text("全选已加载") }
             }
         }
@@ -124,7 +141,7 @@ fun NativeSelectionControls(
                                 state.selected.isNotEmpty(),
                                 Modifier.weight(1f),
                             ) {
-                                model.openFilters("评分")
+                                ratingOpen = true
                             }
                             SelectionAction(
                                 "删除",
@@ -139,6 +156,16 @@ fun NativeSelectionControls(
             }
         }
     }
+    if (ratingOpen)
+        NativeRatingSheet(
+            assets = selectedAssets,
+            busy = state.busy,
+            onDismiss = { ratingOpen = false },
+            onApply = {
+                ratingOpen = false
+                model.changeSelection("rating", rating = it)
+            },
+        )
     if (confirmSend)
         AlertDialog(
             onDismissRequest = { confirmSend = false },

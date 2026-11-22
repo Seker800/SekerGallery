@@ -124,6 +124,7 @@ export class EaglePhotoStackResponseDto {
   @ApiProperty({ type: String }) bestAssetId!: string;
   @ApiProperty({ type: Boolean }) bestSelectedByUser!: boolean;
   @ApiProperty({ type: [String] }) assetIds!: string[];
+  @ApiProperty({ type: Boolean }) hasEditedMember!: boolean;
   @ApiProperty({ type: EagleAssetListResponseDto }) cover!: EagleAssetListResponseDto;
 }
 

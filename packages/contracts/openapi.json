@@ -11373,11 +11373,21 @@
               "type": "string"
             }
           },
+          "hasEditedMember": {
+            "type": "boolean"
+          },
           "cover": {
             "$ref": "#/components/schemas/EagleAssetListResponseDto"
           }
         },
-        "required": ["id", "bestAssetId", "bestSelectedByUser", "assetIds", "cover"]
+        "required": [
+          "id",
+          "bestAssetId",
+          "bestSelectedByUser",
+          "assetIds",
+          "hasEditedMember",
+          "cover"
+        ]
       },
       "EagleColorCoverageResponseDto": {
         "type": "object",
