@@ -57,7 +57,7 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-let portableDataRoot: string | null = null;
+let portableDataRoot: string | null;
 let portableStartupFailed = false;
 try {
   portableDataRoot = resolvePortableDataRoot(process.platform, process.env);
