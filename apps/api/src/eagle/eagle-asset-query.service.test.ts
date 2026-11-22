@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { encodeColorCursor, colorPageKey } from './eagle-color-page';
+import { decodeEagleAssetCursor } from './eagle-cursor';
 import { EagleService } from './eagle.service';
 
 test('a parent smart folder evaluates itself and its direct children as a union', async () => {
@@ -651,4 +652,49 @@ test('color pagination does not recount coverage already returned with the first
   const result = await service.listAssets('owner-1', { limit: 30, color: '#abcdef', cursor });
   assert.equal(counts, 0);
   assert.equal(result.colorCoverage, null);
+});
+
+test('timeline seek rows return a scoped NEWER previous cursor', async () => {
+  let where: any;
+  const date = new Date('2026-01-02T00:00:00.000Z');
+  const service = new EagleService(
+    {
+      eagleAsset: {
+        findMany: async (query: any) => {
+          where = query.where;
+          return ['a', 'b'].map((id) => ({
+            id,
+            libraryAddedAt: date,
+            chronologicalAt: date,
+            renditions: [],
+            manualTagLinks: [],
+            byteSize: 0n,
+            libraryMode: 'MATERIAL',
+          }));
+        },
+      },
+    } as never,
+    undefined,
+    'MATERIAL',
+  );
+  const result = await service.listAssets('owner', {
+    limit: 1,
+    sort: 'ADDED_AT',
+    before: '2026-01-01T00:00:00Z',
+    offset: 1,
+  });
+  const previousCursor = (result as unknown as { previousCursor: string | null }).previousCursor;
+  assert.ok(previousCursor);
+  const previous = decodeEagleAssetCursor(
+    previousCursor!,
+    { ownerId: 'owner', libraryMode: 'MATERIAL' },
+    'ADDED_AT',
+  );
+  assert.equal(previous.direction, 'NEWER');
+  assert.equal(previous.id, 'a');
+  const encodedWhere = JSON.stringify(where);
+  assert.match(encodedWhere, /"ownerId":"owner"/);
+  assert.match(encodedWhere, /"libraryMode":"MATERIAL"/);
+  assert.match(encodedWhere, /"isPrivate":false/);
+  assert.match(encodedWhere, /"deletedAt":null/);
 });

@@ -129,3 +129,129 @@ test('photo stack projection reports whether the group contains an edited copy',
   assert.equal(result.photoStacks?.[0]?.hasEditedMember, true);
   assert.equal(result.photoStacks?.[0]?.bestAssetId, 'a');
 });
+
+test('timeline seek and offset windows expose a NEWER previous cursor', async () => {
+  const date = new Date('2026-01-02T00:00:00.000Z');
+  const rows = ['newer', 'older'].map((id) => ({
+    id,
+    libraryAddedAt: date,
+    chronologicalAt: date,
+    renditions: [],
+    manualTagLinks: [],
+    byteSize: 0n,
+    libraryMode: 'MATERIAL',
+  }));
+  const service = new EagleService(
+    {
+      eagleAsset: { findMany: async () => rows },
+      eaglePhotoGroup: { findMany: async () => [] },
+    } as never,
+    undefined,
+    'MATERIAL',
+  );
+  const scope = { ownerId: 'owner', libraryMode: 'MATERIAL' as const };
+  const result = await service.listAssets('owner', {
+    limit: 1,
+    before: '2020-01-01T00:00:00Z',
+    offset: 1,
+  });
+  const previousCursor = (result as unknown as { previousCursor: string | null }).previousCursor;
+  assert.ok(previousCursor);
+  const previous = decodeEagleAssetCursor(previousCursor!, scope, 'ADDED_AT');
+  assert.equal(previous.direction, 'NEWER');
+  assert.equal(previous.id, 'newer');
+  assert.ok(result.nextCursor);
+  assert.equal(decodeEagleAssetCursor(result.nextCursor!, scope, 'ADDED_AT').id, 'newer');
+});
+
+test('offset-only refresh pages expose a NEWER previous cursor', async () => {
+  const date = new Date('2026-01-02T00:00:00.000Z');
+  const service = new EagleService(
+    {
+      eagleAsset: {
+        findMany: async () => [
+          {
+            id: 'a',
+            libraryAddedAt: date,
+            chronologicalAt: date,
+            renditions: [],
+            manualTagLinks: [],
+            byteSize: 0n,
+            libraryMode: 'MATERIAL',
+          },
+        ],
+      },
+      eaglePhotoGroup: { findMany: async () => [] },
+    } as never,
+    undefined,
+    'MATERIAL',
+  );
+  const result = await service.listAssets('owner', { limit: 60, offset: 1 });
+  const previousCursor = (result as unknown as { previousCursor: string | null }).previousCursor;
+  assert.ok(previousCursor);
+  assert.equal(
+    decodeEagleAssetCursor(
+      previousCursor!,
+      {
+        ownerId: 'owner',
+        libraryMode: 'MATERIAL',
+      },
+      'ADDED_AT',
+    ).direction,
+    'NEWER',
+  );
+});
+
+test('first page and empty pages do not expose a previous cursor', async () => {
+  const date = new Date('2026-01-02T00:00:00.000Z');
+  const rows = [
+    {
+      id: 'a',
+      libraryAddedAt: date,
+      chronologicalAt: date,
+      renditions: [],
+      manualTagLinks: [],
+      byteSize: 0n,
+      libraryMode: 'MATERIAL',
+    },
+  ];
+  let current = rows;
+  const service = new EagleService(
+    {
+      eagleAsset: { findMany: async () => current },
+      eaglePhotoGroup: { findMany: async () => [] },
+    } as never,
+    undefined,
+    'MATERIAL',
+  );
+  const first = await service.listAssets('owner', { limit: 60 });
+  assert.equal((first as unknown as { previousCursor: null }).previousCursor, null);
+  current = [];
+  const empty = await service.listAssets('owner', { limit: 60, before: '2020-01-01T00:00:00Z' });
+  assert.equal((empty as unknown as { previousCursor: null }).previousCursor, null);
+});
+
+test('timeline seek still rejects cursor and search combinations', async () => {
+  const service = new EagleService(
+    {
+      eagleAsset: { findMany: async () => [] },
+      eaglePhotoGroup: { findMany: async () => [] },
+    } as never,
+    undefined,
+    'MATERIAL',
+  );
+  await assert.rejects(() =>
+    service.listAssets('owner', {
+      limit: 60,
+      before: '2020-01-01T00:00:00Z',
+      cursor: 'old',
+    }),
+  );
+  await assert.rejects(() =>
+    service.listAssets('owner', {
+      limit: 60,
+      before: '2020-01-01T00:00:00Z',
+      search: 'cat',
+    }),
+  );
+});

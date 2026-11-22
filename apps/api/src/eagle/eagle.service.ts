@@ -312,6 +312,7 @@ export class EagleService {
         : null;
     const dateField = assetDateField(this.libraryMode, orderSort);
     const newer = cursor?.direction === 'NEWER';
+    const canPageNewer = Boolean(cursor) || query.before !== undefined || (query.offset ?? 0) > 0;
     const comparison = newer ? 'gt' : 'lt';
     const where: AssetSearchWhere = cursor
       ? {
@@ -383,7 +384,7 @@ export class EagleService {
       ...(photoStacks ? { photoStacks } : {}),
       previousCursor: colorPage
         ? colorPage.previousCursor
-        : page.length && (newer ? hasMore : Boolean(cursor))
+        : page.length && (newer ? hasMore : canPageNewer)
           ? encodeEagleAssetCursor(
               // Trash filters deletedAt IS NOT NULL before paging.
               { id: page[0]!.id, libraryAddedAt: page[0]![dateField]! },
