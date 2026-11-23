@@ -12,6 +12,7 @@
     "test": "node --experimental-test-coverage --test-coverage-include=fleet.mjs --test-coverage-include=server.mjs --test *.test.mjs"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.11",
     "@modelcontextprotocol/sdk": "1.32.2",
     "zod": "^4.6.7"
   }
