@@ -1,5 +1,9 @@
 # 安卓客户端与手机备份
 
+## 0.9.34 上传改用系统照片选择器（2026-11-23）
+
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode51、versionName 0.9.34，调试 APK SHA-256 `1ef0923af204032dde2b4d27bd18615a04be122b7b9cbab6fb09522409bae1a6`。图库上传此前用 `OpenMultipleDocuments`（`*/*`）打开文件管理器；改为系统照片选择器（`PickMultipleVisualMedia`，图片与视频），照片与素材两种模式共用，编辑器导入 LUT 仍走文件选择器，备份继续用媒体库扫描。单次最多 100 个为平台限制。`npm run android:check` 通过；2026-11-23 22:50 安装到小米 Pad 7 Ultra（25032RP42C），点「⋯ → 上传」确认弹出系统相册选择器（`com.android.photopicker`）。
+
 ## 0.9.33 平板网格改用 512 缩略图（2026-11-23）
 
 本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode50、versionName 0.9.33，调试 APK SHA-256 `3f8213f5550095c6a88ee933345dd14e0f27b8f6eb48a828c72a4a17b69b00dd`。按屏幕宽度判断：≥600dp（平板）选择 `THUMBNAIL` 512 档，并把网格解码上限从 384 提到 512；手机保持 256 档与 384 上限不变。`npm run android:check` 通过；2026-11-23 22:35 安装到小米 Pad 7 Ultra（25032RP42C），登录后图库缩略图明显更清晰，应用缓存中的新缩略图为 23–31KB（对应 512 档）。
