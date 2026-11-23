@@ -96,10 +96,7 @@ export function useEagleSelectionController(
       dispatch({ type: 'select', orderedIds, id, gesture }),
     [],
   );
-  const selectAll = useCallback(
-    (ids: string[]) => dispatch({ type: 'all', ids }),
-    [],
-  );
+  const selectAll = useCallback((ids: string[]) => dispatch({ type: 'all', ids }), []);
   const clear = useCallback(
     (options?: { preserveMode?: boolean }) =>
       dispatch({ type: 'clear', preserveMode: options?.preserveMode === true }),

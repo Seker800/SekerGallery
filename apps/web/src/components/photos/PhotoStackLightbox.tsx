@@ -88,13 +88,21 @@ export function PhotoStackLightbox({
       actions={
         <>
           {onSelectStack && (
-            <button type="button" aria-label={t('选择整组')} onClick={() => onSelectStack(stack.assetIds)}>
+            <button
+              type="button"
+              aria-label={t('选择整组')}
+              onClick={() => onSelectStack(stack.assetIds)}
+            >
               <IconLayersSubtract size={16} />
               <span data-viewer-compact-label>{t('选择整组')}</span>
             </button>
           )}
           {onTagStack && (
-            <button type="button" aria-label={t('为整组添加标签')} onClick={() => onTagStack(stack.assetIds)}>
+            <button
+              type="button"
+              aria-label={t('为整组添加标签')}
+              onClick={() => onTagStack(stack.assetIds)}
+            >
               <IconTags size={16} />
               <span data-viewer-compact-label>{t('整组加标签')}</span>
             </button>

@@ -113,7 +113,6 @@ it('navigates thumbnails by keyboard without advancing twice and uses current de
   );
   fireEvent.keyDown(next, { key: 'Home' });
   expect(first).toHaveAttribute('aria-pressed', 'true');
-
 });
 
 it('offers whole-group selection and tagging from the viewer', () => {

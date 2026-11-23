@@ -60,14 +60,12 @@ describe('parseAssetDragInput', () => {
     expect(parseAssetDragInput(ids)).toHaveLength(250);
   });
 
-  it.each([
-    null,
-    [],
-    [firstAssetId, firstAssetId],
-    ['../../etc/passwd'],
-  ])('rejects an unsafe drag payload', (input) => {
-    expect(() => parseAssetDragInput(input)).toThrow();
-  });
+  it.each([null, [], [firstAssetId, firstAssetId], ['../../etc/passwd']])(
+    'rejects an unsafe drag payload',
+    (input) => {
+      expect(() => parseAssetDragInput(input)).toThrow();
+    },
+  );
 });
 
 describe('parsePreparedDragToken', () => {

@@ -19,10 +19,12 @@ describe('desktop connection page protocol', () => {
     expect(connectionPageAsset('sekereagle-app://connection/connection.css')).toMatchObject({
       file: 'connection.css',
     });
-    expect(connectionPageAsset('sekereagle-app://connection/seker-gallery-logo.svg')).toMatchObject({
-      file: 'seker-gallery-logo.svg',
-      type: 'image/svg+xml',
-    });
+    expect(connectionPageAsset('sekereagle-app://connection/seker-gallery-logo.svg')).toMatchObject(
+      {
+        file: 'seker-gallery-logo.svg',
+        type: 'image/svg+xml',
+      },
+    );
     expect(connectionPageAsset('sekereagle-app://connection/unknown')).toBeNull();
     expect(connectionPageAsset('sekereagle-app://other/')).toBeNull();
   });

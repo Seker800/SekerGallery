@@ -8,18 +8,18 @@
 
 ## 现用状态
 
-| 项目                              | 当前值                                                                                                                     |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| 图库                              | 群晖 SekerDesign（DS1522+，AMD64，8GB），入口 https://yuntai.design:8181/                                                  |
-| 运行源码                          | API `2405f5ed`；web `2405f5ed`；desktop `2405f5ed`（源码未变）；operations／reader `2405f5ed`                              |
-| API / operations / library-reader | `sekereagle/api:main-2405f5ed`                                                                                             |
-| Web                               | `sekereagle/web:main-2405f5ed`                                                                                             |
-| macOS 桌面客户端                  | `/Applications/SekerGallery.app` 0.1.9（`2405f5ed` 源码，app.asar `ca3a6a38…`，与上一版相同）                                |
+| 项目                              | 当前值                                                                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 图库                              | 群晖 SekerDesign（DS1522+，AMD64，8GB），入口 https://yuntai.design:8181/                                                      |
+| 运行源码                          | API `2405f5ed`；web `2405f5ed`；desktop `2405f5ed`（源码未变）；operations／reader `2405f5ed`                                  |
+| API / operations / library-reader | `sekereagle/api:main-2405f5ed`                                                                                                 |
+| Web                               | `sekereagle/web:main-2405f5ed`                                                                                                 |
+| macOS 桌面客户端                  | `/Applications/SekerGallery.app` 0.1.9（`2405f5ed` 源码，app.asar `ca3a6a38…`，与上一版相同）                                  |
 | Windows 便携客户端（本机）        | `D:\SekerGallery\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`13b1fbef` 源码；exe `597acca0…`、app.asar `e0fa70c0…`） |
-| 数据库                            | 101 项迁移，待应用 0；本轮新增回收站排序两个部分索引                                                                       |
-| Mac 业务执行器                    | `.runtime/business-worker/releases/worker-93b5d583`（launchd；不是 Compose `worker`）                                      |
-| 未改动                            | 网关、Postgres、MinIO、计算协调器、中继；不要为排查重启或重建                                                              |
-| 计数                              | MATERIAL / PHOTO / 回收站 / 草稿从运行检查点读取，本文不维护动态百分比                                                     |
+| 数据库                            | 101 项迁移，待应用 0；本轮新增回收站排序两个部分索引                                                                           |
+| Mac 业务执行器                    | `.runtime/business-worker/releases/worker-93b5d583`（launchd；不是 Compose `worker`）                                          |
+| 未改动                            | 网关、Postgres、MinIO、计算协调器、中继；不要为排查重启或重建                                                                  |
+| 计数                              | MATERIAL / PHOTO / 回收站 / 草稿从运行检查点读取，本文不维护动态百分比                                                         |
 
 Web 最近覆盖：`main-2405f5ed`（11-20 11:02）→ `cacheopt-67e99d52`（11-18 11:18）
 → `cacheopt-abb4c3e3`（11-18 11:08）。API／operations／reader 本轮一并升到 `main-2405f5ed`。
