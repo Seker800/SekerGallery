@@ -1,5 +1,9 @@
 # 安卓客户端与手机备份
 
+## 0.9.32 用户可见文案统一为 SekerGallery（2026-11-23）
+
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode49、versionName 0.9.32，调试 APK SHA-256 `ae05c7ea9fa19c8ac068c0cd297968b42b5e6abf0ad03b68edb3a56ac41bec02`。登录页副标题、账户与服务地址提示、备份通知标题、备份策略错误文案统一为 SekerGallery；下载目录 `Download/SekerEagle` 与 User-Agent 保持不变。`npm run android:check` 通过。2026-11-23 20:06 覆盖安装到小米 Pad 7 Ultra（25032RP42C）：`adb install` 被系统以 `INSTALL_FAILED_USER_RESTRICTED` 拒绝，改用 `adb push` + `pm install -r` 成功；启动后登录页显示“连接 SekerGallery 图库”。手机（25128PNA1C）仍为 0.9.31，下次连接时按同一方式更新。
+
 ## 0.9.31 标签内联编辑、系统标签保护与翻页收尾（2026-11-23）
 
 本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode48、versionName 0.9.31，调试 APK SHA-256 `91f1eb9c87600e481771924528ce7edd637180762ca86a66f1e22b652dcce756`。2026-11-23 18:27 用当前 main 源码（其后安卓代码未再变化）重新构建并覆盖安装到小米 25128PNA1C，重建 APK SHA-256 `24cfd10e…`（构建时间戳不同，与 09:20 包同源）；安装后启动并正常加载生产图库。未发布到下载页，未推送 APK 到生产分发。
