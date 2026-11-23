@@ -39,7 +39,7 @@ SekerGallery 是**多用户、自托管**的素材与照片管理工具。每个
 - **产品／交互**：`product-frame` → `architecture` 的「前端工作区」→ `route-map` → `refresh-map`。
 - **后端**：`architecture` 的「能力归属」「进程与写入」「Invariants」→ `library-sharing-gate`
   → `background-work` → `performance-budget`。
-- **前端**：`route-map` → `refresh-map` → `eagle-workspace-cache.ts` → `SekerGalleryPage.tsx`
+- **前端**：`route-map` → `refresh-map` → `eagle-workspace-cache.ts` → `SekerEaglePage.tsx`
   及其周边 hook。
 
 ## 第一条命令

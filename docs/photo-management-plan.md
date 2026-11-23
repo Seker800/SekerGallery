@@ -77,7 +77,7 @@
 | 人工标签与分组名称按 owner 唯一                                      | `apps/api/prisma/schema.prisma:635`；`:670`                                                                                     | 同 owner 两模式可各建同名标签；关联不能跨模式               |
 | AI 标签、智能文件夹和处理设置有各自持久化模型                        | `apps/api/prisma/schema.prisma:932`；`:973`；`:1111`                                                                            | 标签、规则、统计和用户处理设置的模式作用域要系统设计        |
 | 查询与规则集中于 Eagle 服务和共享筛选包                              | `apps/api/src/eagle/eagle.service.ts:42`；`apps/api/src/eagle/eagle-filter-query.ts`；`packages/eagle-filter-core/src/index.ts` | 拆出作用域与窄服务；照片筛选不应污染素材规则                |
-| Web 入口是一个 Eagle 工作区                                          | `apps/web/src/App.tsx:224`；`apps/web/src/components/eagle/SekerGalleryPage.tsx:222`                                            | 引入工作空间外壳和两套页面组合，复用组件                    |
+| Web 入口是一个 Eagle 工作区                                          | `apps/web/src/App.tsx:224`；`apps/web/src/components/eagle/SekerEaglePage.tsx:222`                                            | 引入工作空间外壳和两套页面组合，复用组件                    |
 | 查询键和实体仓库主要按 owner 隔离                                    | `apps/web/src/components/eagle/eagle-query-keys.ts:1`；`apps/web/src/components/eagle/eagle-asset-entity-store.ts:80`           | 查询缓存、实体数据、选择与偏好增加模式作用域                |
 | worker 根据任务和 owner 领取任务                                     | `apps/worker/src/job-claim.ts:60`；`apps/worker/src/main.ts`                                                                    | 新摄影任务复用调度，确保模式校验和版本化结果                |
 | 桌面已有媒体身份和缓存实现                                           | `apps/desktop/src/shared/media-identity.ts`；`apps/desktop/src/utility/cache/cache-policy.ts`                                   | 审核缓存授权、连接、owner、资源版本与模式的组合身份         |
@@ -162,11 +162,11 @@
 
 ### 阶段 4：双工作空间与通用能力对齐
 
-主要位置：`apps/web/src/App.tsx`、`components/eagle/SekerGalleryPage.tsx`、`eagle-query-keys.ts`、`eagle-asset-entity-store.ts`、`eagle-asset-viewport.ts`、`useEagleUploadController.ts`、`useEagleReferenceData.ts`、`useEagleMutations.ts`、`apps/web/src/lib/eagle-api.ts`。
+主要位置：`apps/web/src/App.tsx`、`components/eagle/SekerEaglePage.tsx`、`eagle-query-keys.ts`、`eagle-asset-entity-store.ts`、`eagle-asset-viewport.ts`、`useEagleUploadController.ts`、`useEagleReferenceData.ts`、`useEagleMutations.ts`、`apps/web/src/lib/eagle-api.ts`。
 
 任务：
 
-- 新建工作空间外壳与模式切换组件，素材与照片各自组合页面；抽取共用图库、详情、标签、筛选和上传能力，不复制 SekerGalleryPage。
+- 新建工作空间外壳与模式切换组件，素材与照片各自组合页面；抽取共用图库、详情、标签、筛选和上传能力，不复制 SekerEaglePage。
 - 请求、查询键、实体仓库、选择、滚动、偏好、轮询、未完成操作和事件更新按 owner＋模式隔离；切换时取消或隔离旧请求提交。
 - 导入入口明确显示目标模式；原模式后台上传可继续，但不得在新模式误显示完成结果或把文件导入新模式。
 - 两边提供一致的通用功能，包括评分、标签、私密规则、智能分类、下载、删除恢复与 AI 设置；照片专属入口在后续阶段渐进交付，不展示假可用按钮。
