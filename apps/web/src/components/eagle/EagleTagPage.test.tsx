@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { EagleManualTag, EagleManualTagGroup } from '../../lib/eagle-api';
 import { EagleTagPage } from './EagleTagPage';
@@ -286,6 +286,102 @@ describe('EagleTagPage', () => {
 
     fireEvent.change(search, { target: { value: 'mty' } });
     expect(screen.getByRole('button', { name: /人工标签 猫头鹰/ })).toBeInTheDocument();
+  });
+  it('selects every filtered tag and keeps the selection across pages', () => {
+    const many = Array.from({ length: 121 }, (_, index) => ({
+      ...manualTags[1],
+      id: `tag-${index}`,
+      name: `标签 ${String(index).padStart(3, '0')}`,
+      pinyin: `biaoqian ${index}`,
+      pinyinInitials: `bq${index}`,
+    }));
+    renderManualPage({ manualTags: many });
+
+    fireEvent.click(screen.getByRole('button', { name: /人工标签 标签 000/ }));
+    expect(screen.getByText('已选择 1 个')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    expect(screen.getByText('已选择 1 个')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '全选筛选结果' }));
+    expect(screen.getByText('已选择 121 个')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '清除选择' }));
+    expect(screen.queryByText(/已选择/)).not.toBeInTheDocument();
+  });
+
+  it('sets and clears a color for the selected tags', async () => {
+    const onUpdateManualTags = vi.fn();
+    renderManualPage({ onUpdateManualTags });
+    fireEvent.click(screen.getByRole('button', { name: /人工标签 UI 界面/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: '设置颜色 #ef4444' }));
+    expect(onUpdateManualTags).toHaveBeenCalledWith([expect.objectContaining({ id: 'tag-ui' })], {
+      color: '#ef4444',
+    });
+    const clear = screen.getByRole('button', { name: '清除颜色' });
+    await waitFor(() => expect(clear).toBeEnabled());
+    fireEvent.click(clear);
+    expect(onUpdateManualTags).toHaveBeenLastCalledWith(
+      [expect.objectContaining({ id: 'tag-ui' })],
+      { color: null },
+    );
+  });
+
+  it('keeps a new tag name when creation fails', async () => {
+    const onCreateManualTag = vi.fn().mockRejectedValue(new Error('创建失败'));
+    renderManualPage({ onCreateManualTag });
+    const input = screen.getByRole('textbox', { name: '新建人工标签' });
+    fireEvent.change(input, { target: { value: '素材标签' } });
+    fireEvent.click(screen.getByRole('button', { name: '创建' }));
+
+    expect(await screen.findByText('创建失败')).toBeInTheDocument();
+    expect(input).toHaveValue('素材标签');
+  });
+
+  it('keeps the rename bar and input when the update fails', async () => {
+    const onUpdateManualTags = vi.fn().mockRejectedValue(new Error('改名失败'));
+    renderManualPage({ onUpdateManualTags });
+    fireEvent.click(screen.getByRole('button', { name: /人工标签 UI 界面/ }));
+    fireEvent.click(screen.getByRole('button', { name: '重命名' }));
+    const input = screen.getByRole('textbox', { name: '重命名标签' });
+    fireEvent.change(input, { target: { value: '新名字' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByText('改名失败')).toBeInTheDocument();
+    expect(input).toHaveValue('新名字');
+  });
+  it('merges selected tags into one target and blocks private sources', async () => {
+    const onMergeManualTags = vi.fn().mockResolvedValue(undefined);
+    renderManualPage({ onMergeManualTags });
+    fireEvent.click(screen.getByRole('button', { name: /人工标签 Reference/ }));
+    fireEvent.click(screen.getByRole('button', { name: /人工标签 UI 界面/ }), { ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: '合并…' }));
+
+    const dialog = screen.getByRole('alertdialog', { name: '合并标签' });
+    expect(within(dialog).getByRole('combobox', { name: '合并目标标签' })).toHaveValue(
+      'tag-reference',
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: '合并' }));
+    expect(onMergeManualTags).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'tag-ui' })],
+      expect.objectContaining({ id: 'tag-reference' }),
+    );
+  });
+
+  it('does not allow a private tag to be merged away', () => {
+    const onMergeManualTags = vi.fn();
+    renderManualPage({
+      onMergeManualTags,
+      manualTags: [
+        manualTags[0]!,
+        { ...manualTags[1]!, id: 'tag-private', name: '私密', marksAssetsPrivate: true },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: /人工标签 Reference/ }));
+    fireEvent.click(screen.getByRole('button', { name: /人工标签 私密/ }), { ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: '合并…' }));
+
+    const dialog = screen.getByRole('alertdialog', { name: '合并标签' });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('是私密标签');
+    expect(within(dialog).getByRole('button', { name: '合并' })).toBeDisabled();
   });
 });
 

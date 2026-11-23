@@ -30,6 +30,7 @@ import {
   eagleTagMatchesQuery,
 } from './eagle-tag-index';
 import styles from './EagleTagPage.module.css';
+import { EagleConfirmationDialog } from './EagleConfirmationDialog';
 type TagScope = 'ALL' | 'UNCATEGORIZED' | 'STARRED' | `GROUP:${string}`;
 type SortMode = 'NAME_ASC' | 'COUNT_DESC' | 'COUNT_ASC';
 type LayoutMode = 'GRID' | 'LIST';
@@ -38,6 +39,17 @@ function isSystemTag(tag: EagleManualTag): boolean {
   return Boolean(tag.systemKey);
 }
 const TAG_PAGE_SIZE = 120;
+const TAG_COLORS = [
+  '#ef4444',
+  '#f97316',
+  '#eab308',
+  '#22c55e',
+  '#06b6d4',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#78716c',
+] as const;
 export interface EagleManualTagChanges {
   name?: string;
   color?: string | null;
@@ -51,9 +63,9 @@ interface EagleTagPageProps {
   busy?: boolean;
   error?: string;
   batchFailure?: { completed: number; items: EagleManualTag[]; retry: () => void };
-  onCreateManualTag: (name: string) => void;
-  onCreateManualTagGroup: (name: string) => void;
-  onUpdateManualTags: (tags: EagleManualTag[], changes: EagleManualTagChanges) => void;
+  onCreateManualTag: (name: string) => Promise<EagleManualTag | void>;
+  onCreateManualTagGroup: (name: string) => Promise<EagleManualTagGroup | void>;
+  onUpdateManualTags: (tags: EagleManualTag[], changes: EagleManualTagChanges) => Promise<unknown>;
   onDeleteManualTags: (tags: EagleManualTag[]) => void;
   onUpdateManualTagGroup: (
     group: EagleManualTagGroup,
@@ -61,9 +73,10 @@ interface EagleTagPageProps {
       name?: string;
       color?: string | null;
     },
-  ) => void;
+  ) => Promise<unknown>;
   onDeleteManualTagGroup: (group: EagleManualTagGroup) => void;
   onSelectTag: (tagId: string) => void;
+  onMergeManualTags?: (sources: EagleManualTag[], target: EagleManualTag) => Promise<void>;
 }
 export function EagleTagPage({
   manualTags,
@@ -79,6 +92,7 @@ export function EagleTagPage({
   onUpdateManualTagGroup,
   onDeleteManualTagGroup,
   onSelectTag,
+  onMergeManualTags,
 }: EagleTagPageProps) {
   const allTags = manualTags;
   const [scope, setScope] = useState<TagScope>('ALL');
@@ -93,11 +107,23 @@ export function EagleTagPage({
   const [editingTag, setEditingTag] = useState<EagleManualTag | null>(null);
   const [editingGroup, setEditingGroup] = useState<EagleManualTagGroup | null>(null);
   const [editName, setEditName] = useState('');
+  const [pendingAction, setPendingAction] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [mergePending, setMergePending] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const anchorIdRef = useRef<string | null>(null);
   useEffect(() => {
     const validIds = new Set(allTags.map((tag) => tag.id));
     setSelectedIds((current) => current.filter((id) => validIds.has(id)));
   }, [allTags]);
+  useEffect(() => {
+    if (!highlightId) return;
+    const timer = window.setTimeout(() => setHighlightId(null), 2_400);
+    return () => window.clearTimeout(timer);
+  }, [highlightId]);
   const tagIndexes = useMemo(
     () => new Map(allTags.map((tag) => [tag.id, createEagleTagIndex(tag)])),
     [allTags],
@@ -170,20 +196,45 @@ export function EagleTagPage({
     }
     anchorIdRef.current = tagId;
   };
-  const submitTag = (event: FormEvent) => {
+  const actionFailure = (cause: unknown) => {
+    setActionError(cause instanceof Error ? cause.message : t('操作失败'));
+  };
+  const submitTag = async (event: FormEvent) => {
     event.preventDefault();
     const name = newTagName.normalize('NFKC').trim();
-    if (!name) return;
-    onCreateManualTag(name);
-    setNewTagName('');
+    if (!name || pendingAction) return;
+    setPendingAction(true);
+    setActionError(null);
+    try {
+      const created = await onCreateManualTag(name);
+      setNewTagName('');
+      if (created && typeof created === 'object' && 'id' in created) {
+        setScope('ALL');
+        setPage(0);
+        setQuery(created.name);
+        setHighlightId(created.id);
+      }
+    } catch (cause) {
+      actionFailure(cause);
+    } finally {
+      setPendingAction(false);
+    }
   };
-  const submitGroup = (event: FormEvent) => {
+  const submitGroup = async (event: FormEvent) => {
     event.preventDefault();
     const name = newGroupName.normalize('NFKC').trim();
-    if (!name) return;
-    onCreateManualTagGroup(name);
-    setNewGroupName('');
-    setShowGroupCreator(false);
+    if (!name || pendingAction) return;
+    setPendingAction(true);
+    setActionError(null);
+    try {
+      await onCreateManualTagGroup(name);
+      setNewGroupName('');
+      setShowGroupCreator(false);
+    } catch (cause) {
+      actionFailure(cause);
+    } finally {
+      setPendingAction(false);
+    }
   };
   const startTagEdit = () => {
     const tag = selectedManualTags[0];
@@ -198,14 +249,50 @@ export function EagleTagPage({
     setEditingTag(null);
     setEditName(activeGroup.name);
   };
-  const submitEdit = (event: FormEvent) => {
+  const submitEdit = async (event: FormEvent) => {
     event.preventDefault();
     const name = editName.normalize('NFKC').trim();
-    if (!name || (editingTag && isSystemTag(editingTag))) return;
-    if (editingTag) onUpdateManualTags([editingTag], { name });
-    if (editingGroup) onUpdateManualTagGroup(editingGroup, { name });
-    setEditingTag(null);
-    setEditingGroup(null);
+    if (!name || pendingAction || (editingTag && isSystemTag(editingTag))) return;
+    setPendingAction(true);
+    setActionError(null);
+    try {
+      if (editingTag) await onUpdateManualTags([editingTag], { name });
+      if (editingGroup) await onUpdateManualTagGroup(editingGroup, { name });
+      setHighlightId(editingTag?.id ?? null);
+      setEditingTag(null);
+      setEditingGroup(null);
+    } catch (cause) {
+      actionFailure(cause);
+    } finally {
+      setPendingAction(false);
+    }
+  };
+  const applyTagChanges = async (changes: EagleManualTagChanges) => {
+    if (selectedManualTags.length === 0) return;
+    setPendingAction(true);
+    setActionError(null);
+    try {
+      await onUpdateManualTags(selectedManualTags, changes);
+    } catch (cause) {
+      actionFailure(cause);
+    } finally {
+      setPendingAction(false);
+    }
+  };
+  const updateColor = (color: string | null) => applyTagChanges({ color });
+  const selectAllFiltered = () => setSelectedIds(visibleTags.map((tag) => tag.id));
+  const clearSelected = () => setSelectedIds([]);
+  const updateGroupColor = async (color: string | null) => {
+    if (!activeGroup || pendingAction) return;
+    setPendingAction(true);
+    setActionError(null);
+    try {
+      await onUpdateManualTagGroup(activeGroup, { color });
+    } catch (cause) {
+      actionFailure(cause);
+    } finally {
+      setPendingAction(false);
+    }
   };
   const deleteTags = () => {
     if (selectedManualTags.length === 0 || selectedManualTags.some(isSystemTag)) return;
@@ -235,6 +322,34 @@ export function EagleTagPage({
     ) {
       onDeleteManualTagGroup(activeGroup);
       changeScope('UNCATEGORIZED');
+    }
+  };
+  const closeMerge = () => {
+    if (mergePending) return;
+    setMergeOpen(false);
+    setMergeError(null);
+  };
+  const mergeTarget = selectedManualTags.find((tag) => tag.id === mergeTargetId);
+  const mergeSources = selectedManualTags.filter((tag) => tag.id !== mergeTargetId);
+  const mergePrivateSource = mergeSources.find((tag) => tag.marksAssetsPrivate);
+  const mergeBlocked =
+    !mergeTarget ||
+    mergeSources.length === 0 ||
+    Boolean(mergePrivateSource) ||
+    [...mergeSources, mergeTarget].some(isSystemTag);
+  const submitMerge = async () => {
+    if (mergeBlocked || !mergeTarget || !onMergeManualTags || mergePending) return;
+    setMergePending(true);
+    setMergeError(null);
+    try {
+      await onMergeManualTags(mergeSources, mergeTarget);
+      setSelectedIds([]);
+      setMergeOpen(false);
+      setActionError(null);
+    } catch (cause) {
+      setMergeError(cause instanceof Error ? cause.message : t('合并标签失败，请重试。'));
+    } finally {
+      setMergePending(false);
     }
   };
   return (
@@ -289,7 +404,7 @@ export function EagleTagPage({
               </button>
             </div>
             {showGroupCreator && (
-              <form className={styles.groupForm} onSubmit={submitGroup}>
+              <form className={styles.groupForm} onSubmit={(event) => void submitGroup(event)}>
                 <input
                   autoFocus
                   aria-label={t('标签组名称')}
@@ -323,11 +438,28 @@ export function EagleTagPage({
             </div>
             {activeGroup && (
               <div className={styles.groupActions}>
-                <button type="button" onClick={startGroupEdit}>
+                <label className={styles.groupColorControl} title={t('标签组颜色')}>
+                  <input
+                    type="color"
+                    aria-label={t('标签组颜色')}
+                    value={activeGroup.color ?? '#6d727a'}
+                    disabled={pendingAction}
+                    onChange={(event) => void updateGroupColor(event.currentTarget.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  aria-label={t('清除标签组颜色')}
+                  disabled={pendingAction}
+                  onClick={() => void updateGroupColor(null)}
+                >
+                  ×
+                </button>
+                <button type="button" onClick={startGroupEdit} disabled={pendingAction}>
                   <IconEdit size={13} />
                   {' ' + t('重命名') + ' '}
                 </button>
-                <button type="button" onClick={deleteGroup}>
+                <button type="button" onClick={deleteGroup} disabled={pendingAction}>
                   <IconTrash size={13} />
                   {' ' + t('删除') + ' '}
                 </button>
@@ -408,7 +540,7 @@ export function EagleTagPage({
 
         {
           <div className={styles.managementBar}>
-            <form className={styles.createForm} onSubmit={submitTag}>
+            <form className={styles.createForm} onSubmit={(event) => void submitTag(event)}>
               <IconPlus size={15} />
               <input
                 aria-label={t('新建人工标签')}
@@ -417,7 +549,10 @@ export function EagleTagPage({
                 value={newTagName}
                 onChange={(event) => setNewTagName(event.target.value)}
               />
-              <button type="submit" disabled={!newTagName.trim() || creating || busy}>
+              <button
+                type="submit"
+                disabled={!newTagName.trim() || creating || busy || pendingAction}
+              >
                 {' ' + t('创建') + ' '}
               </button>
             </form>
@@ -425,11 +560,58 @@ export function EagleTagPage({
               <div className={styles.selectionActions}>
                 <button
                   type="button"
+                  disabled={pendingAction || selectedIds.length === visibleTags.length}
+                  onClick={selectAllFiltered}
+                >
+                  {t('全选筛选结果')}
+                </button>
+                <button type="button" disabled={pendingAction} onClick={clearSelected}>
+                  {t('清除选择')}
+                </button>
+                {selectedManualTags.length >= 2 && onMergeManualTags && (
+                  <button
+                    type="button"
+                    disabled={pendingAction}
+                    onClick={() => {
+                      setMergeTargetId(selectedManualTags[0]?.id ?? '');
+                      setMergeError(null);
+                      setMergeOpen(true);
+                    }}
+                  >
+                    {t('合并…')}
+                  </button>
+                )}
+                <div className={styles.colorPicker} role="group" aria-label={t('标签颜色')}>
+                  {TAG_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      aria-label={t('设置颜色 {{value1}}', { value1: color })}
+                      title={color}
+                      className={styles.colorSwatch}
+                      style={{ background: color }}
+                      disabled={pendingAction}
+                      onClick={() => void updateColor(color)}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    aria-label={t('清除颜色')}
+                    disabled={pendingAction}
+                    className={styles.colorClear}
+                    onClick={() => void updateColor(null)}
+                  >
+                    ×
+                  </button>
+                </div>
+                <button
+                  type="button"
                   aria-label={
                     selectedManualTags.every((tag) => tag.isStarred) ? t('取消常用') : t('设为常用')
                   }
+                  disabled={pendingAction}
                   onClick={() =>
-                    onUpdateManualTags(selectedManualTags, {
+                    void applyTagChanges({
                       isStarred: !selectedManualTags.every((tag) => tag.isStarred),
                     })
                   }
@@ -444,8 +626,9 @@ export function EagleTagPage({
                 <select
                   aria-label={t('移动到标签组')}
                   defaultValue=""
+                  disabled={pendingAction}
                   onChange={(event) => {
-                    onUpdateManualTags(selectedManualTags, {
+                    void applyTagChanges({
                       groupId: event.target.value === '__uncategorized' ? null : event.target.value,
                     });
                     event.target.value = '';
@@ -486,7 +669,7 @@ export function EagleTagPage({
         }
 
         {(editingTag || editingGroup) && (
-          <form className={styles.editBar} onSubmit={submitEdit}>
+          <form className={styles.editBar} onSubmit={(event) => void submitEdit(event)}>
             <label>
               {editingTag ? t('重命名标签') : t('重命名标签组')}
               <input
@@ -496,7 +679,7 @@ export function EagleTagPage({
                 onChange={(event) => setEditName(event.target.value)}
               />
             </label>
-            <button type="submit" disabled={!editName.trim() || busy}>
+            <button type="submit" disabled={!editName.trim() || busy || pendingAction}>
               {' ' + t('保存') + ' '}
             </button>
             <button
@@ -511,6 +694,11 @@ export function EagleTagPage({
           </form>
         )}
         {error && <p className={styles.error}>{error}</p>}
+        {actionError && (
+          <p className={styles.error} role="alert">
+            {actionError}
+          </p>
+        )}
         {batchFailure && (
           <div role="status">
             <p>
@@ -558,7 +746,7 @@ export function EagleTagPage({
                             value3: tag.assetCount,
                           })}
                           aria-pressed={selected}
-                          className={selected ? styles.tagSelected : undefined}
+                          className={`${selected ? styles.tagSelected : ''} ${highlightId === tag.id ? styles.tagHighlight : ''}`}
                           onClick={(event) => handleTagClick(event, tag.id)}
                           onDoubleClick={() => onSelectTag(tag.id)}
                           onKeyDown={(event) => {
@@ -593,10 +781,7 @@ export function EagleTagPage({
               <button
                 type="button"
                 disabled={currentPage === 0}
-                onClick={() => {
-                  setSelectedIds([]);
-                  setPage((value) => Math.max(0, value - 1));
-                }}
+                onClick={() => setPage((value) => Math.max(0, value - 1))}
               >
                 {t('上一页')}
               </button>
@@ -604,10 +789,7 @@ export function EagleTagPage({
               <button
                 type="button"
                 disabled={currentPage >= pageCount - 1}
-                onClick={() => {
-                  setSelectedIds([]);
-                  setPage((value) => Math.min(pageCount - 1, value + 1));
-                }}
+                onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}
               >
                 {t('下一页')}
               </button>
@@ -618,6 +800,62 @@ export function EagleTagPage({
           )}
         </div>
       </div>
+
+      {mergeOpen && (
+        <EagleConfirmationDialog
+          title={t('合并标签')}
+          description={
+            <>
+              <p>{t('把所选标签的素材并入目标标签，然后删除其余源标签。')}</p>
+              <label>
+                <span>{t('目标标签')}</span>
+                <select
+                  aria-label={t('合并目标标签')}
+                  value={mergeTargetId}
+                  disabled={mergePending}
+                  onChange={(event) => setMergeTargetId(event.currentTarget.value)}
+                >
+                  {selectedManualTags.map((tag) => (
+                    <option key={tag.id} value={tag.id}>
+                      {tag.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p>
+                {t('将删除 {{value1}} 个源标签，素材会保留在「{{value2}}」。', {
+                  value1: mergeSources.length,
+                  value2: mergeTarget?.name ?? '',
+                })}
+              </p>
+              {mergePrivateSource && (
+                <p role="alert">
+                  {t('「{{value1}}」是私密标签，请先在私密设置中处理，不能直接合并。', {
+                    value1: mergePrivateSource.name,
+                  })}
+                </p>
+              )}
+              {mergeError && <p role="alert">{mergeError}</p>}
+            </>
+          }
+          actions={
+            <>
+              <button type="button" disabled={mergePending} onClick={closeMerge}>
+                {t('取消')}
+              </button>
+              <button
+                type="button"
+                className={styles.danger}
+                disabled={mergeBlocked || mergePending}
+                onClick={() => void submitMerge()}
+              >
+                {mergePending ? t('正在合并…') : t('合并')}
+              </button>
+            </>
+          }
+          onCancel={closeMerge}
+        />
+      )}
     </section>
   );
 }

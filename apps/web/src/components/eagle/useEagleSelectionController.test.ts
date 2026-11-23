@@ -44,4 +44,14 @@ describe('workspace selection ownership', () => {
     expect(result.current.selectedAssetIds).toEqual(['a']);
     expect(result.current.selectedAssetId).toBeNull();
   });
+
+  it('selects every loaded asset as one batch with a stable anchor', () => {
+    const { result } = renderHook(() => useEagleSelectionController());
+    act(() => result.current.selectAll(['a', 'b', 'c']));
+    expect(result.current.selectedAssetIds).toEqual(['a', 'b', 'c']);
+    expect(result.current.selectedAssetId).toBe('c');
+    expect(result.current.isBatchSelection).toBe(true);
+    act(() => result.current.clear());
+    expect(result.current.selectedAssetIds).toEqual([]);
+  });
 });

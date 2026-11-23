@@ -3,16 +3,19 @@ import { useEffect, useRef, useState } from 'react';
 import { t } from '../../i18n';
 import { useEnqueueAssetOperation } from './useAssetOperations';
 import type { AssetOperationSummary } from '@sekereagle/library-core';
+import styles from './EagleAssetActionMenu.module.css';
 
 export function EagleSendAssetsMenuItem({
   assetIds,
   label,
   disabled,
+  reason,
   onQueued,
 }: {
   assetIds: string[];
   label: string;
   disabled: boolean;
+  reason?: string;
   onQueued: (result: AssetOperationSummary) => void | Promise<void>;
 }) {
   const enqueue = useEnqueueAssetOperation();
@@ -54,6 +57,11 @@ export function EagleSendAssetsMenuItem({
         <IconSend size={15} />
         {pending ? t('提交中…') : label}
       </button>
+      {reason && (
+        <small className={styles.reason} role="note">
+          {reason}
+        </small>
+      )}
       {error && <small role="alert">{error}</small>}
     </>
   );

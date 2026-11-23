@@ -10,6 +10,8 @@ export function EagleSelectionToolbar({
   onActions,
   onPreview,
   onBatchEdit,
+  onSelectAllMatching,
+  resolvingCount,
 }: {
   selecting: boolean;
   count: number;
@@ -17,6 +19,8 @@ export function EagleSelectionToolbar({
   onActions: (event: MouseEvent<HTMLButtonElement>) => void;
   onPreview?: () => void;
   onBatchEdit?: () => void;
+  onSelectAllMatching?: () => void;
+  resolvingCount?: number | null;
 }) {
   const compact = useCompactLayout();
   const active = selecting || count > 0;
@@ -37,6 +41,13 @@ export function EagleSelectionToolbar({
             ? t('点选要管理的图片')
             : ''}
       </span>
+      {onSelectAllMatching && count > 0 && (!compact || active) && (
+        <button type="button" onClick={onSelectAllMatching}>
+          {resolvingCount === null || resolvingCount === undefined
+            ? t('选择全部匹配项')
+            : t('正在选择 {{value1}} 项…', { value1: resolvingCount })}
+        </button>
+      )}
       {onPreview && (!compact || active) && (
         <button type="button" aria-label={t('查看所选图片')} onClick={onPreview}>
           <IconPhoto size={17} />

@@ -75,6 +75,13 @@ export function registerSharedLibraryCommands(
       return { privacyChanged };
     },
   });
+  registry.register('ASSET_PURGE', {
+    protocol: 'METADATA',
+    partition: assetPartitions,
+    apply: async (tx, context, _payload, assetIds) => {
+      await eagle.markTrashForPurge(tx, context.ownerId, assetIds, context.includePrivate);
+    },
+  });
   registry.register('ASSET_UPDATE', {
     protocol: 'METADATA',
     prepare: (context, payload, ids, tx) => prepareQueuedMetadata(tx, context, payload, ids),

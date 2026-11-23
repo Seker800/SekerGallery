@@ -113,4 +113,37 @@ it('navigates thumbnails by keyboard without advancing twice and uses current de
   );
   fireEvent.keyDown(next, { key: 'Home' });
   expect(first).toHaveAttribute('aria-pressed', 'true');
+
+});
+
+it('offers whole-group selection and tagging from the viewer', () => {
+  const onSelectStack = vi.fn();
+  const onTagStack = vi.fn();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <PhotoStackLightbox
+        stack={stack}
+        onClose={vi.fn()}
+        onSelectStack={onSelectStack}
+        onTagStack={onTagStack}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '选择整组' }));
+  fireEvent.click(screen.getByRole('button', { name: '为整组添加标签' }));
+  expect(onSelectStack).toHaveBeenCalledWith(['a', 'b']);
+  expect(onTagStack).toHaveBeenCalledWith(['a', 'b']);
+});
+
+it('reports a dismissed group so the page can offer undo', async () => {
+  const onUngrouped = vi.fn();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <PhotoStackLightbox stack={stack} onClose={vi.fn()} onUngrouped={onUngrouped} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: '取消分组' }));
+  await waitFor(() => expect(onUngrouped).toHaveBeenCalledWith(stack));
 });

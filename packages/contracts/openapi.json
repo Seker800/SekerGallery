@@ -1491,6 +1491,40 @@
         "tags": ["eagle"]
       }
     },
+    "/api/eagle/assets/selection": {
+      "post": {
+        "operationId": "EagleController_resolveSelection",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveAssetSelectionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetSelectionResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle"]
+      }
+    },
     "/api/eagle/assets/filter-count": {
       "post": {
         "operationId": "EagleController_countAssets",
@@ -2197,6 +2231,40 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/EagleAssetIdsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EagleOperationSummaryResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle"]
+      }
+    },
+    "/api/eagle/assets/batch/purge": {
+      "post": {
+        "operationId": "EagleController_batchPurge",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeEagleAssetsDto"
               }
             }
           }
@@ -6063,6 +6131,40 @@
         "tags": ["eagle", "photos"]
       }
     },
+    "/api/photos/assets/selection": {
+      "post": {
+        "operationId": "PhotosController_resolveSelection",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveAssetSelectionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetSelectionResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle", "photos"]
+      }
+    },
     "/api/photos/assets/filter-count": {
       "post": {
         "operationId": "PhotosController_countAssets",
@@ -6769,6 +6871,40 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/EagleAssetIdsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EagleOperationSummaryResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle", "photos"]
+      }
+    },
+    "/api/photos/assets/batch/purge": {
+      "post": {
+        "operationId": "PhotosController_batchPurge",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeEagleAssetsDto"
               }
             }
           }
@@ -10195,7 +10331,7 @@
     }
   },
   "info": {
-    "title": "SekerEagle API",
+    "title": "SekerGallery API",
     "description": "",
     "version": "0.1.0",
     "contact": {}
@@ -11205,6 +11341,9 @@
           "systemKey": {
             "type": "string",
             "nullable": true
+          },
+          "marksAssetsPrivate": {
+            "type": "boolean"
           }
         },
         "required": ["id", "name", "color"]
@@ -11461,6 +11600,141 @@
           }
         },
         "required": ["items", "nextCursor", "colorCoverage"]
+      },
+      "ResolveAssetSelectionDto": {
+        "type": "object",
+        "properties": {
+          "smartFolderOrder": {
+            "type": "string",
+            "enum": ["RELEVANCE"]
+          },
+          "offset": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000000,
+            "description": "Initial navigation offset within the selected date boundary; incompatible with cursor and search."
+          },
+          "before": {
+            "type": "string",
+            "description": "Exclusive date boundary for native timeline navigation; not combinable with search or cursor."
+          },
+          "sort": {
+            "type": "string",
+            "enum": ["CAPTURED_AT", "ADDED_AT"],
+            "description": "Newest first. Missing capture time falls back to import time. Omitted preserves mode defaults and search relevance. Trash always orders by deletion time instead."
+          },
+          "personId": {
+            "type": "string"
+          },
+          "cameraModel": {
+            "type": "string"
+          },
+          "lensModel": {
+            "type": "string"
+          },
+          "gps": {
+            "type": "string",
+            "enum": ["WITH", "WITHOUT"]
+          },
+          "limit": {
+            "type": "number",
+            "maximum": 100,
+            "default": 30
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "search": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "rating": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "format": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "formats": {
+            "type": "string",
+            "description": "Comma-separated values"
+          },
+          "manualTagIds": {
+            "type": "string",
+            "description": "Comma-separated values"
+          },
+          "smartFolderId": {
+            "type": "string"
+          },
+          "minWidth": {
+            "type": "number"
+          },
+          "maxWidth": {
+            "type": "number"
+          },
+          "minHeight": {
+            "type": "number"
+          },
+          "maxHeight": {
+            "type": "number"
+          },
+          "createdFrom": {
+            "type": "string"
+          },
+          "createdTo": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "tagMatch": {
+            "type": "string",
+            "enum": ["ANY", "ALL"]
+          },
+          "privacy": {
+            "type": "string",
+            "enum": ["PRIVATE"]
+          },
+          "rules": {
+            "type": "string",
+            "description": "JSON encoded Eagle filter query",
+            "maxLength": 12000
+          },
+          "trash": {
+            "type": "boolean",
+            "description": "Resolve ids from the trash lifecycle view"
+          }
+        }
+      },
+      "AssetSelectionItemDto": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string"
+          },
+          "rowVersion": {
+            "type": "number"
+          }
+        },
+        "required": ["assetId", "rowVersion"]
+      },
+      "AssetSelectionResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssetSelectionItemDto"
+            }
+          },
+          "nextCursor": {
+            "type": "object",
+            "nullable": true
+          }
+        },
+        "required": ["items"]
       },
       "CountEagleAssetsDto": {
         "type": "object",
@@ -11908,6 +12182,19 @@
           }
         },
         "required": ["tagIds", "expectedTagIds"]
+      },
+      "PurgeEagleAssetsDto": {
+        "type": "object",
+        "properties": {
+          "assetIds": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["assetIds"]
       },
       "CreateManualTagDto": {
         "type": "object",

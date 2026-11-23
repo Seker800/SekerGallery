@@ -608,3 +608,68 @@
     min-height: 38px;
   }
 }
+
+.selectionActions .colorPicker {
+  padding-left: 5px;
+  border-left: 1px solid rgb(255 255 255 / 8%);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.selectionActions .colorSwatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 50%;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+.selectionActions .colorSwatch:hover {
+  transform: scale(1.12);
+}
+.selectionActions .colorClear {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  line-height: 1;
+}
+.selectionActions .colorSwatch:disabled,
+.selectionActions .colorClear:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.groupColorControl {
+  width: 25px;
+  height: 25px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.groupColorControl input {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.tagHighlight {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 1px;
+  animation: tag-flash 1.6s ease-out;
+}
+@keyframes tag-flash {
+  from {
+    background: rgb(var(--ui-accent-rgb) / 22%);
+  }
+  to {
+    background: transparent;
+  }
+}

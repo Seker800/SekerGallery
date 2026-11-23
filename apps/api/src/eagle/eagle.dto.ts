@@ -213,6 +213,24 @@ export class ListEagleAssetsDto {
   rules?: string;
 }
 
+export class ResolveAssetSelectionDto extends ListEagleAssetsDto {
+  @ApiPropertyOptional({ description: 'Resolve ids from the trash lifecycle view' })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  trash?: boolean;
+}
+
+export class AssetSelectionItemDto {
+  @ApiProperty() assetId!: string;
+  @ApiProperty() rowVersion!: number;
+}
+
+export class AssetSelectionResponseDto {
+  @ApiProperty({ type: [AssetSelectionItemDto] }) items!: AssetSelectionItemDto[];
+  @ApiPropertyOptional({ nullable: true }) nextCursor!: string | null;
+}
+
 export class CountEagleAssetsDto {
   @ApiProperty({ type: 'object', additionalProperties: true })
   @IsObject()
@@ -270,6 +288,15 @@ export class EagleAssetIdsDto {
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(100)
+  @IsUUID('4', { each: true })
+  assetIds!: string[];
+}
+
+export class PurgeEagleAssetsDto {
+  @ApiProperty({ type: [String], minItems: 1 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
   @IsUUID('4', { each: true })
   assetIds!: string[];
 }

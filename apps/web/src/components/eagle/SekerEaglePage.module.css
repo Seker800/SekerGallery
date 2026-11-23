@@ -869,9 +869,37 @@
   font-size: 11px;
 }
 .tagEditor .tagAssigned {
-  border-color: rgb(var(--ui-accent-rgb) / 45%);
+  min-height: 27px;
+  padding: 0 3px 0 9px;
+  border: 1px solid rgb(var(--ui-accent-rgb) / 45%);
+  border-radius: var(--ui-radius-control);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--ui-accent-text);
   background: rgb(var(--ui-accent-rgb) / 12%);
+  font-size: 11px;
+}
+.tagEditor .tagRemove {
+  width: 21px;
+  min-height: 21px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.tagEditor .tagRemove:hover {
+  background: rgb(255 255 255 / 10%);
+}
+.tagEditor .tagRemove:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .tagEditor .tagAdd {
   border-style: dashed;
@@ -1248,4 +1276,30 @@
   background: var(--ui-raised);
   border-top: 2px solid var(--ui-accent);
   font-size: 12px;
+}
+
+.shortcutList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 7px;
+}
+.shortcutList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: #b9bdc4;
+  font-size: 11px;
+}
+.shortcutList kbd {
+  min-width: 92px;
+  padding: 2px 6px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 4px;
+  color: #e1e4e8;
+  background: rgb(255 255 255 / 5%);
+  font: inherit;
+  text-align: center;
 }

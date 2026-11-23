@@ -2,6 +2,8 @@ import { EagleTrashConfirmation } from './EagleTrashConfirmation';
 import { EagleConfirmationDialog } from './EagleConfirmationDialog';
 import { mediaProcessingFailure } from '../../lib/media-processing-error';
 import { awaitWorkspaceRefreshBaseline } from '../../lib/workspace-refresh';
+import { isAcceptedOperation, observeAcceptedOperation } from '../../lib/accepted-operation';
+import { createAssetOperationsApi } from '../../lib/asset-operations-api';
 import { EagleOperationNotices } from './EagleOperationNotices';
 import { EagleDuplicates } from './EagleDuplicates';
 import { refreshEagleAssetRelations } from './eagle-write-refresh';
@@ -80,6 +82,7 @@ import {
   IconChevronUp,
   IconDownload,
   IconFolderBolt,
+  IconLayersSubtract,
   IconLayoutGrid,
   IconLayoutSidebarRight,
   IconLoader2,
@@ -98,7 +101,7 @@ import {
   IconTrash,
   IconX,
 } from '@tabler/icons-react';
-import sekerEagleLogo from '../../assets/seker-eagle-logo.svg';
+import sekerGalleryLogo from '../../assets/seker-gallery-logo.svg';
 import { useEagleAssetPreview } from './useEagleAssetPreview';
 import { useEagleBrowseSession } from './useEagleBrowseSession';
 import {
@@ -135,6 +138,7 @@ import {
   getEagleViewerHighResolutionUrl,
 } from './eagle-media-sources';
 import { EagleBatchTagPicker } from './EagleBatchTagPicker';
+import { LibraryUndoToast } from '../library/LibraryUndoToast';
 import { EagleColorPalette } from './EagleColorPalette';
 import type { EagleVectorWorkspaceView } from './EagleVectorWorkspace';
 import { EagleSmartFolderDialog } from './EagleSmartFolderDialog';
@@ -159,6 +163,7 @@ import {
   type EaglePhotoView,
 } from './eagle-workspace-cache';
 import { createEagleQueryKeys } from './eagle-query-keys';
+import { updatePhotoGroup } from '../../lib/photo-management-api';
 import { useEagleUploadController } from './useEagleUploadController';
 import { useEagleReferenceData } from './useEagleReferenceData';
 import { useEagleProcessingUpdates } from './useEagleProcessingUpdates';
@@ -278,6 +283,8 @@ export function SekerEaglePage({
       getEagleTrashAsset,
       getEaglePyramidDescriptor,
       listEagleAssets,
+      resolveEagleAssetSelection,
+      purgeEagleTrashAssets,
       listEagleTrash,
       fetchEagleReviewSummary,
       retryEagleAssetProcessing,
@@ -311,6 +318,20 @@ export function SekerEaglePage({
   const [isSmartFolderDialogOpen, setIsSmartFolderDialogOpen] = useState(false);
   const [editingSmartFolder, setEditingSmartFolder] = useState<EagleSmartFolder | null>(null);
   const [smartFolderSearchTerm, setSmartFolderSearchTerm] = useState('');
+  const [expandPhotoStacks, setExpandPhotoStacks] = useState(() => {
+    try {
+      return window.localStorage.getItem('seker-eagle.expand-photo-stacks') === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('seker-eagle.expand-photo-stacks', expandPhotoStacks ? '1' : '0');
+    } catch {
+      // Preferences are best effort.
+    }
+  }, [expandPhotoStacks]);
   const compact = useCompactLayout();
   const [mobileMore, setMobileMore] = useState(false);
   const [mobileSearch, setMobileSearch] = useState(false);
@@ -325,9 +346,36 @@ export function SekerEaglePage({
     assetContextMenu,
     setSelectionMode,
     setAssetContextMenu,
+    selectAll: selectAllAssets,
     clear: clearAssetSelection,
   } = selection;
+  useEffect(() => () => resolveSelectionAbort.current?.abort(), []);
+  useEffect(() => {
+    setSelectionVersions((current) => {
+      if (!current.size) return current;
+      const next = new Map<string, number>();
+      for (const id of selectedAssetIds) {
+        const version = current.get(id);
+        if (version !== undefined) next.set(id, version);
+      }
+      return next.size === current.size ? current : next;
+    });
+  }, [selectedAssetIds]);
   const [tagPicker, setTagPicker] = useState<EagleTagPickerState | null>(null);
+  const [selectionVersions, setSelectionVersions] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+  const [resolvingSelection, setResolvingSelection] = useState<{ count: number } | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [purgeTargetIds, setPurgeTargetIds] = useState<string[] | null>(null);
+  const [purgeConfirmText, setPurgeConfirmText] = useState('');
+  const resolveSelectionAbort = useRef<AbortController | null>(null);
+  const [undoToast, setUndoToast] = useState<{
+    id: number;
+    message: string;
+    run: () => void;
+  } | null>(null);
   const {
     photoView,
     setPhotoView,
@@ -372,6 +420,22 @@ export function SekerEaglePage({
     privacyRulesRevision,
     workspaceCache,
     selection,
+  });
+  useEffect(() => {
+    resolveSelectionAbort.current?.abort();
+  }, [activeSmartFolderId, deferredSearch, libraryView, quickFilters]);
+  const purgeTrashMutation = useMutation({
+    mutationFn: (assetIds: string[]) => purgeEagleTrashAssets(assetIds),
+    onSuccess: async (result) => {
+      setPurgeTargetIds(null);
+      setPurgeConfirmText('');
+      if (observeAcceptedOperation(queryClient, ownerId, libraryMode, result)) {
+        clearAssetSelection();
+        return;
+      }
+      clearAssetSelection();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.assets });
+    },
   });
   const [failedAssetAction, setFailedAssetAction] = useState<EagleAssetListItem | null>(null);
   const [failedAssetError, setFailedAssetError] = useState<string | null>(null);
@@ -750,6 +814,16 @@ export function SekerEaglePage({
       }),
     [selectedAssetIds, assetsById],
   );
+  const sendBlockReason = useMemo(() => {
+    if (libraryView === 'TRASH') return undefined;
+    if (selectedTransferAssets.length !== selectedAssetIds.length)
+      return t('部分所选尚未加载，暂不能发送。');
+    if (selectedTransferAssets.some((asset) => !asset.mimeType.startsWith('image/')))
+      return t('发送只支持图片；请先排除视频或音频。');
+    if (selectedTransferAssets.some((asset) => asset.lifecycleStatus !== 'READY'))
+      return t('部分素材仍在处理中，完成后才能发送。');
+    return undefined;
+  }, [libraryView, selectedAssetIds.length, selectedTransferAssets]);
   const contextMenuAsset =
     selectedAssetIds.length === 1 ? (assetsById.get(selectedAssetIds[0]) ?? null) : null;
   const imageClipboardAvailable = canCopyImageToClipboard();
@@ -763,17 +837,93 @@ export function SekerEaglePage({
   });
   const selectedAsset: EagleAsset | null = selectedAssetQuery.data ?? null;
   const isSelectedAssetReadOnly = libraryView === 'TRASH';
+  const resolveAllMatching = async () => {
+    if (resolvingSelection) {
+      resolveSelectionAbort.current?.abort();
+      return;
+    }
+    const controller = new AbortController();
+    resolveSelectionAbort.current = controller;
+    setResolvingSelection({ count: 0 });
+    setSelectionError(null);
+    const versions = new Map<string, number>();
+    try {
+      let cursor: string | undefined;
+      do {
+        const page = await resolveEagleAssetSelection(
+          { ...assetFilters, cursor, limit: undefined },
+          { trash: libraryView === 'TRASH', signal: controller.signal },
+        );
+        for (const item of page.items) versions.set(item.assetId, item.rowVersion);
+        setResolvingSelection({ count: versions.size });
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      if (controller.signal.aborted) return;
+      setSelectionVersions(versions);
+      selectAllAssets([...versions.keys()]);
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setSelectionError(
+          error instanceof Error ? error.message : t('选择全部匹配项失败，请重试。'),
+        );
+    } finally {
+      if (resolveSelectionAbort.current === controller) resolveSelectionAbort.current = null;
+      setResolvingSelection(null);
+    }
+  };
+  const waitForTagMerge = async (operationId: string) => {
+    const operationsApi = createAssetOperationsApi(libraryMode);
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const operations = await operationsApi.list(true);
+      const operation = operations.find((item) => item.id === operationId);
+      if (operation?.state === 'COMPLETED') return;
+      if (operation?.state === 'STOPPED' || operation?.failed || operation?.cancelled)
+        throw new Error(t('部分素材合并失败，请到任务中心重试。'));
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new Error(t('合并仍在进行，请到任务中心确认结果。'));
+  };
+  const mergeManualTags = async (
+    sources: EagleManualTag[],
+    target: EagleManualTag,
+  ): Promise<void> => {
+    const ids = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const page = await resolveEagleAssetSelection(
+        {
+          manualTagIds: sources.map((tag) => tag.id),
+          tagMatch: 'ANY',
+          cursor,
+          limit: undefined,
+        },
+        {},
+      );
+      for (const item of page.items) ids.add(item.assetId);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    if (ids.size > 0) {
+      const result = await batchTagMutation.mutateAsync({
+        assetIds: [...ids],
+        addTagIds: [target.id],
+        removeTagIds: sources.map((tag) => tag.id),
+      });
+      if (isAcceptedOperation(result)) await waitForTagMerge(result.id);
+    }
+    await deleteTagsMutation.mutateAsync(sources);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.manualTags });
+  };
   const selectedAssetVersions: EagleAssetVersion[] = useMemo(
     () =>
       selectedAssetIds.flatMap((assetId) => {
         const listVersion = assetsById.get(assetId)?.rowVersion;
         const detailVersion = assetId === selectedAsset?.id ? selectedAsset.rowVersion : undefined;
-        const versions = [listVersion, detailVersion].filter(
+        const versions = [selectionVersions.get(assetId), listVersion, detailVersion].filter(
           (version): version is number => version !== undefined,
         );
         return versions.length ? [{ assetId, rowVersion: Math.max(...versions) }] : [];
       }),
-    [selectedAssetIds, assetsById, selectedAsset],
+    [selectedAssetIds, assetsById, selectedAsset, selectionVersions],
   );
   const selectedRating = useMemo(
     () =>
@@ -995,6 +1145,24 @@ export function SekerEaglePage({
     selectedAssetQuery.dataUpdatedAt,
     editingScope,
   ]);
+  const showUndo = (message: string, run: () => void) =>
+    setUndoToast({ id: Date.now(), message, run });
+  const removeManualTagWithUndo = (tag: { id: string; name: string }) => {
+    const assetIds = [...selectedAssetIds];
+    batchTagMutation.mutate(
+      { assetIds, removeTagIds: [tag.id] },
+      {
+        onSuccess: () =>
+          showUndo(
+            t('已从 {{value1}} 项素材移除「{{value2}}」', {
+              value1: assetIds.length,
+              value2: tag.name,
+            }),
+            () => batchTagMutation.mutate({ assetIds, addTagIds: [tag.id] }),
+          ),
+      },
+    );
+  };
   const saveEditedMetadata = () => {
     if (
       !selectedAsset ||
@@ -1141,6 +1309,19 @@ export function SekerEaglePage({
   }, [assetContextMenu, clearAssetSelection, isBatchSelection, selectionMode, tagPicker]);
   const handleAssetClick = (event: MouseEvent<HTMLButtonElement>, assetId: string) => {
     setAssetContextMenu(null);
+    if (
+      !selectionMode &&
+      !expandPhotoStacks &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey
+    ) {
+      const stack = photoStacksByCover.get(assetId);
+      if (stack) {
+        selectAllAssets(stack.assetIds);
+        return;
+      }
+    }
     if (compact && !selectionMode && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
       const asset = assetsById.get(assetId);
       if (asset) openAssetPreview(asset);
@@ -1205,6 +1386,173 @@ export function SekerEaglePage({
       }
     }
   };
+  const shortcutState = useRef({
+    assets,
+    selectedAssetIds,
+    selectedAssetId,
+    selectedAssetVersions,
+    libraryView,
+    isAssetView,
+    showsAssetControls,
+    tagPickerOpen: tagPicker !== null,
+    selectAllAssets,
+    openAssetPreview,
+    setTagPicker,
+    trashMutation,
+    restoreMutation,
+    ratingMutation,
+    batchTagMutation,
+    manualTags,
+    selectedManualTagSummaries,
+    showUndo,
+    openShortcuts: () => setShortcutsOpen(true),
+  });
+  shortcutState.current = {
+    assets,
+    selectedAssetIds,
+    selectedAssetId,
+    selectedAssetVersions,
+    libraryView,
+    isAssetView,
+    showsAssetControls,
+    tagPickerOpen: tagPicker !== null,
+    selectAllAssets,
+    openAssetPreview,
+    setTagPicker,
+    trashMutation,
+    restoreMutation,
+    ratingMutation,
+    batchTagMutation,
+    manualTags,
+    selectedManualTagSummaries,
+    showUndo,
+    openShortcuts: () => setShortcutsOpen(true),
+  };
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest('input, textarea, select, [contenteditable="true"]')
+      )
+        return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const state = shortcutState.current;
+      if (!state.isAssetView || !state.showsAssetControls || state.tagPickerOpen) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+        if (!state.assets.length) return;
+        event.preventDefault();
+        state.selectAllAssets(state.assets.map((asset) => asset.id));
+        return;
+      }
+      if (event.key.startsWith('Arrow')) {
+        event.preventDefault();
+        const cards = [...document.querySelectorAll<HTMLElement>('[data-asset-id]')];
+        if (!cards.length) return;
+        const current =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement.closest<HTMLElement>('[data-asset-id]')
+            : null;
+        if (!current) {
+          cards[0]?.focus();
+          return;
+        }
+        const rect = current.getBoundingClientRect();
+        let best: HTMLElement | null = null;
+        let bestScore = Number.POSITIVE_INFINITY;
+        for (const card of cards) {
+          if (card === current) continue;
+          const candidate = card.getBoundingClientRect();
+          const dx = candidate.left + candidate.width / 2 - (rect.left + rect.width / 2);
+          const dy = candidate.top + candidate.height / 2 - (rect.top + rect.height / 2);
+          const horizontal =
+            event.key === 'ArrowRight' ? dx > 0 : event.key === 'ArrowLeft' ? dx < 0 : false;
+          const vertical =
+            event.key === 'ArrowDown' ? dy > 0 : event.key === 'ArrowUp' ? dy < 0 : false;
+          if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+            if (!horizontal) continue;
+          } else if (!vertical) continue;
+          const score =
+            (event.key === 'ArrowRight' || event.key === 'ArrowLeft'
+              ? Math.abs(dx)
+              : Math.abs(dy)) +
+            (event.key === 'ArrowRight' || event.key === 'ArrowLeft'
+              ? Math.abs(dy)
+              : Math.abs(dx)) *
+              2;
+          if (score < bestScore) {
+            bestScore = score;
+            best = card;
+          }
+        }
+        if (!best) {
+          const index = cards.indexOf(current);
+          const next =
+            event.key === 'ArrowRight' || event.key === 'ArrowDown'
+              ? cards[index + 1]
+              : cards[index - 1];
+          best = next ?? null;
+        }
+        best?.focus();
+        return;
+      }
+      if (!state.selectedAssetIds.length) return;
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (state.libraryView === 'TRASH') return;
+        event.preventDefault();
+        const ids = [...state.selectedAssetIds];
+        state.trashMutation.mutate(ids, {
+          onSuccess: () =>
+            state.showUndo(t('已将 {{value1}} 项素材移到回收站', { value1: ids.length }), () =>
+              state.restoreMutation.mutate(ids),
+            ),
+        });
+        return;
+      }
+      if (event.key.toLowerCase() === 't' && !event.metaKey && !event.ctrlKey) {
+        if (state.libraryView !== 'ACTIVE' && state.libraryView !== 'PRIVATE') return;
+        event.preventDefault();
+        state.setTagPicker({ mode: 'add', assetIds: [...state.selectedAssetIds] });
+        return;
+      }
+      if (event.key.toLowerCase() === 'f' && !event.metaKey && !event.ctrlKey) {
+        if (state.libraryView === 'TRASH') return;
+        const favorite = state.manualTags.find((tag) => tag.systemKey === 'FAVORITE');
+        if (!favorite) return;
+        event.preventDefault();
+        const applied =
+          state.selectedManualTagSummaries.find(({ tag }) => tag.id === favorite.id)?.assetCount ===
+          state.selectedAssetIds.length;
+        state.batchTagMutation.mutate({
+          assetIds: [...state.selectedAssetIds],
+          ...(applied ? { removeTagIds: [favorite.id] } : { addTagIds: [favorite.id] }),
+        });
+        return;
+      }
+      if (event.key === '?' || (event.key === '/' && event.shiftKey)) {
+        event.preventDefault();
+        state.openShortcuts();
+        return;
+      }
+      if (event.key === ' ' && state.selectedAssetIds.length === 1) {
+        const asset = state.assets.find((item) => item.id === state.selectedAssetId);
+        if (!asset) return;
+        event.preventDefault();
+        state.openAssetPreview(asset);
+        return;
+      }
+      if (/^[0-5]$/u.test(event.key) && state.libraryView !== 'TRASH') {
+        event.preventDefault();
+        state.ratingMutation.mutate({
+          assets: state.selectedAssetVersions,
+          rating: event.key === '0' ? null : Number(event.key),
+        });
+      }
+    };
+    window.addEventListener('keydown', onShortcut);
+    return () => window.removeEventListener('keydown', onShortcut);
+  }, []);
   const cardActionsRef = useRef({
     handleAssetClick,
     handleAssetContextMenu,
@@ -1300,6 +1648,8 @@ export function SekerEaglePage({
         selecting={selectionMode}
         count={selectedAssetIds.length}
         onToggle={() => (selectionMode ? clearAssetSelection() : setSelectionMode(true))}
+        onSelectAllMatching={() => void resolveAllMatching()}
+        resolvingCount={resolvingSelection?.count ?? null}
         onActions={(event) => {
           const bounds = event.currentTarget.getBoundingClientRect();
           openAssetContextMenu(bounds.right - 220, bounds.bottom + 6);
@@ -1573,6 +1923,11 @@ export function SekerEaglePage({
               active={activeMobileDestination}
               onNavigate={navigateMobile}
             />
+            {!selectionMode && showsAssetControls && (
+              <button type="button" aria-label={t('多选')} onClick={() => setSelectionMode(true)}>
+                <IconCheck size={18} aria-hidden="true" />
+              </button>
+            )}
             <div data-dismiss-tools>{selectionToolbar}</div>
             {libraryView !== 'TRASH' && <EagleImportButton onImport={importFiles} />}
             <details>
@@ -1638,6 +1993,16 @@ export function SekerEaglePage({
               <IconFolderBolt size={18} aria-hidden="true" />
             </button>
           ) : null}
+          {!selectionMode && showsAssetControls && (
+            <button
+              type="button"
+              aria-label={t('多选')}
+              title={t('多选')}
+              onClick={() => setSelectionMode(true)}
+            >
+              <IconCheck size={18} aria-hidden="true" />
+            </button>
+          )}
         </>
       )}
       {libraryView === 'TRASH' && (
@@ -1657,6 +2022,22 @@ export function SekerEaglePage({
         <button
           className={styles.dangerAction}
           type="button"
+          aria-label={t('永久删除所选')}
+          disabled={selectedAssetIds.length === 0 || purgeTrashMutation.isPending}
+          onClick={() => {
+            purgeTrashMutation.reset();
+            setPurgeTargetIds([...selectedAssetIds]);
+            setPurgeConfirmText('');
+          }}
+        >
+          <IconTrash size={18} />
+          {' ' + t('永久删除') + ' '}
+        </button>
+      )}
+      {libraryView === 'TRASH' && (
+        <button
+          className={styles.dangerAction}
+          type="button"
           aria-label={t('清空回收站')}
           disabled={assets.length === 0 || emptyTrashMutation.isPending}
           onClick={() => {
@@ -1665,6 +2046,17 @@ export function SekerEaglePage({
         >
           <IconTrash size={18} />
           {' ' + t('清空') + ' '}
+        </button>
+      )}
+      {libraryMode === 'PHOTO' && photoView === 'timeline' && libraryView !== 'TRASH' && (
+        <button
+          type="button"
+          aria-label={expandPhotoStacks ? t('收起照片组') : t('展开照片组')}
+          title={expandPhotoStacks ? t('收起照片组') : t('展开照片组')}
+          aria-pressed={expandPhotoStacks}
+          onClick={() => setExpandPhotoStacks((value) => !value)}
+        >
+          <IconLayersSubtract size={18} aria-hidden="true" />
         </button>
       )}
       {libraryMode === 'PHOTO' && photoView === 'timeline' && libraryView !== 'TRASH' && (
@@ -1911,15 +2303,18 @@ export function SekerEaglePage({
                   manualTagGroupsQuery.error
                 )?.message
               }
-              onCreateManualTag={(name) => createTagMutation.mutate(name)}
-              onCreateManualTagGroup={(name) => createTagGroupMutation.mutate(name)}
-              onUpdateManualTags={(tags, changes) => updateTagsMutation.mutate({ tags, changes })}
+              onCreateManualTag={(name) => createTagMutation.mutateAsync(name)}
+              onCreateManualTagGroup={(name) => createTagGroupMutation.mutateAsync(name)}
+              onUpdateManualTags={(tags, changes) =>
+                updateTagsMutation.mutateAsync({ tags, changes })
+              }
               onDeleteManualTags={(tags) => deleteTagsMutation.mutate(tags)}
               onUpdateManualTagGroup={(group, changes) =>
-                updateTagGroupMutation.mutate({ group, changes })
+                updateTagGroupMutation.mutateAsync({ group, changes })
               }
               onDeleteManualTagGroup={(group) => deleteTagGroupMutation.mutate(group)}
               onSelectTag={(tagId) => showAssetsForTag(tagId)}
+              onMergeManualTags={mergeManualTags}
             />
           ) : (
             <>
@@ -2017,6 +2412,18 @@ export function SekerEaglePage({
               <EagleOperationNotices onShowProgress={() => changeLibraryView('PROCESSING')} />
 
               {selectionToolbar}
+              {selectionError && (
+                <div className={`${styles.errorBar} ${styles.dismissibleError}`} role="alert">
+                  <span>{selectionError}</span>
+                  <button
+                    type="button"
+                    aria-label={t('关闭')}
+                    onClick={() => setSelectionError(null)}
+                  >
+                    <IconX size={14} />
+                  </button>
+                </div>
+              )}
               <EagleUploadQueue
                 items={uploads}
                 summary={uploadSummary}
@@ -2043,6 +2450,11 @@ export function SekerEaglePage({
                   key={originalFileError.id}
                 >
                   <span>{originalFileError.message}</span>
+                  {selectedAssetIds.length > 1 && libraryView !== 'TRASH' && (
+                    <button type="button" onClick={batchDownloadSelectedOriginals}>
+                      {t('改为批量下载')}
+                    </button>
+                  )}
                   <button
                     type="button"
                     aria-label={t('关闭')}
@@ -2198,7 +2610,7 @@ export function SekerEaglePage({
                       ) && (
                         <div className={styles.emptyState}>
                           <span className={styles.emptyMark}>
-                            <img src={sekerEagleLogo} alt="" />
+                            <img src={sekerGalleryLogo} alt="" />
                           </span>
                           <strong>
                             {search || activeFilterCount || activeSmartFolderId
@@ -2419,34 +2831,34 @@ export function SekerEaglePage({
                     )}
                     <div className={styles.tagEditor}>
                       {selectedManualTagSummaries.map(({ tag, assetCount }) => (
-                        <button
-                          key={tag.id}
-                          type="button"
-                          className={styles.tagAssigned}
-                          aria-label={
-                            selectedAssetIds.length > 1
-                              ? t('移除人工标签 {{value1}}，应用于 {{value2}}/{{value3}} 项素材', {
-                                  value1: tag.name,
-                                  value2: assetCount,
-                                  value3: selectedAssetIds.length,
-                                })
-                              : t('移除人工标签 {{value1}}', {
-                                  value1: tag.name,
-                                })
-                          }
-                          disabled={isSelectedAssetReadOnly || batchTagMutation.isPending}
-                          onClick={() =>
-                            batchTagMutation.mutate({
-                              assetIds: selectedAssetIds,
-                              removeTagIds: [tag.id],
-                            })
-                          }
-                        >
+                        <span key={tag.id} className={styles.tagAssigned}>
                           {tag.name}
                           {selectedAssetIds.length > 1
                             ? ` · ${assetCount}/${selectedAssetIds.length}`
                             : ''}
-                        </button>
+                          <button
+                            type="button"
+                            className={styles.tagRemove}
+                            aria-label={
+                              selectedAssetIds.length > 1
+                                ? t(
+                                    '移除人工标签 {{value1}}，应用于 {{value2}}/{{value3}} 项素材',
+                                    {
+                                      value1: tag.name,
+                                      value2: assetCount,
+                                      value3: selectedAssetIds.length,
+                                    },
+                                  )
+                                : t('移除人工标签 {{value1}}', {
+                                    value1: tag.name,
+                                  })
+                            }
+                            disabled={isSelectedAssetReadOnly || batchTagMutation.isPending}
+                            onClick={() => removeManualTagWithUndo(tag)}
+                          >
+                            ×
+                          </button>
+                        </span>
                       ))}
                       <button
                         type="button"
@@ -2709,19 +3121,18 @@ export function SekerEaglePage({
           {libraryView !== 'TRASH' && selectedTransferAssets.length === selectedAssetIds.length && (
             <EagleFavoriteButton assets={selectedTransferAssets} role="menuitem" />
           )}
-          {libraryView !== 'TRASH' &&
-            selectedTransferAssets.length === selectedAssetIds.length &&
-            selectedTransferAssets.every((asset) => asset.mimeType.startsWith('image/')) && (
-              <EagleSendAssetsMenuItem
-                key={selectedAssetMenuKey}
-                assetIds={selectedAssetIds}
-                label={libraryMode === 'PHOTO' ? t('发送到素材') : t('发送到照片')}
-                disabled={selectedTransferAssets.some((asset) => asset.lifecycleStatus !== 'READY')}
-                onQueued={() => {
-                  clearAssetSelection();
-                }}
-              />
-            )}
+          {libraryView !== 'TRASH' && (
+            <EagleSendAssetsMenuItem
+              key={selectedAssetMenuKey}
+              assetIds={selectedAssetIds}
+              label={libraryMode === 'PHOTO' ? t('发送到素材') : t('发送到照片')}
+              disabled={Boolean(sendBlockReason)}
+              reason={sendBlockReason}
+              onQueued={() => {
+                clearAssetSelection();
+              }}
+            />
+          )}
           {contextMenuAsset && libraryView !== 'TRASH' && (
             <EagleEditPhotoButton
               asset={contextMenuAsset}
@@ -2879,6 +3290,97 @@ export function SekerEaglePage({
         />
       )}
 
+      {shortcutsOpen && (
+        <EagleConfirmationDialog
+          title={t('键盘快捷键')}
+          description={
+            <ul className={styles.shortcutList}>
+              <li>
+                <kbd>⌘/Ctrl + A</kbd>
+                <span>{t('全选已加载素材')}</span>
+              </li>
+              <li>
+                <kbd>Delete</kbd>
+                <span>{t('移入回收站')}</span>
+              </li>
+              <li>
+                <kbd>T</kbd>
+                <span>{t('打开标签选择器')}</span>
+              </li>
+              <li>
+                <kbd>F</kbd>
+                <span>{t('收藏 / 取消收藏')}</span>
+              </li>
+              <li>
+                <kbd>0–5</kbd>
+                <span>{t('设置星级，0 为清除')}</span>
+              </li>
+              <li>
+                <kbd>Space</kbd>
+                <span>{t('预览所选素材')}</span>
+              </li>
+              <li>
+                <kbd>Esc</kbd>
+                <span>{t('清除选择与菜单')}</span>
+              </li>
+            </ul>
+          }
+          actions={
+            <button type="button" onClick={() => setShortcutsOpen(false)}>
+              {t('关闭')}
+            </button>
+          }
+          onCancel={() => setShortcutsOpen(false)}
+        />
+      )}
+      {purgeTargetIds && (
+        <EagleConfirmationDialog
+          title={t('永久删除所选素材')}
+          description={
+            <>
+              <p>
+                {t('将永久删除 {{value1}} 项素材及其原文件，无法恢复。', {
+                  value1: purgeTargetIds.length,
+                })}
+              </p>
+              <label>
+                <span>{t('输入“永久删除”以确认')}</span>
+                <input
+                  aria-label={t('确认永久删除')}
+                  value={purgeConfirmText}
+                  onChange={(event) => setPurgeConfirmText(event.currentTarget.value)}
+                />
+              </label>
+              {purgeTrashMutation.isError && <p role="alert">{purgeTrashMutation.error.message}</p>}
+            </>
+          }
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setPurgeTargetIds(null);
+                  setPurgeConfirmText('');
+                }}
+              >
+                {t('取消')}
+              </button>
+              <button
+                type="button"
+                className={styles.dangerAction}
+                disabled={purgeConfirmText !== t('永久删除') || purgeTrashMutation.isPending}
+                onClick={() => purgeTrashMutation.mutate(purgeTargetIds)}
+              >
+                {t('永久删除')}
+              </button>
+            </>
+          }
+          onCancel={() => {
+            setPurgeTargetIds(null);
+            setPurgeConfirmText('');
+          }}
+        />
+      )}
       {confirmEmptyTrash && (
         <EagleTrashConfirmation
           mode={libraryMode}
@@ -2894,9 +3396,8 @@ export function SekerEaglePage({
           mode={tagPicker.mode}
           assetCount={tagPicker.assetIds.length}
           tags={tagPicker.mode === 'remove' ? removableManualTags : manualTags}
-          selectedAssetCountByTagId={
-            tagPicker.mode === 'remove' ? selectedAssetCountByTagId : undefined
-          }
+          manualTagGroups={manualTagGroups}
+          selectedAssetCountByTagId={selectedAssetCountByTagId}
           pending={batchTagMutation.isPending}
           error={
             (
@@ -2910,16 +3411,44 @@ export function SekerEaglePage({
               : undefined
           }
           onClose={() => setTagPicker(null)}
-          onApply={(tagIds) =>
-            batchTagMutation.mutate({
-              assetIds: tagPicker.assetIds,
-              addTagIds: tagPicker.mode === 'add' ? tagIds : [],
-              removeTagIds: tagPicker.mode === 'remove' ? tagIds : [],
-            })
-          }
+          onApply={(tagIds) => {
+            const assetIds = tagPicker.assetIds;
+            const removing = tagPicker.mode === 'remove';
+            batchTagMutation.mutate(
+              {
+                assetIds,
+                addTagIds: removing ? [] : tagIds,
+                removeTagIds: removing ? tagIds : [],
+              },
+              {
+                onSuccess: () => {
+                  if (!removing) return;
+                  showUndo(
+                    t('已从 {{value1}} 项素材移除 {{value2}} 个标签', {
+                      value1: assetIds.length,
+                      value2: tagIds.length,
+                    }),
+                    () => batchTagMutation.mutate({ assetIds, addTagIds: tagIds }),
+                  );
+                },
+              },
+            );
+          }}
         />
       )}
 
+      {undoToast && (
+        <LibraryUndoToast
+          key={undoToast.id}
+          message={undoToast.message}
+          onDismiss={() => setUndoToast(null)}
+          onUndo={() => {
+            const action = undoToast.run;
+            setUndoToast(null);
+            action();
+          }}
+        />
+      )}
       <EagleDownloadQueue queue={workspaceCache.downloads} />
       {isDragging && (
         <div className={styles.dropOverlay}>
@@ -2934,6 +3463,31 @@ export function SekerEaglePage({
           stack={previewStack}
           onEdit={libraryView === 'TRASH' ? undefined : openPhotoEditor}
           onLocate={libraryView === 'TRASH' ? undefined : assetLocator.locate}
+          onSelectStack={
+            libraryView === 'TRASH'
+              ? undefined
+              : (ids) => {
+                  imagePreview.closePreview();
+                  selectAllAssets(ids);
+                }
+          }
+          onTagStack={
+            libraryView === 'TRASH'
+              ? undefined
+              : (ids) => {
+                  imagePreview.closePreview();
+                  batchTagMutation.reset();
+                  createBatchTagMutation.reset();
+                  setTagPicker({ mode: 'add', assetIds: ids });
+                }
+          }
+          onUngrouped={(stack) =>
+            showUndo(t('已取消「{{value1}}」的照片组', { value1: stack.cover.displayName }), () => {
+              void updatePhotoGroup(stack.id, { dismissed: false }).then(() =>
+                queryClient.invalidateQueries({ queryKey: queryKeys.root }),
+              );
+            })
+          }
           onClose={imagePreview.closePreview}
         />
       ) : (

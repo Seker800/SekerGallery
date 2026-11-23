@@ -698,3 +698,69 @@ test('timeline seek rows return a scoped NEWER previous cursor', async () => {
   assert.match(encodedWhere, /"isPrivate":false/);
   assert.match(encodedWhere, /"deletedAt":null/);
 });
+
+test('selection resolution reuses list filters and returns only ids and versions', async () => {
+  const service = new EagleService({} as never, undefined, 'MATERIAL');
+  let received: { limit?: number; search?: string } = {};
+  service.listAssets = async (_ownerId: string, query: { limit?: number; search?: string }) => {
+    received = query;
+    return {
+      items: [
+        { id: 'asset-a', rowVersion: 3 },
+        { id: 'asset-b', rowVersion: 7 },
+      ],
+      nextCursor: 'cursor-2',
+    } as never;
+  };
+
+  const result = await service.resolveSelection('owner-1', { search: '海边', limit: 30 });
+
+  assert.equal(received.limit, 1000);
+  assert.equal(received.search, '海边');
+  assert.deepEqual(result, {
+    items: [
+      { assetId: 'asset-a', rowVersion: 3 },
+      { assetId: 'asset-b', rowVersion: 7 },
+    ],
+    nextCursor: 'cursor-2',
+  });
+});
+
+test('permanent purge validation only accepts visible trash rows', async () => {
+  const service = new EagleService({} as never, undefined, 'MATERIAL');
+  const tx = {
+    eagleAsset: {
+      count: async () => 0,
+      updateMany: async () => ({ count: 0 }),
+    },
+    $executeRaw: async () => 0,
+  };
+  await assert.rejects(
+    service.markTrashForPurge(tx as never, 'owner-1', ['asset-a'], false),
+    /只能永久删除回收站中的素材/,
+  );
+});
+
+test('permanent purge marks rows and schedules the worker job', async () => {
+  const service = new EagleService({} as never, undefined, 'MATERIAL');
+  let update: Record<string, unknown> | undefined;
+  let rawSql: unknown;
+  const tx = {
+    eagleAsset: {
+      count: async () => 1,
+      updateMany: async (input: { data: Record<string, unknown> }) => {
+        update = input.data;
+        return { count: 1 };
+      },
+    },
+    $executeRaw: async (query: unknown) => {
+      rawSql = query;
+      return 1;
+    },
+  };
+  const affected = await service.markTrashForPurge(tx as never, 'owner-1', ['asset-a'], false);
+  assert.equal(affected, 1);
+  assert.equal(update?.purgeAfter instanceof Date, true);
+  assert.deepEqual(update?.rowVersion, { increment: 1 });
+  assert.ok(rawSql);
+});

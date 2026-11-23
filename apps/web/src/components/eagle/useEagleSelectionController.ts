@@ -11,6 +11,7 @@ interface SelectionState {
 }
 type Action =
   | { type: 'select'; orderedIds: string[]; id: string; gesture: EagleSelectionGesture }
+  | { type: 'all'; ids: string[] }
   | { type: 'clear'; preserveMode: boolean }
   | { type: 'reconcile'; ids: ReadonlySet<string> }
   | { type: 'mode'; enabled: boolean }
@@ -35,6 +36,15 @@ function reduceSelection(state: SelectionState, action: Action): SelectionState 
         isBatchSelection: next.isBatchSelection,
       };
     }
+    case 'all':
+      return {
+        ...state,
+        selectedAssetIds: [...action.ids],
+        selectedAssetId: action.ids.at(-1) ?? null,
+        isBatchSelection: action.ids.length > 0,
+        assetContextMenu: null,
+        anchorId: action.ids[0] ?? null,
+      };
     case 'clear':
       return {
         selectedAssetIds: [],
@@ -86,6 +96,10 @@ export function useEagleSelectionController(
       dispatch({ type: 'select', orderedIds, id, gesture }),
     [],
   );
+  const selectAll = useCallback(
+    (ids: string[]) => dispatch({ type: 'all', ids }),
+    [],
+  );
   const clear = useCallback(
     (options?: { preserveMode?: boolean }) =>
       dispatch({ type: 'clear', preserveMode: options?.preserveMode === true }),
@@ -103,5 +117,5 @@ export function useEagleSelectionController(
     (position: SelectionState['assetContextMenu']) => dispatch({ type: 'menu', position }),
     [],
   );
-  return { ...state, select, clear, reconcile, setSelectionMode, setAssetContextMenu };
+  return { ...state, select, selectAll, clear, reconcile, setSelectionMode, setAssetContextMenu };
 }

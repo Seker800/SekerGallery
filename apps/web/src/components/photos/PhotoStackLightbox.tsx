@@ -1,6 +1,6 @@
 import { observeAcceptedOperation } from '../../lib/accepted-operation';
 import { createEagleQueryKeys } from '../eagle/eagle-query-keys';
-import { IconStar, IconStarFilled, IconLayersSubtract } from '@tabler/icons-react';
+import { IconStar, IconStarFilled, IconLayersSubtract, IconTags } from '@tabler/icons-react';
 import { PhotoStackFilmstrip, stackAssetKey } from './PhotoStackFilmstrip';
 import { needsEagleImagePyramid } from '../eagle/eagle-media-sources';
 import { useState } from 'react';
@@ -16,11 +16,17 @@ export function PhotoStackLightbox({
   onClose,
   onLocate,
   onEdit,
+  onSelectStack,
+  onTagStack,
+  onUngrouped,
 }: {
   stack: EaglePhotoStack;
   onClose: () => void;
   onLocate?: (assetId: string) => Promise<void>;
   onEdit?: (asset: EagleAssetListItem) => void;
+  onSelectStack?: (assetIds: string[]) => void;
+  onTagStack?: (assetIds: string[]) => void;
+  onUngrouped?: (stack: EaglePhotoStack) => void;
 }) {
   const { ownerId, api } = useLibraryWorkspace();
   const client = useQueryClient();
@@ -81,6 +87,18 @@ export function PhotoStackLightbox({
       }}
       actions={
         <>
+          {onSelectStack && (
+            <button type="button" aria-label={t('选择整组')} onClick={() => onSelectStack(stack.assetIds)}>
+              <IconLayersSubtract size={16} />
+              <span data-viewer-compact-label>{t('选择整组')}</span>
+            </button>
+          )}
+          {onTagStack && (
+            <button type="button" aria-label={t('为整组添加标签')} onClick={() => onTagStack(stack.assetIds)}>
+              <IconTags size={16} />
+              <span data-viewer-compact-label>{t('整组加标签')}</span>
+            </button>
+          )}
           <button
             type="button"
             aria-label={t('设为主图')}
@@ -107,12 +125,14 @@ export function PhotoStackLightbox({
               void updatePhotoGroup(stack.id, { dismissed: true })
                 .then(async (result) => {
                   if (observeAcceptedOperation(client, ownerId, 'PHOTO', result)) {
+                    onUngrouped?.(stack);
                     onClose();
                     return;
                   }
                   await client.invalidateQueries({
                     queryKey: createEagleQueryKeys(ownerId, 'PHOTO').root,
                   });
+                  onUngrouped?.(stack);
                   onClose();
                 })
                 .catch((reason: unknown) =>

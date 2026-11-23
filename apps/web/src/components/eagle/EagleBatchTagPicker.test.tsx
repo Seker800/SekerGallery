@@ -183,4 +183,112 @@ describe('EagleBatchTagPicker', () => {
 
     expect(onApply).toHaveBeenCalledWith(['inspiration']);
   });
+
+  it('creates a differently named tag even when a similar tag matches', () => {
+    render(
+      <EagleBatchTagPicker
+        assetCount={2}
+        tags={[tag('travel-2025', '旅行 2025')]}
+        onApply={vi.fn()}
+        onCreate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole('dialog', { name: '添加标签' });
+    const search = within(dialog).getByRole('searchbox', { name: '搜索可添加标签' });
+
+    fireEvent.change(search, { target: { value: '旅行' } });
+    expect(within(dialog).getByRole('button', { name: '创建标签 旅行' })).toBeVisible();
+
+    fireEvent.change(search, { target: { value: '旅行 2025' } });
+    expect(within(dialog).queryByRole('button', { name: /创建标签/ })).not.toBeInTheDocument();
+  });
+
+  it('shows a new-tag row before typing and focuses the search box', () => {
+    render(
+      <EagleBatchTagPicker
+        assetCount={1}
+        tags={[]}
+        onApply={vi.fn()}
+        onCreate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole('dialog', { name: '添加标签' });
+    const create = within(dialog).getByRole('button', { name: '新建标签' });
+    expect(create).toHaveTextContent('输入名称后创建');
+    fireEvent.click(create);
+    expect(within(dialog).getByRole('searchbox', { name: '搜索可添加标签' })).toHaveFocus();
+  });
+
+  it('creates on Enter instead of applying when a new name is pending', async () => {
+    const onCreate = vi.fn().mockResolvedValue(tag('new-tag', '新标签'));
+    const onApply = vi.fn();
+    render(
+      <EagleBatchTagPicker
+        assetCount={2}
+        tags={[tag('inspiration', '灵感', 'ling gan', 'lg')]}
+        onApply={onApply}
+        onCreate={onCreate}
+        onClose={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole('dialog', { name: '添加标签' });
+    fireEvent.change(within(dialog).getByRole('searchbox', { name: '搜索可添加标签' }), {
+      target: { value: '新标签' },
+    });
+    fireEvent.submit(dialog);
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith('新标签'));
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('filters tags by group and shows how many selected assets already have a tag', () => {
+    render(
+      <EagleBatchTagPicker
+        assetCount={3}
+        tags={[{ ...tag('travel', '旅行'), groupId: 'group-travel' }, tag('night', '夜景')]}
+        manualTagGroups={[
+          {
+            id: 'group-travel',
+            name: '旅行',
+            color: null,
+            description: null,
+            rowVersion: 1,
+            tagCount: 1,
+          },
+        ]}
+        selectedAssetCountByTagId={{ travel: 2 }}
+        onApply={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole('dialog', { name: '添加标签' });
+    expect(within(dialog).getByText('已应用 2/3')).toBeVisible();
+    expect(within(dialog).getByText('已应用 0/3')).toBeVisible();
+
+    fireEvent.change(within(dialog).getByRole('combobox', { name: '按标签组筛选' }), {
+      target: { value: 'GROUP:group-travel' },
+    });
+    expect(within(dialog).getByRole('checkbox', { name: '旅行' })).toBeVisible();
+    expect(within(dialog).queryByRole('checkbox', { name: '夜景' })).not.toBeInTheDocument();
+  });
+
+  it('applies the current selection with the modifier shortcut', () => {
+    const onApply = vi.fn();
+    render(
+      <EagleBatchTagPicker
+        assetCount={2}
+        tags={[tag('inspiration', '灵感', 'ling gan', 'lg')]}
+        onApply={onApply}
+        onCreate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole('dialog', { name: '添加标签' });
+    const search = within(dialog).getByRole('searchbox', { name: '搜索可添加标签' });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: '灵感' }));
+    fireEvent.keyDown(search, { key: 'Enter', metaKey: true });
+    expect(onApply).toHaveBeenCalledWith(['inspiration']);
+  });
 });

@@ -124,8 +124,10 @@ const listEagleManualTagGroupsMock = vi.fn();
 const replaceEagleAssetManualTagsMock = vi.fn();
 const batchChangeEagleManualTagsMock = vi.fn();
 const listEagleTrashMock = vi.fn();
+const resolveEagleAssetSelectionMock = vi.fn();
 const batchTrashEagleAssetsMock = vi.fn();
 const batchRestoreEagleAssetsMock = vi.fn();
+const purgeEagleTrashAssetsMock = vi.fn();
 const emptyEagleTrashMock = vi.fn();
 const updateEagleAssetMock = vi.fn();
 const batchUpdateEagleAssetsMock = vi.fn();
@@ -176,8 +178,10 @@ vi.mock('../../lib/eagle-api', () => {
     replaceEagleAssetManualTags: (...args: unknown[]) => replaceEagleAssetManualTagsMock(...args),
     batchChangeEagleManualTags: (...args: unknown[]) => batchChangeEagleManualTagsMock(...args),
     listEagleTrash: (...args: unknown[]) => listEagleTrashMock(...args),
+    resolveEagleAssetSelection: (...args: unknown[]) => resolveEagleAssetSelectionMock(...args),
     batchTrashEagleAssets: (...args: unknown[]) => batchTrashEagleAssetsMock(...args),
     batchRestoreEagleAssets: (...args: unknown[]) => batchRestoreEagleAssetsMock(...args),
+    purgeEagleTrashAssets: (...args: unknown[]) => purgeEagleTrashAssetsMock(...args),
     emptyEagleTrash: (...args: unknown[]) => emptyEagleTrashMock(...args),
     updateEagleAsset: (...args: unknown[]) => updateEagleAssetMock(...args),
     batchUpdateEagleAssets: (...args: unknown[]) => batchUpdateEagleAssetsMock(...args),
@@ -397,6 +401,7 @@ describe('SekerEaglePage', () => {
       items: [{ ...asset, deletedAt: '2026-08-14T01:00:00.000Z' }],
       nextCursor: null,
     });
+    resolveEagleAssetSelectionMock.mockResolvedValue({ items: [], nextCursor: null });
     operationRows.clear();
     enqueueAssetOperationMock.mockImplementation(async (input) => ({
       id: input.operationId,
@@ -413,6 +418,7 @@ describe('SekerEaglePage', () => {
     }));
     batchTrashEagleAssetsMock.mockResolvedValue({ affectedAssetCount: 1 });
     batchRestoreEagleAssetsMock.mockResolvedValue({ affectedAssetCount: 1 });
+    purgeEagleTrashAssetsMock.mockResolvedValue({ affectedAssetCount: 1 });
     emptyEagleTrashMock.mockResolvedValue({ affectedAssetCount: 1 });
     updateEagleAssetMock.mockResolvedValue({ ...asset, rating: 4, rowVersion: 2 });
     batchUpdateEagleAssetsMock.mockResolvedValue({
@@ -498,7 +504,7 @@ describe('SekerEaglePage', () => {
       'aria-pressed',
       'true',
     );
-    expect(within(sidebar).queryByText('SekerEagle')).not.toBeInTheDocument();
+    expect(within(sidebar).queryByText('SekerGallery')).not.toBeInTheDocument();
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
   });
 
@@ -757,6 +763,17 @@ describe('SekerEaglePage', () => {
     expect(await screen.findByTestId('eagle-processing-page')).toBeInTheDocument();
   });
 
+  it('keeps the send action visible and explains why a video cannot be sent', async () => {
+    listEagleAssetsMock.mockResolvedValue({
+      items: [{ ...asset, id: 'video-1', format: 'MP4', mimeType: 'video/mp4' }],
+      nextCursor: null,
+    });
+    renderPage();
+    fireEvent.contextMenu(await screen.findByRole('button', { name: /Owl Reference/ }));
+
+    expect(screen.getByRole('menuitem', { name: '发送到照片' })).toBeDisabled();
+    expect(screen.getByRole('note')).toHaveTextContent('发送只支持图片');
+  });
   it('loads newer neighbors after locating into the middle without discarding the current page', async () => {
     const newer = { ...asset, id: 'newer-asset', displayName: 'Newer neighbor' };
     getEagleAssetLocationMock.mockResolvedValue({ assetId: asset.id, cursor: 'middle' });
@@ -1957,6 +1974,23 @@ describe('SekerEaglePage', () => {
     });
   });
 
+  it('permanently deletes only selected trash after typed confirmation', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '回收站' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Owl Reference/ }));
+    fireEvent.click(screen.getByRole('button', { name: '永久删除所选' }));
+
+    const dialog = await screen.findByRole('alertdialog', { name: '永久删除所选素材' });
+    const confirm = within(dialog).getByRole('button', { name: '永久删除' });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(dialog).getByRole('textbox', { name: '确认永久删除' }), {
+      target: { value: '永久删除' },
+    });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(purgeEagleTrashAssetsMock).toHaveBeenCalledWith(['asset-1']));
+  });
   it('loads recoverable trash detail through the trash endpoint and keeps it read-only', async () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: '回收站' }));
@@ -2096,6 +2130,93 @@ describe('SekerEaglePage', () => {
     expect(screen.queryByRole('toolbar', { name: '图片选择' })).not.toBeInTheDocument();
   });
 
+  it('resolves every matching id before applying a batch selection', async () => {
+    listEagleAssetsMock.mockResolvedValue({
+      items: [asset, { ...asset, id: 'asset-2', displayName: 'Second Asset' }],
+      nextCursor: null,
+    });
+    resolveEagleAssetSelectionMock
+      .mockResolvedValueOnce({ items: [{ assetId: 'asset-1', rowVersion: 1 }], nextCursor: 'next' })
+      .mockResolvedValueOnce({
+        items: [{ assetId: 'asset-2', rowVersion: 4 }],
+        nextCursor: null,
+      });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Owl Reference/ }), {
+      ctrlKey: true,
+    });
+    fireEvent.click(screen.getByRole('button', { name: '选择全部匹配项' }));
+
+    await waitFor(() => expect(resolveEagleAssetSelectionMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('已选择 2 项')).toBeInTheDocument();
+    expect(resolveEagleAssetSelectionMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ cursor: undefined, limit: undefined }),
+      expect.objectContaining({ trash: false, signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it('moves focus between cards with the arrow keys', async () => {
+    listEagleAssetsMock.mockResolvedValue({
+      items: [asset, { ...asset, id: 'asset-2', displayName: 'Second Asset' }],
+      nextCursor: null,
+    });
+    renderPage();
+    const first = await screen.findByRole('button', { name: /Owl Reference/ });
+    const second = screen.getByRole('button', { name: /Second Asset/ });
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowRight' });
+    expect(second).toHaveFocus();
+    fireEvent.keyDown(second, { key: 'ArrowLeft' });
+    expect(first).toHaveFocus();
+  });
+  it('toggles the favorite tag with F and opens the shortcut help with ?', async () => {
+    listEagleManualTagsMock.mockResolvedValue([
+      {
+        id: 'favorite-tag',
+        name: '收藏',
+        color: null,
+        groupId: null,
+        isStarred: true,
+        rowVersion: 1,
+        assetCount: 0,
+        pinyin: 'shoucang',
+        pinyinInitials: 'sc',
+        systemKey: 'FAVORITE',
+      },
+    ]);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Owl Reference/ }));
+    fireEvent.keyDown(window, { key: 'f' });
+    await waitFor(() =>
+      expect(batchChangeEagleManualTagsMock).toHaveBeenCalledWith({
+        assetIds: [asset.id],
+        addTagIds: ['favorite-tag'],
+        removeTagIds: [],
+      }),
+    );
+
+    fireEvent.keyDown(window, { key: '?' });
+    expect(screen.getByRole('alertdialog', { name: '键盘快捷键' })).toBeInTheDocument();
+  });
+  it('selects every loaded asset with the keyboard and opens tagging for the selection', async () => {
+    listEagleAssetsMock.mockResolvedValue({
+      items: [asset, { ...asset, id: 'asset-2', displayName: 'Second Asset' }],
+      nextCursor: null,
+    });
+    renderPage();
+    const first = await screen.findByRole('button', { name: /Owl Reference/ });
+    const second = screen.getByRole('button', { name: /Second Asset/ });
+
+    fireEvent.keyDown(window, { key: 'a', ctrlKey: true });
+    expect(first).toHaveAttribute('aria-pressed', 'true');
+    expect(second).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.keyDown(window, { key: 't' });
+    const picker = await screen.findByRole('dialog', { name: '添加标签' });
+    expect(picker).toHaveTextContent('2 项素材');
+  });
   it('batch-downloads selected originals from the desktop context menu in library order', async () => {
     const downloadOriginalFiles = vi.fn().mockResolvedValue({ downloaded: 2 });
     (globalThis as { sekerDesktop?: unknown }).sekerDesktop = {

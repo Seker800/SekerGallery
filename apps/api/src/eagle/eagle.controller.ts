@@ -20,7 +20,13 @@ import {
   UndoAssetOperationDto,
 } from './eagle-asset-operations.dto';
 import { CreateEditRenderDto } from './eagle-edit-render';
-import { AssetLocationDto, AssetTimelineDto, AssetTimelineResponseDto } from './eagle.dto';
+import {
+  AssetLocationDto,
+  AssetSelectionResponseDto,
+  AssetTimelineDto,
+  AssetTimelineResponseDto,
+  ResolveAssetSelectionDto,
+} from './eagle.dto';
 import { safeMediaResponse } from '../common/media-response';
 import { SaveEagleEditRecipeDto } from './eagle-edit-recipe';
 import { SaveWatermarkPresetDto } from './eagle-watermark-presets';
@@ -37,7 +43,7 @@ import {
   EagleDuplicateAdmissionResponseDto,
 } from './eagle-operation-response.dto';
 import { Optional } from '@nestjs/common';
-import { SendEagleAssetsDto } from './eagle.dto';
+import { PurgeEagleAssetsDto, SendEagleAssetsDto } from './eagle.dto';
 import {
   Body,
   HttpCode,
@@ -344,6 +350,21 @@ export class EagleController {
   ): Promise<EagleAssetPageResponseDto> {
     return this.eagle.listAssets(principal.sub, query, {
       includePrivate: principal.canViewPrivate,
+    });
+  }
+
+  @Post('assets/selection')
+  @HttpCode(200)
+  @UseGuards(BrowserOriginGuard)
+  @ApiOkResponse({ type: AssetSelectionResponseDto })
+  resolveSelection(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() input: ResolveAssetSelectionDto,
+  ): Promise<AssetSelectionResponseDto> {
+    const { trash, ...query } = input;
+    return this.eagle.resolveSelection(principal.sub, query, {
+      includePrivate: principal.canViewPrivate,
+      trash: Boolean(trash),
     });
   }
 
@@ -705,6 +726,18 @@ export class EagleController {
       operationId: randomUUID(),
       kind: 'TRASH',
       assetIds: input.assetIds,
+    });
+  }
+
+  @Post('assets/batch/purge')
+  @UseGuards(BrowserOriginGuard)
+  @HttpCode(202)
+  @ApiAcceptedResponse({ type: EagleOperationSummaryResponseDto })
+  batchPurge(@CurrentPrincipal() principal: AuthPrincipal, @Body() input: PurgeEagleAssetsDto) {
+    return this.operations!.enqueueCommand(principal, {
+      type: 'ASSET_PURGE',
+      assetIds: input.assetIds,
+      payload: libraryCommandPayload({}),
     });
   }
 

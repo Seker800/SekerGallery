@@ -80,3 +80,10 @@
     min-height: 44px;
   }
 }
+.reason {
+  margin: 3px 8px 6px;
+  display: block;
+  color: #8f949c;
+  font-size: 10px;
+  line-height: 1.45;
+}

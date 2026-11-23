@@ -67,6 +67,7 @@ export interface EaglePyramidDescriptor {
 
 export interface EagleManualTag extends EagleManualTagRef {
   systemKey?: string | null;
+  marksAssetsPrivate?: boolean;
   groupId: string | null;
   groupIds: string[];
   isStarred: boolean;
@@ -153,6 +154,7 @@ export interface EagleAssetFilters {
   search?: string;
   formats?: string[];
   manualTagIds?: string[];
+  tagMatch?: 'ANY' | 'ALL';
   rating?: number;
   minWidth?: number;
   maxWidth?: number;
@@ -226,6 +228,7 @@ export function createEagleApi(libraryMode: LibraryMode = 'MATERIAL') {
       'createdTo',
       'color',
       'privacy',
+      'tagMatch',
     ] as const) {
       if (filters[key]) query.set(key, filters[key]);
     }
@@ -257,6 +260,26 @@ export function createEagleApi(libraryMode: LibraryMode = 'MATERIAL') {
   ): Promise<EagleAssetPage> {
     const result = await api<EagleAssetPage>(`/eagle/assets?${assetQuery(filters)}`, { signal });
     return { ...result, items: result.items.map(normalizeAsset) };
+  }
+
+  async function resolveEagleAssetSelection(
+    filters: EagleAssetFilters,
+    options: { trash?: boolean; signal?: AbortSignal } = {},
+  ) {
+    const { rules, ...rest } = filters;
+    delete rest.limit;
+    return api<{
+      items: Array<{ assetId: string; rowVersion: number }>;
+      nextCursor: string | null;
+    }>('/eagle/assets/selection', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...rest,
+        ...(rules ? { rules: JSON.stringify(rules) } : {}),
+        ...(options.trash ? { trash: true } : {}),
+      }),
+      signal: options.signal,
+    });
   }
 
   async function listEagleTrash(
@@ -508,6 +531,14 @@ export function createEagleApi(libraryMode: LibraryMode = 'MATERIAL') {
       method: 'POST',
       body: JSON.stringify({ assetIds }),
     });
+  }
+
+  async function purgeEagleTrashAssets(assetIds: string[]) {
+    return api<OperationResponse<{ affectedAssetCount: number }>>(
+      '/eagle/assets/batch/purge',
+      { method: 'POST', body: JSON.stringify({ assetIds }) },
+      ADMISSION_TIMEOUT_MS,
+    );
   }
 
   async function batchRestoreEagleAssets(assetIds: string[]) {
@@ -902,6 +933,7 @@ export function createEagleApi(libraryMode: LibraryMode = 'MATERIAL') {
     readEagleEditRender,
     getEagleMediaCapabilities,
     listEagleAssets,
+    resolveEagleAssetSelection,
     listEagleTrash,
     getEagleAsset,
     getEagleAssetLocation,
@@ -926,6 +958,7 @@ export function createEagleApi(libraryMode: LibraryMode = 'MATERIAL') {
     replaceEagleAssetManualTags,
     batchChangeEagleManualTags,
     batchTrashEagleAssets,
+    purgeEagleTrashAssets,
     batchRestoreEagleAssets,
     emptyEagleTrash,
     updateEagleAsset,
@@ -951,6 +984,7 @@ export const {
   readEagleEditRender,
   getEagleMediaCapabilities,
   listEagleAssets,
+  resolveEagleAssetSelection,
   listEagleTrash,
   getEagleAsset,
   getEagleAssetLocation,
@@ -975,6 +1009,7 @@ export const {
   replaceEagleAssetManualTags,
   batchChangeEagleManualTags,
   batchTrashEagleAssets,
+  purgeEagleTrashAssets,
   batchRestoreEagleAssets,
   emptyEagleTrash,
   updateEagleAsset,

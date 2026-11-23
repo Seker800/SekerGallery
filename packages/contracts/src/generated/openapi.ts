@@ -596,6 +596,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/eagle/assets/selection': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['EagleController_resolveSelection'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/eagle/assets/filter-count': {
     parameters: {
       query?: never;
@@ -878,6 +894,22 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations['EagleController_batchTrash'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/eagle/assets/batch/purge': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['EagleController_batchPurge'];
     delete?: never;
     options?: never;
     head?: never;
@@ -2372,6 +2404,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/photos/assets/selection': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['PhotosController_resolveSelection'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/photos/assets/filter-count': {
     parameters: {
       query?: never;
@@ -2654,6 +2702,22 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations['PhotosController_batchTrash'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/photos/assets/batch/purge': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['PhotosController_batchPurge'];
     delete?: never;
     options?: never;
     head?: never;
@@ -4577,6 +4641,7 @@ export interface components {
       name: string;
       color: string | null;
       systemKey?: string | null;
+      marksAssetsPrivate?: boolean;
     };
     EagleAssetListResponseDto: {
       livePhotoMotion?: components['schemas']['EagleLivePhotoMotionResponseDto'];
@@ -4644,6 +4709,58 @@ export interface components {
       nextCursor: string | null;
       colorCoverage: components['schemas']['EagleColorCoverageResponseDto'] | null;
       imageSearch?: components['schemas']['EagleImageSearchResponseDto'];
+    };
+    ResolveAssetSelectionDto: {
+      /** @enum {string} */
+      smartFolderOrder?: 'RELEVANCE';
+      /** @description Initial navigation offset within the selected date boundary; incompatible with cursor and search. */
+      offset?: number;
+      /** @description Exclusive date boundary for native timeline navigation; not combinable with search or cursor. */
+      before?: string;
+      /**
+       * @description Newest first. Missing capture time falls back to import time. Omitted preserves mode defaults and search relevance. Trash always orders by deletion time instead.
+       * @enum {string}
+       */
+      sort?: 'CAPTURED_AT' | 'ADDED_AT';
+      personId?: string;
+      cameraModel?: string;
+      lensModel?: string;
+      /** @enum {string} */
+      gps?: 'WITH' | 'WITHOUT';
+      /** @default 30 */
+      limit: number;
+      cursor?: string;
+      search?: string;
+      rating?: number;
+      format?: string;
+      /** @description Comma-separated values */
+      formats?: string;
+      /** @description Comma-separated values */
+      manualTagIds?: string;
+      smartFolderId?: string;
+      minWidth?: number;
+      maxWidth?: number;
+      minHeight?: number;
+      maxHeight?: number;
+      createdFrom?: string;
+      createdTo?: string;
+      color?: string;
+      /** @enum {string} */
+      tagMatch?: 'ANY' | 'ALL';
+      /** @enum {string} */
+      privacy?: 'PRIVATE';
+      /** @description JSON encoded Eagle filter query */
+      rules?: string;
+      /** @description Resolve ids from the trash lifecycle view */
+      trash?: boolean;
+    };
+    AssetSelectionItemDto: {
+      assetId: string;
+      rowVersion: number;
+    };
+    AssetSelectionResponseDto: {
+      items: components['schemas']['AssetSelectionItemDto'][];
+      nextCursor?: Record<string, never> | null;
     };
     CountEagleAssetsDto: {
       query: {
@@ -4762,6 +4879,9 @@ export interface components {
       tagIds: string[];
       /** @description 打开编辑器时读取的私密标签快照；变化时返回 409。 */
       expectedTagIds: string[];
+    };
+    PurgeEagleAssetsDto: {
+      assetIds: string[];
     };
     CreateManualTagDto: {
       name: string;
@@ -5947,6 +6067,29 @@ export interface operations {
       };
     };
   };
+  EagleController_resolveSelection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ResolveAssetSelectionDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AssetSelectionResponseDto'];
+        };
+      };
+    };
+  };
   EagleController_countAssets: {
     parameters: {
       query?: never;
@@ -6388,6 +6531,29 @@ export interface operations {
     requestBody: {
       content: {
         'application/json': components['schemas']['EagleAssetIdsDto'];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EagleOperationSummaryResponseDto'];
+        };
+      };
+    };
+  };
+  EagleController_batchPurge: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PurgeEagleAssetsDto'];
       };
     };
     responses: {
@@ -8783,6 +8949,29 @@ export interface operations {
       };
     };
   };
+  PhotosController_resolveSelection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ResolveAssetSelectionDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AssetSelectionResponseDto'];
+        };
+      };
+    };
+  };
   PhotosController_countAssets: {
     parameters: {
       query?: never;
@@ -9224,6 +9413,29 @@ export interface operations {
     requestBody: {
       content: {
         'application/json': components['schemas']['EagleAssetIdsDto'];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EagleOperationSummaryResponseDto'];
+        };
+      };
+    };
+  };
+  PhotosController_batchPurge: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PurgeEagleAssetsDto'];
       };
     };
     responses: {

@@ -171,6 +171,22 @@ export class EagleService {
     );
   }
 
+  /**
+   * Resolve a filter/search scope into the identifiers and versions a batch
+   * command needs. Pages stay bounded; callers continue with nextCursor.
+   */
+  async resolveSelection(
+    ownerId: string,
+    query: ListEagleAssetsDto,
+    options: AssetListOptions = {},
+  ) {
+    const page = await this.listAssets(ownerId, { ...query, limit: 1000 }, options);
+    return {
+      items: page.items.map((item) => ({ assetId: item.id, rowVersion: item.rowVersion })),
+      nextCursor: page.nextCursor,
+    };
+  }
+
   async listAssets(ownerId: string, query: ListEagleAssetsDto, options: AssetListOptions = {}) {
     const { trash = false, includePrivate = false } = options;
     const smartFolder = query.smartFolderId
@@ -1103,6 +1119,63 @@ export class EagleService {
     db: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
     return this.manualTagService.batchChangeManualTags(ownerId, input, includePrivate, db);
+  }
+
+  /**
+   * Mark explicit trash items for physical purge. Runs inside the metadata
+   * command transaction; the worker owns object and row deletion.
+   */
+  async markTrashForPurge(
+    db: Prisma.TransactionClient,
+    ownerId: string,
+    assetIds: string[],
+    includePrivate: boolean,
+  ) {
+    const ids = [...new Set(assetIds)];
+    if (!ids.length) return 0;
+    const visible = includePrivate ? {} : { isPrivate: false };
+    const eligible = await db.eagleAsset.count({
+      where: {
+        ownerId,
+        libraryMode: this.libraryMode,
+        id: { in: ids },
+        deletedAt: { not: null },
+        ...visible,
+      },
+    });
+    if (eligible !== ids.length) throw new ConflictException('只能永久删除回收站中的素材。');
+    const purgeAfter = new Date();
+    await db.eagleAsset.updateMany({
+      where: {
+        ownerId,
+        libraryMode: this.libraryMode,
+        id: { in: ids },
+        deletedAt: { not: null },
+        purgeAfter: null,
+        ...visible,
+      },
+      data: { purgeAfter, rowVersion: { increment: 1 }, updatedAt: purgeAfter },
+    });
+    await db.$executeRaw(Prisma.sql`
+      INSERT INTO "EagleMediaJob"
+        (id,"ownerId","libraryMode","assetId",kind,lane,"assetRevision","processorVersion",
+         status,attempts,"recoveryCount","leaseVersion","availableAt","updatedAt")
+      SELECT gen_random_uuid()::text,${ownerId},${this.libraryMode}::"LibraryMode",asset.id,
+        'PURGE_ASSET'::"EagleMediaJobKind",'MAINTENANCE'::"EagleProcessingLane",
+        asset."mediaRevision",'v1','PENDING'::"EagleMediaJobStatus",0,0,1,
+        ${purgeAfter},CURRENT_TIMESTAMP
+      FROM "EagleAsset" asset
+      WHERE asset."ownerId"=${ownerId}
+        AND asset."libraryMode"=${this.libraryMode}::"LibraryMode"
+        AND asset.id = ANY(${ids}::text[])
+      ON CONFLICT ("assetId",kind,"assetRevision","processorVersion") DO UPDATE
+      SET status='PENDING',attempts=0,"recoveryCount"=0,"leaseVersion"=job."leaseVersion"+1,
+        "availableAt"=EXCLUDED."availableAt","lockedAt"=NULL,"startedAt"=NULL,
+        "completedAt"=NULL,"lastError"=NULL,"updatedAt"=CURRENT_TIMESTAMP
+      WHERE job."ownerId"=EXCLUDED."ownerId" AND job."libraryMode"=EXCLUDED."libraryMode"
+        AND job.status IN ('PENDING','FAILED','COMPLETED')
+    `);
+    return ids.length;
   }
 
   async emptyTrashBatch(

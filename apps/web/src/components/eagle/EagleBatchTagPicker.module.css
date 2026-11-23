@@ -231,3 +231,28 @@
     min-height: 210px;
   }
 }
+
+.groupFilter {
+  min-height: 28px;
+  padding: 0 2px 3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #737983;
+  font-size: 10px;
+}
+.groupFilter select {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: var(--ui-radius-control);
+  color: #c9cdd3;
+  background: var(--ui-input);
+  font-size: 11px;
+}
+.createTag small {
+  margin-left: auto;
+  color: #737983;
+  font-size: 10px;
+  font-weight: 400;
+}

@@ -1,14 +1,20 @@
 import { t } from '../../i18n';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { IconPlus, IconSearch, IconTags, IconX } from '@tabler/icons-react';
-import type { EagleManualTag } from '../../lib/eagle-api';
-import { normalizeEagleTagSearchText, searchAndSortEagleTags } from './eagle-tag-index';
+import type { EagleManualTag, EagleManualTagGroup } from '../../lib/eagle-api';
+import {
+  createEagleTagIndex,
+  normalizeEagleTagSearchText,
+  searchAndSortEagleTags,
+} from './eagle-tag-index';
 import { EagleVirtualList } from './EagleVirtualList';
 import styles from './EagleBatchTagPicker.module.css';
+type TagScope = 'ALL' | 'UNCATEGORIZED' | 'STARRED' | `GROUP:${string}`;
 interface EagleBatchTagPickerProps {
   mode?: 'add' | 'remove';
   assetCount: number;
   tags: EagleManualTag[];
+  manualTagGroups?: EagleManualTagGroup[];
   selectedAssetCountByTagId?: Readonly<Record<string, number>>;
   pending?: boolean;
   error?: string;
@@ -20,7 +26,8 @@ export function EagleBatchTagPicker({
   mode = 'add',
   assetCount,
   tags,
-  selectedAssetCountByTagId = {},
+  manualTagGroups = [],
+  selectedAssetCountByTagId,
   pending = false,
   error,
   onApply,
@@ -30,17 +37,27 @@ export function EagleBatchTagPicker({
   const isRemoving = mode === 'remove';
   const dialogTitle = isRemoving ? t('删除人工标签') : t('添加标签');
   const [query, setQuery] = useState('');
+  const [tagScope, setTagScope] = useState<TagScope>('ALL');
   const [createdTags, setCreatedTags] = useState<EagleManualTag[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const searchInput = useRef<HTMLInputElement>(null);
   const allTags = useMemo(() => {
     const tagsById = new Map(tags.map((tag) => [tag.id, tag]));
     createdTags.forEach((tag) => tagsById.set(tag.id, tag));
     return [...tagsById.values()];
   }, [createdTags, tags]);
+  const tagIndexes = useMemo(() => allTags.map((tag) => createEagleTagIndex(tag)), [allTags]);
+  const scopedTags = useMemo(() => {
+    if (tagScope === 'ALL') return allTags;
+    if (tagScope === 'UNCATEGORIZED') return allTags.filter((tag) => tag.groupId === null);
+    if (tagScope === 'STARRED') return allTags.filter((tag) => tag.isStarred);
+    const groupId = tagScope.slice(6);
+    return allTags.filter((tag) => tag.groupId === groupId);
+  }, [allTags, tagScope]);
   const visibleTags = useMemo(
-    () => searchAndSortEagleTags(allTags, query, selectedTagIds),
-    [allTags, query, selectedTagIds],
+    () => searchAndSortEagleTags(scopedTags, query, selectedTagIds),
+    [query, scopedTags, selectedTagIds],
   );
   const recentTags = useMemo(
     () =>
@@ -54,14 +71,30 @@ export function EagleBatchTagPicker({
   );
   const trimmedQuery = query.trim();
   const normalizedQuery = normalizeEagleTagSearchText(trimmedQuery);
+  const compactQuery = normalizedQuery.replace(/\s+/gu, '');
+  const asciiQuery = compactQuery.length > 0 && /^[a-z0-9]+$/u.test(compactQuery);
+  const hasNameMatch =
+    asciiQuery && tagIndexes.some((index) => index.compactName.includes(compactQuery));
+  const hasPinyinMatch =
+    asciiQuery &&
+    tagIndexes.some(
+      (index) =>
+        index.fullPinyin.includes(compactQuery) || index.pinyinInitials.includes(compactQuery),
+    );
+  // Pinyin searches are searches, not names: do not create a tag literally called "yjfw".
+  const pinyinOnlyMatch = hasNameMatch === false && hasPinyinMatch;
+  const exactNameMatch = allTags.some(
+    (tag) => normalizeEagleTagSearchText(tag.name) === normalizedQuery,
+  );
   const canCreate = Boolean(
     !isRemoving &&
     onCreate &&
     trimmedQuery &&
-    visibleTags.length === 0 &&
     trimmedQuery.length <= 64 &&
-    !allTags.some((tag) => normalizeEagleTagSearchText(tag.name) === normalizedQuery),
+    !exactNameMatch &&
+    !pinyinOnlyMatch,
   );
+  const showAppliedCount = !isRemoving && selectedAssetCountByTagId !== undefined;
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
@@ -76,10 +109,6 @@ export function EagleBatchTagPicker({
       current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId],
     );
   };
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (selectedTagIds.length > 0) onApply(selectedTagIds);
-  };
   const createTag = async () => {
     if (!onCreate || !canCreate) return;
     setIsCreating(true);
@@ -87,12 +116,25 @@ export function EagleBatchTagPicker({
       const tag = await onCreate(trimmedQuery);
       setCreatedTags((current) => [...current, tag]);
       setSelectedTagIds((current) => (current.includes(tag.id) ? current : [...current, tag.id]));
-      setQuery(tag.name);
+      if (tagScope.startsWith('GROUP:') && tag.groupId !== tagScope.slice(6)) setTagScope('ALL');
+      setQuery('');
+      searchInput.current?.focus();
     } catch {
       // The parent mutation exposes the API error through the dialog's error prop.
     } finally {
       setIsCreating(false);
     }
+  };
+  const apply = () => {
+    if (selectedTagIds.length > 0) onApply(selectedTagIds);
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (canCreate) {
+      void createTag();
+      return;
+    }
+    apply();
   };
   return (
     <div
@@ -123,15 +165,54 @@ export function EagleBatchTagPicker({
         <label className={styles.searchBox}>
           <IconSearch size={16} aria-hidden="true" />
           <input
+            ref={searchInput}
             autoFocus
             type="search"
             aria-label={isRemoving ? t('搜索可删除标签') : t('搜索可添加标签')}
             placeholder={t('搜索名称、拼音或首字母')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                apply();
+              }
+            }}
           />
         </label>
         <div className={styles.tagList}>
+          {manualTagGroups.length > 0 && (
+            <label className={styles.groupFilter}>
+              <span>{t('标签组')}</span>
+              <select
+                aria-label={t('按标签组筛选')}
+                value={tagScope}
+                onChange={(event) => setTagScope(event.target.value as TagScope)}
+              >
+                <option value="ALL">{t('全部标签')}</option>
+                <option value="UNCATEGORIZED">{t('未分类')}</option>
+                <option value="STARRED">{t('常用标签')}</option>
+                {manualTagGroups.map((group) => (
+                  <option key={group.id} value={`GROUP:${group.id}`}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {!isRemoving && onCreate && !trimmedQuery && (
+            <button
+              className={styles.createTag}
+              type="button"
+              aria-label={t('新建标签')}
+              disabled={isCreating || pending}
+              onClick={() => searchInput.current?.focus()}
+            >
+              <IconPlus size={15} />
+              {' ' + t('新建标签') + '…'}
+              <small>{t('输入名称后创建')}</small>
+            </button>
+          )}
           {canCreate && (
             <button
               className={styles.createTag}
@@ -165,7 +246,8 @@ export function EagleBatchTagPicker({
                     <BatchTagOption
                       tag={tag}
                       selected={selectedTagIds.includes(tag.id)}
-                      selectedAssetCount={selectedAssetCountByTagId[tag.id]}
+                      selectedAssetCount={selectedAssetCountByTagId?.[tag.id]}
+                      showApplied={showAppliedCount}
                       assetCount={assetCount}
                       isRemoving={isRemoving}
                       onToggle={toggleTag}
@@ -193,6 +275,8 @@ export function EagleBatchTagPicker({
                       <BatchTagOption
                         tag={tag}
                         selected={selectedTagIds.includes(tag.id)}
+                        selectedAssetCount={selectedAssetCountByTagId?.[tag.id]}
+                        showApplied={showAppliedCount}
                         assetCount={assetCount}
                         recent
                         onToggle={toggleTag}
@@ -226,7 +310,7 @@ export function EagleBatchTagPicker({
           </button>
           <button
             className={styles.primary}
-            type="submit"
+            type="button"
             aria-label={
               isRemoving
                 ? t('从 {{value1}} 项素材删除 {{value2}} 个标签', {
@@ -239,6 +323,7 @@ export function EagleBatchTagPicker({
                   })
             }
             disabled={selectedTagIds.length === 0 || pending || isCreating}
+            onClick={apply}
           >
             {isRemoving ? t('删除') : t('添加')}
           </button>
@@ -251,6 +336,7 @@ function BatchTagOption({
   tag,
   selected,
   selectedAssetCount,
+  showApplied = false,
   assetCount,
   isRemoving = false,
   recent = false,
@@ -259,6 +345,7 @@ function BatchTagOption({
   tag: EagleManualTag;
   selected: boolean;
   selectedAssetCount?: number;
+  showApplied?: boolean;
   assetCount: number;
   isRemoving?: boolean;
   recent?: boolean;
@@ -286,7 +373,14 @@ function BatchTagOption({
       ) : (
         <>
           <span>{tag.name}</span>
-          <small>{tag.assetCount}</small>
+          <small>
+            {showApplied
+              ? t('已应用 {{value1}}/{{value2}}', {
+                  value1: selectedAssetCount ?? 0,
+                  value2: assetCount,
+                })
+              : tag.assetCount}
+          </small>
         </>
       )}
     </label>
