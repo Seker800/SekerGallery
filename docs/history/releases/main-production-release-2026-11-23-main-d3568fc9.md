@@ -4,7 +4,7 @@
 
 ## 范围与版本
 
-- 运行源码：`d3568fc9`（API／operations／library-reader／web 一致；桌面端未重打包）。
+- 运行源码：`d3568fc9`（API／operations／library-reader／web 一致；macOS 客户端已用同一源码重打包并替换）。
 - API／operations／library-reader：`sekereagle/api:main-d3568fc9`（linux/amd64）。
 - Web：`sekereagle/web:main-d3568fc9`（linux/amd64）。
 - 数据库：102 项迁移，待应用 0；本次应用 `20261123090000_manual_tag_system_key`，只新增可空列与唯一索引，并把现有“收藏／已编辑”标签标记为系统标签。
@@ -31,9 +31,11 @@
 - api／operations／library-reader／web 四个容器 healthy、0 重启，切换后日志无 error／fatal／unhandled；无关容器未变。
 - 本地门禁：`npm run ci:check` 全绿；生产依赖安全审计 0 漏洞；worker 租约测试通过；完整 `test:library-integration` 通过至人员排序既有失败之前（该失败在 2405f5ed 之前即存在，与本次改动无关）。
 - 未做登录后的生产浏览器交互（无生产账号凭据）；建议现场走一遍：多选 → 选择全部匹配项 → 批量加标签 → 合并标签 → 永久删除 1 条测试素材 → 保存智能文件夹。
-- 桌面端未重打包：网页更新即时生效，拖拽上限改动需重打包客户端；安卓 APK 未构建安装；Mac 业务 worker 未更新，“已编辑”标签 systemKey 保护待 worker 更新后完整。
+- macOS 客户端：用 `d3568fc9` 源码重打包 arm64 未签名客户端，替换安装为 `/Applications/SekerGallery.app` 0.1.9（app.asar `73a2d95a…`）；启动后已连接线上图库，无崩溃与错误日志，原服务器配置与缓存目录保留；旧版完整移动到 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`（app.asar `ca3a6a38…`）。未用真实文件实测 100 个以上原文件的原生拖拽。
+- 安卓 APK 未构建安装；Mac 业务 worker 未更新，“已编辑”标签 systemKey 保护待 worker 更新后完整。
 
 ## 回退
 
 - API／operations／library-reader／web 回退：`sekereagle/api:main-2405f5ed`／`sekereagle/web:main-2405f5ed`。
+- macOS 客户端回退：关闭客户端，把 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app` 拷回 `/Applications` 后启动。
 - NAS 私有 `maintenance/main-d3568fc9/` 保存发布前服务快照、原 Compose 链、`images.json`、`rollback.json`、`migration-plan.json`、`active.json`、数据库备份与归档索引；回退使用 `release.py` 的回退路径恢复镜像。本次迁移为增量，回退应用不需要删除列或索引。

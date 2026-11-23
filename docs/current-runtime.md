@@ -8,18 +8,18 @@
 
 ## 现用状态
 
-| 项目                              | 当前值                                                                                                                         |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| 图库                              | 群晖 SekerDesign（DS1522+，AMD64，8GB），入口 https://yuntai.design:8181/                                                      |
-| 运行源码                          | API `d3568fc9`；web `d3568fc9`；operations／reader `d3568fc9`；desktop 客户端仍为 0.1.9（`2405f5ed` 构建，未重打包）           |
-| API / operations / library-reader | `sekereagle/api:main-d3568fc9`                                                                                                 |
-| Web                               | `sekereagle/web:main-d3568fc9`                                                                                                 |
-| macOS 桌面客户端                  | `/Applications/SekerGallery.app` 0.1.9（`2405f5ed` 源码，app.asar `ca3a6a38…`；网页更新即时生效，拖拽上限改动需重打包）        |
-| Windows 便携客户端（本机）        | `D:\SekerGallery\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`13b1fbef` 源码；exe `597acca0…`、app.asar `e0fa70c0…`） |
-| 数据库                            | 102 项迁移，待应用 0；本轮新增 `EagleManualTag.systemKey` 与唯一索引，回填“收藏／已编辑”系统标签                               |
-| Mac 业务执行器                    | `.runtime/business-worker/releases/worker-93b5d583`（launchd；不是 Compose `worker`）                                          |
-| 未改动                            | 网关、Postgres、MinIO、计算协调器、中继；不要为排查重启或重建                                                                  |
-| 计数                              | MATERIAL / PHOTO / 回收站 / 草稿从运行检查点读取，本文不维护动态百分比                                                         |
+| 项目                              | 当前值                                                                                                                                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 图库                              | 群晖 SekerDesign（DS1522+，AMD64，8GB），入口 https://yuntai.design:8181/                                                                                                                   |
+| 运行源码                          | API `d3568fc9`；web `d3568fc9`；operations／reader `d3568fc9`；desktop 客户端已重打包为 0.1.9（`d3568fc9` 源码）                                                                            |
+| API / operations / library-reader | `sekereagle/api:main-d3568fc9`                                                                                                                                                              |
+| Web                               | `sekereagle/web:main-d3568fc9`                                                                                                                                                              |
+| macOS 桌面客户端                  | `/Applications/SekerGallery.app` 0.1.9（`d3568fc9` 源码，app.asar `73a2d95a…`，已启动并连接线上图库；旧版备份 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`） |
+| Windows 便携客户端（本机）        | `D:\SekerGallery\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`13b1fbef` 源码；exe `597acca0…`、app.asar `e0fa70c0…`）                                                              |
+| 数据库                            | 102 项迁移，待应用 0；本轮新增 `EagleManualTag.systemKey` 与唯一索引，回填“收藏／已编辑”系统标签                                                                                            |
+| Mac 业务执行器                    | `.runtime/business-worker/releases/worker-93b5d583`（launchd；不是 Compose `worker`）                                                                                                       |
+| 未改动                            | 网关、Postgres、MinIO、计算协调器、中继；不要为排查重启或重建                                                                                                                               |
+| 计数                              | MATERIAL / PHOTO / 回收站 / 草稿从运行检查点读取，本文不维护动态百分比                                                                                                                      |
 
 Web 最近覆盖：`main-d3568fc9`（11-23 18:04）→ `main-2405f5ed`（11-20 11:02）→
 `cacheopt-67e99d52`（11-18 11:18）。API／operations／reader 本轮一并升到 `main-d3568fc9`。
@@ -59,7 +59,7 @@ Web 最近覆盖：`main-d3568fc9`（11-23 18:04）→ `main-2405f5ed`（11-20 1
 
 - Web 回退：`sekereagle/web:main-2405f5ed`（再上一版 `cacheopt-67e99d52`）。
 - API／operations／reader 回退：`sekereagle/api:main-2405f5ed`（再上一版 `share4k-e57b7ab7`／`refactor-93b5d583`）。
-- macOS 客户端回退：`~/SekerGallery-client-backups/SekerGallery-0.1.9-20261118-before-cacheopt.app`（app.asar `ca6263bf…`）；本轮未重打包桌面端。
+- macOS 客户端回退：`~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`（app.asar `ca3a6a38…`）；更早的 `SekerGallery-0.1.9-20261118-before-cacheopt.app` 仍在。
 - Mac worker 回退：`.runtime/business-worker/releases/worker-b852071b`；plist 备份在
   `.omx/artifacts/release-93b5d583/worker-before.plist`。
 - 2026-11-18 11:00 本地清理：删除了 18 个旧 worker release（保留现用 `worker-93b5d583` 与回退
