@@ -16,4 +16,4 @@ const target = {
 };
 
 config.assertSafeRuntimeTarget(target);
-process.stdout.write(`SekerEagle target accepted: ${config.describeRuntimeTarget(target)}\n`);
+process.stdout.write(`SekerGallery target accepted: ${config.describeRuntimeTarget(target)}\n`);

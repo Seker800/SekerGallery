@@ -12,7 +12,7 @@ publishing a tagged artifact.
 - [ ] `THIRD_PARTY_NOTICES.md`, Node/Python lockfiles and the generated artifact
       SBOM describe the exact shipped versions.
 - [ ] Model weights are not committed or bundled without a separate license review.
-- [ ] Public pages state that SekerEagle is not an official Eagle product.
+- [ ] Public pages state that SekerGallery is not an official Eagle product.
 
 ## Secrets and private data
 

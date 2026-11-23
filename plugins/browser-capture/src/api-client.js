@@ -17,7 +17,7 @@ export class CaptureApiClient {
     this.allowInsecureHttp = allowInsecureHttp;
     this.serverUrl = normalizeServerUrl(serverUrl, { allowRemoteHttp: allowInsecureHttp });
     this.pat = String(pat || '').trim();
-    if (!this.pat.startsWith('sea_pat_')) throw new Error('请配置有效的 SekerEagle PAT。');
+    if (!this.pat.startsWith('sea_pat_')) throw new Error('请配置有效的 SekerGallery PAT。');
     this.fetchImpl = fetchImpl;
   }
 
@@ -88,11 +88,11 @@ export class CaptureApiClient {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch (cause) {
-      throw new CaptureApiError(messageFrom(cause, 'SekerEagle 连接失败。'));
+      throw new CaptureApiError(messageFrom(cause, 'SekerGallery 连接失败。'));
     }
     const payload = await readPayload(response);
     if (!response.ok) {
-      throw responseError(response.status, payload?.message || 'SekerEagle 请求失败。');
+      throw responseError(response.status, payload?.message || 'SekerGallery 请求失败。');
     }
     return payload;
   }
@@ -104,7 +104,7 @@ async function readPayload(response) {
   try {
     return JSON.parse(text);
   } catch {
-    throw new CaptureApiError('SekerEagle 返回了无法解析的响应。');
+    throw new CaptureApiError('SekerGallery 返回了无法解析的响应。');
   }
 }
 

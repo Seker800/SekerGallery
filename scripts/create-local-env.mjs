@@ -29,7 +29,7 @@ MLX_EMBEDDING_REVISION=9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda
 
 try {
   await writeFile(output, contents, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-  process.stdout.write('Created private .env with random SekerEagle-only secrets\n');
+  process.stdout.write('Created private .env with random SekerGallery-only secrets\n');
 } catch (error) {
   if (error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST') {
     throw new Error('.env already exists; refusing to overwrite it', { cause: error });

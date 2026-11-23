@@ -1,4 +1,4 @@
-# SekerEagle 网页视觉风格
+# SekerGallery 网页视觉风格
 
 2026-10-24，经用户确认，将照片统计的紧凑、低饱和风格推广到整个网页。本文是后续页面和组件的视觉依据，设计变量以 `apps/web/src/design-tokens.css` 为唯一来源。素材与照片共用视觉实现，业务边界继续遵守 architecture.md；不改变安卓原生界面的独立设计方向。
 

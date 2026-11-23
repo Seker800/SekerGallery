@@ -207,12 +207,12 @@ describe('AccountHome', () => {
       if (path === '/api/tokens' && init?.method === 'POST') {
         if (typeof init.body !== 'string') throw new Error('expected a JSON request body');
         expect(JSON.parse(init.body)).toEqual({
-          name: 'SekerEagle 灵感采集',
+          name: 'SekerGallery 灵感采集',
           scopes: ['capture:write'],
         });
         return jsonResponse({
           id: 'token-2',
-          name: 'SekerEagle 灵感采集',
+          name: 'SekerGallery 灵感采集',
           scopes: ['capture:write'],
           createdAt: '2026-08-17T00:00:00.000Z',
           expiresAt: null,
@@ -243,7 +243,7 @@ describe('AccountHome', () => {
     expect(createdToken).toHaveAttribute('readonly');
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(
-      screen.getByText('SekerEagle 灵感采集', { selector: '.token-item strong' }),
+      screen.getByText('SekerGallery 灵感采集', { selector: '.token-item strong' }),
     ).toBeInTheDocument();
 
     const selectSpy = vi.spyOn(HTMLInputElement.prototype, 'select');

@@ -1,6 +1,6 @@
 # 群晖现有预览的小批复用
 
-这是一次性导入后的有界运维入口，不是外部目录图库。它只读挂载共享空间，复制派生 JPEG 到 SekerEagle 的 MinIO；日常浏览和 2B 输入仍从托管存储读取，源缓存消失不会影响已经复制的结果。
+这是一次性导入后的有界运维入口，不是外部目录图库。它只读挂载共享空间，复制派生 JPEG 到 SekerGallery 的 MinIO；日常浏览和 2B 输入仍从托管存储读取，源缓存消失不会影响已经复制的结果。
 
 `apps/worker/src/synology-preview-pilot.ts` 接收私有冻结清单、只读共享空间根目录以及 `--plan` 或 `--apply`。清单包含原导入认证主体的 ownerId 与 1–100 个精确媒体版本，每项有 assetId、sha256、mediaRevision，以及 source 的相对 path、size、mtimeNs、inode、device。来源是已完成导入的 journal，不能使用浏览器 DTO 提供的 ownerId。
 

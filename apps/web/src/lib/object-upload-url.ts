@@ -20,11 +20,11 @@ export function resolveObjectUploadUrl(uploadUrl: string, browserOrigin: string)
     gateway.search ||
     gateway.hash
   ) {
-    throw new Error(t('当前 SekerEagle 网关地址无效。'));
+    throw new Error(t('当前 SekerGallery 网关地址无效。'));
   }
   if (upload.origin !== gateway.origin) {
     if (!isLoopbackHostname(upload.hostname)) {
-      throw new Error(t('对象存储上传地址不属于当前 SekerEagle。'));
+      throw new Error(t('对象存储上传地址不属于当前 SekerGallery。'));
     }
     upload.protocol = gateway.protocol;
     upload.hostname = gateway.hostname;

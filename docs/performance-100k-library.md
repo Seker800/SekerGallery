@@ -2,7 +2,7 @@
 
 ## 结论
 
-SekerEagle 的 PostgreSQL 元数据路径已在独立 `sekereagle_test` 数据库中通过 100,000
+SekerGallery 的 PostgreSQL 元数据路径已在独立 `sekereagle_test` 数据库中通过 100,000
 素材规模门禁。默认列表使用部分索引和 index-only scan；真实 `EagleService` 查询的全部
 p95 均低于门禁。这个结论只覆盖元数据与图库交互，不等价于对象存储容量或备份已经满足
 实际图片体积。

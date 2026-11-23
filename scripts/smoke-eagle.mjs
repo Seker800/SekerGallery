@@ -352,4 +352,4 @@ const rejectedUpload = await api('/api/eagle/uploads', {
 });
 if (rejectedUpload.response.status !== 403) throw new Error('只读 PAT 错误获得了上传权限');
 
-process.stdout.write(`SekerEagle domain smoke passed: ${assetId}\n`);
+process.stdout.write(`SekerGallery domain smoke passed: ${assetId}\n`);

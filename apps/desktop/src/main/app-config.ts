@@ -7,7 +7,7 @@ export function normalizeDesktopServerUrl(input: string): string {
   try {
     url = new URL(input);
   } catch {
-    throw new Error('SekerEagle 服务器地址无效。');
+    throw new Error('SekerGallery 服务器地址无效。');
   }
   if (
     (url.protocol !== 'http:' && url.protocol !== 'https:') ||

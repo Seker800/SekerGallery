@@ -27,7 +27,7 @@ describe('resolveObjectUploadUrl', () => {
         'https://objects.attacker.example/sekereagle-assets/file?X-Amz-Signature=signed',
         'https://eagle.example.com',
       ),
-    ).toThrow('对象存储上传地址不属于当前 SekerEagle。');
+    ).toThrow('对象存储上传地址不属于当前 SekerGallery。');
   });
 
   it.each([

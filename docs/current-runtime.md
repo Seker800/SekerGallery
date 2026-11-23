@@ -14,8 +14,8 @@
 | 运行源码                          | API `2405f5ed`；web `2405f5ed`；desktop `2405f5ed`（源码未变）；operations／reader `2405f5ed`                              |
 | API / operations / library-reader | `sekereagle/api:main-2405f5ed`                                                                                             |
 | Web                               | `sekereagle/web:main-2405f5ed`                                                                                             |
-| macOS 桌面客户端                  | `/Applications/SekerEagle.app` 0.1.9（`2405f5ed` 源码，app.asar `ca3a6a38…`，与上一版相同）                                |
-| Windows 便携客户端（本机）        | `D:\SekerEagle\SekerEagle-0.1.9-windows-x64-portable.exe`，0.1.9（`13b1fbef` 源码；exe `597acca0…`、app.asar `e0fa70c0…`） |
+| macOS 桌面客户端                  | `/Applications/SekerGallery.app` 0.1.9（`2405f5ed` 源码，app.asar `ca3a6a38…`，与上一版相同）                                |
+| Windows 便携客户端（本机）        | `D:\SekerGallery\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`13b1fbef` 源码；exe `597acca0…`、app.asar `e0fa70c0…`） |
 | 数据库                            | 101 项迁移，待应用 0；本轮新增回收站排序两个部分索引                                                                       |
 | Mac 业务执行器                    | `.runtime/business-worker/releases/worker-93b5d583`（launchd；不是 Compose `worker`）                                      |
 | 未改动                            | 网关、Postgres、MinIO、计算协调器、中继；不要为排查重启或重建                                                              |
@@ -58,7 +58,7 @@ Web 最近覆盖：`main-2405f5ed`（11-20 11:02）→ `cacheopt-67e99d52`（11-
 ## 回退与证据
 
 - Web 回退：`sekereagle/web:cacheopt-67e99d52`（再上一版 `cacheopt-abb4c3e3`）。
-- macOS 客户端回退：`~/SekerEagle-client-backups/SekerEagle-0.1.9-20261118-before-cacheopt.app`（app.asar `ca6263bf…`）；本轮桌面端源码未变，应用包未替换。
+- macOS 客户端回退：`~/SekerGallery-client-backups/SekerGallery-0.1.9-20261118-before-cacheopt.app`（app.asar `ca6263bf…`）；本轮桌面端源码未变，应用包未替换。
 - API 回退：`sekereagle/api:share4k-e57b7ab7`；operations／reader 回退 `sekereagle/api:refactor-93b5d583`。
 - Mac worker 回退：`.runtime/business-worker/releases/worker-b852071b`；plist 备份在
   `.omx/artifacts/release-93b5d583/worker-before.plist`。
@@ -77,8 +77,8 @@ Web 最近覆盖：`main-2405f5ed`（11-20 11:02）→ `cacheopt-67e99d52`（11-
   只有容量上限、手动清理或库身份/账号/方案变化才会失效。完整回退清单与历史备份见
   [归档](history/releases/2026-11.md) 和 `rollback.json`。
 - 2026-11-18 13:25 本机 Windows 便携客户端升级：用 `13b1fbef` 源码原生重建并替换
-  `D:\SekerEagle\SekerEagle-0.1.9-windows-x64-portable.exe`（exe `597acca0…`，app.asar
-  `e0fa70c0…`）；旧 exe `2fb31110…` 备份在 `D:\SekerEagle\backup\`，`SekerEagleData` 未动。
+  `D:\SekerGallery\SekerGallery-0.1.9-windows-x64-portable.exe`（exe `597acca0…`，app.asar
+  `e0fa70c0…`）；旧 exe `2fb31110…` 备份在 `D:\SekerGallery\backup\`，`SekerEagleData` 未动。
   实机确认图库正常加载（数万项）、缓存控制台为 10.0 GiB 并含旧缓存清理入口；核验用的调试端口已关闭。
 
 ## 最新发布摘要

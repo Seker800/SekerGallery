@@ -31,7 +31,7 @@ export function createWindow(
     minWidth: 960,
     minHeight: 640,
     show: false,
-    title: 'SekerEagle',
+    title: 'SekerGallery',
     // Native frame reserves client space for fixed viewers, editors and dialogs.
     // A CSS margin cannot move viewport-positioned overlays below a title bar.
     ...(process.platform === 'win32' ? { autoHideMenuBar: true } : {}),

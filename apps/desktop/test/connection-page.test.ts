@@ -275,7 +275,7 @@ describe('offline-capable desktop connection page', () => {
     expect(html).toContain('id="show-connection-settings"');
     expect(html).toContain('<details id="connection-details"');
     expect(html).toContain('class="console-head"');
-    expect(html).toContain('src="/seker-eagle-logo.svg"');
+    expect(html).toContain('src="/seker-gallery-logo.svg"');
     expect(css).toContain('.status-panel');
     expect(css).toContain('.settings-group');
     expect(html).not.toContain('class="sidebar"');

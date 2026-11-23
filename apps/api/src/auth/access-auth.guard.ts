@@ -27,7 +27,7 @@ export class AccessAuthGuard implements CanActivate {
       : '';
     if (bearer) {
       if (!bearer.startsWith(PAT_PREFIX))
-        throw new UnauthorizedException('仅接受 SekerEagle PAT。');
+        throw new UnauthorizedException('仅接受 SekerGallery PAT。');
       request.user = await this.pats.authenticate(bearer);
       return true;
     }

@@ -6,11 +6,11 @@ Accepted for the macOS-first V1. Windows x64 remains an internal package target 
 
 ## Decision
 
-SekerEagle uses Electron to host the existing React/Vite UI. The server remains the only business and media source of truth. The desktop runtime adds a narrow custom media protocol and an independently restartable `utilityProcess` that owns a rebuildable SQLite index and sharded derived-media files.
+SekerGallery uses Electron to host the existing React/Vite UI. The server remains the only business and media source of truth. The desktop runtime adds a narrow custom media protocol and an independently restartable `utilityProcess` that owns a rebuildable SQLite index and sharded derived-media files.
 
 Only server-authorized public derivatives can persist: thumbnails, previews, posters, and Deep Zoom WebP tiles. Originals, private assets, video, and audio bypass the disk cache. Cache identities include normalized server origin, a server-persisted random deployment identity, authenticated owner, media kind, and immutable media identifiers.
 
-The first release targets macOS 13+ and stores cache data under `~/Library/Caches/SekerEagle`. It applies current-user permissions, Time Machine exclusion, and Spotlight exclusion. Windows uses `LocalAppData` and the same portable cache core.
+The first release targets macOS 13+ and stores cache data under `~/Library/Caches/SekerGallery`. It applies current-user permissions, Time Machine exclusion, and Spotlight exclusion. Windows uses `LocalAppData` and the same portable cache core.
 
 ## Alternatives considered
 

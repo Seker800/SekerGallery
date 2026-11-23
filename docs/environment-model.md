@@ -3,7 +3,7 @@
 ## Local development
 
 - 本机代码可以裸跑。
-- PostgreSQL 与 MinIO 使用 SekerEagle 自己的 Docker compose。
+- PostgreSQL 与 MinIO 使用 SekerGallery 自己的 Docker compose。
 - 开发数据库固定为 `sekereagle`，测试数据库固定为 `sekereagle_test`。
 - 所有数据脚本必须先通过 `scripts/assert-safe-target.mjs`。
 

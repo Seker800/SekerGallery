@@ -80,8 +80,8 @@ const tokenPurposes = {
     scopes: ['photo:read', 'photo:suggest'],
   },
   capture: {
-    label: t('SekerEagle 灵感采集'),
-    defaultName: t('SekerEagle 灵感采集'),
+    label: t('SekerGallery 灵感采集'),
+    defaultName: t('SekerGallery 灵感采集'),
     scopes: ['capture:write'],
   },
   importer: {

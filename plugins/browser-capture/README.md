@@ -1,12 +1,12 @@
-# SekerEagle 灵感采集
+# SekerGallery 灵感采集
 
-这是一个独立的 Manifest V3 Chrome 扩展。用户在网页图片或视频上按住 `Alt` 并点击右键，扩展会把原始媒体、网页来源和 Eagle 风格元数据加入本地可靠队列，再上传到 SekerEagle。
+这是一个独立的 Manifest V3 Chrome 扩展。用户在网页图片或视频上按住 `Alt` 并点击右键，扩展会把原始媒体、网页来源和 Eagle 风格元数据加入本地可靠队列，再上传到 SekerGallery。
 
 当前扩展版本：`0.3.0`。
 
 ## 给 Agent 的一句话说明
 
-这不是“调用浏览器下载”的小脚本，而是 SekerEagle 的浏览器采集适配器：内容脚本负责识别图片和视频，Service Worker 负责持久化队列和上传，服务端负责认证、分片上传、SHA-256 去重、来源留存和媒体处理。
+这不是“调用浏览器下载”的小脚本，而是 SekerGallery 的浏览器采集适配器：内容脚本负责识别图片和视频，Service Worker 负责持久化队列和上传，服务端负责认证、分片上传、SHA-256 去重、来源留存和媒体处理。
 
 ```text
 网页 Alt+右键
@@ -22,11 +22,11 @@ IndexedDB 持久队列
 PostgreSQL 业务事实 + MinIO 原图 + worker 媒体任务
 ```
 
-插件只通过 gateway 访问 SekerEagle，不连接 PostgreSQL、MinIO 内部端口，也不依赖 SekerChat。
+插件只通过 gateway 访问 SekerGallery，不连接 PostgreSQL、MinIO 内部端口，也不依赖 SekerChat。
 
 ## 用户安装与配置
 
-1. 在 SekerEagle 的“账号 → 外部连接令牌”创建用途为“浏览器采集”的令牌。
+1. 在 SekerGallery 的“账号 → 外部连接令牌”创建用途为“浏览器采集”的令牌。
 2. 令牌只应包含 `capture:write` scope，实际前缀是 `sea_pat_`。
 3. 打开 `chrome://extensions`，启用开发者模式，点击“加载未打包的扩展程序”。
 4. 选择本目录 `plugins/browser-capture`。
@@ -51,7 +51,7 @@ Chrome 内置页、新标签页和 Chrome 应用商店不允许普通扩展注�
 - `local`：只使用内网地址。
 - `public`：只使用公网地址。
 
-在另一台局域网电脑上使用扩展时，内网地址应填写运行 SekerEagle 的电脑地址，例如
+在另一台局域网电脑上使用扩展时，内网地址应填写运行 SekerGallery 的电脑地址，例如
 `http://192.168.1.10:8180`，并显式启用“允许内网 HTTP”。服务端还必须把 gateway 绑定到
 该内网 IP；默认部署只绑定 loopback。HTTP 会明文传输 PAT 和图片，只应在可信局域网中使用。
 
@@ -95,8 +95,8 @@ Alt 状态会在右键按下阶段记录，因为部分页面触发 `contextmenu
 
 捕获后页面会立即显示短暂提示：
 
-- `正在加入 SekerEagle 队列`
-- `已加入 SekerEagle 队列 · N`
+- `正在加入 SekerGallery 队列`
+- `已加入 SekerGallery 队列 · N`
 - 或明确的失败原因
 
 入队只是开始，不代表采集已经成功。任务真正完成或进入需要人工处理的失败状态时，扩展会同时显示网页提示和 Chrome 系统通知；原采集页面仍然打开时还会播放成功或失败音效。扩展弹窗中的每条任务会显示“刚刚 / N 分钟前 / N 小时前 / N 天前”，悬停可查看精确日期时间。成功任务使用完成时间，失败任务使用最后更新时间。
@@ -237,11 +237,11 @@ npm run build
 
 Node 测试不能替代真实 Chrome 测试。至少验证一次：
 
-1. 确认 ChatGPT Chrome 控制扩展已经连接。它与 SekerEagle 灵感采集扩展是两个不同扩展。
-2. 在 `chrome://extensions` 确认 SekerEagle 版本并重新加载。
+1. 确认 ChatGPT Chrome 控制扩展已经连接。它与 SekerGallery 灵感采集扩展是两个不同扩展。
+2. 在 `chrome://extensions` 确认 SekerGallery 版本并重新加载。
 3. 刷新一个普通网页媒体页，让新版内容脚本重新注入。
 4. 对真实图片或视频执行 `Alt+右键`。
-5. 确认网页出现 `已加入 SekerEagle 队列`。
+5. 确认网页出现 `已加入 SekerGallery 队列`。
 6. 检查 gateway 日志是否依次出现创建捕获、分片签名和完成请求，状态为 201。
 7. 只读检查最新 `EagleBrowserCapture` 是否使用当前扩展版本，并且上传会话为 `COMPLETED`、存在 assetId。
 

@@ -217,7 +217,7 @@ async function downloadFirstSupportedCandidate(job, fetchImpl) {
       const blob = await fetchMedia(sourceUrl, job.metadata.pageUrl, fetchImpl);
       const mimeType = resolveSupportedMimeType(blob.type, sourceUrl);
       if (!mimeType) {
-        lastError = typedError('该候选媒体格式暂不受 SekerEagle 支持。', 'PERMANENT');
+        lastError = typedError('该候选媒体格式暂不受 SekerGallery 支持。', 'PERMANENT');
         continue;
       }
       return { blob, mimeType, sourceUrl };
@@ -244,7 +244,7 @@ async function initiateWithFallback({ serverCandidates, pat, fetchImpl, declarat
       if (!(error instanceof CaptureApiError) || error.status !== 0) throw error;
     }
   }
-  throw lastError ?? new CaptureApiError('无法连接 SekerEagle。');
+  throw lastError ?? new CaptureApiError('无法连接 SekerGallery。');
 }
 
 function isLoopbackServer(serverUrl) {

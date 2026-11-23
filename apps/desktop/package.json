@@ -1,8 +1,8 @@
 {
   "name": "@sekereagle/desktop",
   "version": "0.1.9",
-  "description": "SekerEagle online-first desktop media library with a secure local cache.",
-  "author": "SekerEagle contributors",
+  "description": "SekerGallery online-first desktop media library with a secure local cache.",
+  "author": "SekerGallery contributors",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
@@ -28,7 +28,7 @@
   },
   "build": {
     "appId": "com.sekereagle.desktop",
-    "productName": "SekerEagle",
+    "productName": "SekerGallery",
     "asar": true,
     "files": [
       "dist/**/*",

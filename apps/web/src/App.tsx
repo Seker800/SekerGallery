@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { t } from './i18n';
 import { lazy, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { IconArrowRight } from '@tabler/icons-react';
-import sekerEagleLogo from './assets/seker-eagle-logo.svg';
+import sekerGalleryLogo from './assets/seker-gallery-logo.svg';
 import {
   DesktopConnectionButton,
   type DesktopPageConnection,
@@ -255,8 +255,8 @@ export function App() {
     return (
       <main className="auth-loading">
         {connectionButton}
-        <img src={sekerEagleLogo} alt="" />
-        <span>{t('正在连接 SekerEagle…')}</span>
+        <img src={sekerGalleryLogo} alt="" />
+        <span>{t('正在连接 SekerGallery…')}</span>
       </main>
     );
   }
@@ -265,7 +265,7 @@ export function App() {
       <main className="auth-shell auth-offline-shell">
         {connectionButton}
         <section className="auth-card auth-offline-card" role="status">
-          <img src={sekerEagleLogo} alt="" />
+          <img src={sekerGalleryLogo} alt="" />
           <h1>{t('无法连接素材库')}</h1>
           <p>{t('正在自动重试，网络恢复后会继续打开图库。')}</p>
           <button
@@ -284,12 +284,12 @@ export function App() {
     return (
       <main className="auth-shell">
         {connectionButton}
-        <section className="auth-intro" aria-label={t('SekerEagle 介绍')}>
+        <section className="auth-intro" aria-label={t('SekerGallery 介绍')}>
           <div className="auth-brand">
             <span className="auth-brand-mark">
-              <img src={sekerEagleLogo} alt="" />
+              <img src={sekerGalleryLogo} alt="" />
             </span>
-            <span>SekerEagle</span>
+            <span>SekerGallery</span>
           </div>
           <div>
             <p className="auth-eyebrow">PERSONAL ASSET LIBRARY</p>
@@ -301,7 +301,7 @@ export function App() {
           <header>
             <p className="auth-eyebrow">{t('欢迎回来')}</p>
             <h2>{t('登录素材库')}</h2>
-            <p>{t('使用你的 SekerEagle 独立账号继续。')}</p>
+            <p>{t('使用你的 SekerGallery 独立账号继续。')}</p>
           </header>
           <label>
             {' ' + t('邮箱') + ' '}

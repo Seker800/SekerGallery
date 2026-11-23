@@ -27,7 +27,7 @@ void import(chrome.runtime.getURL('src/capture-interaction.js'))
       resolveCaptureTargetAsync,
     });
   })
-  .catch(() => showToast('SekerEagle 插件加载失败，请重新加载扩展', true));
+  .catch(() => showToast('SekerGallery 插件加载失败，请重新加载扩展', true));
 
 function installCaptureInteraction({
   createAltRightClickTracker,
@@ -101,12 +101,12 @@ async function enqueueCapture(target, captureRect, captureElement, resolveCaptur
     },
     (response) => {
       if (chrome.runtime.lastError) {
-        showToast('SekerEagle 插件暂时无法响应', true);
+        showToast('SekerGallery 插件暂时无法响应', true);
         return;
       }
       showToast(
         response?.ok
-          ? `已加入 SekerEagle 队列 · ${response.pendingCount}`
+          ? `已加入 SekerGallery 队列 · ${response.pendingCount}`
           : response?.error || '素材加入队列失败',
         !response?.ok,
       );

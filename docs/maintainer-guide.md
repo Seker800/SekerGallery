@@ -2,12 +2,12 @@
 
 > 状态：现行 | 核验日期：2026-11-16 | 对应提交：93b5d583
 
-这份文档是接手 SekerEagle 的入口。它说明项目为什么存在、哪些边界不能破坏，以及日常
+这份文档是接手 SekerGallery 的入口。它说明项目为什么存在、哪些边界不能破坏，以及日常
 维护应从哪里开始。具体操作仍以链接的架构、运行和发布文档为准。
 
 ## 十分钟了解项目
 
-SekerEagle 是独立、自托管、多用户的图片管理系统；账号由管理员创建，不对外公开注册，素材与照片业务隔离、底层实现共用。PostgreSQL 保存业务事实，MinIO
+SekerGallery 是独立、自托管、多用户的图片管理系统；账号由管理员创建，不对外公开注册，素材与照片业务隔离、底层实现共用。PostgreSQL 保存业务事实，MinIO
 保存对象，NestJS API 承载业务规则，可重试 worker 生成缩略图、预览、颜色和切片等派生
 资源。React Web、Eagle 导入器和浏览器采集插件只通过同源 gateway 访问 API。Apple
 Silicon 上可以启用独立的 MLX HTTP sidecar，生成本地多模态向量和人工标签建议。图片向量是否生成受处理队列和宿主模型可用性控制，普通图片语义搜索只依赖 2B 模型。按[产品边界](product-frame.md)，本产品不设大型公开多租户 SaaS 的配额或防滥用限流。
@@ -29,7 +29,7 @@ Silicon 上可以启用独立的 MLX HTTP sidecar，生成本地多模态向量�
 
 ## 不能破坏的边界
 
-- SekerEagle 不连接、迁移、修改或删除 SekerChat 的数据库、MinIO、Cookie、secrets 或用户数据。
+- SekerGallery 不连接、迁移、修改或删除 SekerChat 的数据库、MinIO、Cookie、secrets 或用户数据。
 - `ownerId` 只从认证主体推导，任何请求 DTO 都不能接受 `ownerId`。
 - 跨 owner 访问返回 404，不泄露资源是否存在。
 - 开发数据库名只能是 `sekereagle` 或 `sekereagle_test`；数据库和对象存储 host 只能是 loopback 或 Compose 服务名。
@@ -157,7 +157,7 @@ npm run performance:media-memory
 
 ## 来源与许可证
 
-SekerEagle 从维护者拥有的 SekerChat 实现中干净复制并独立演进，详细边界见
+SekerGallery 从维护者拥有的 SekerChat 实现中干净复制并独立演进，详细边界见
 [`provenance.md`](provenance.md) 和 [`extraction-inventory.json`](extraction-inventory.json)。项目由
 维护者主导开发，部分代码使用 AI 工具辅助生成和审查；来源审计未发现已知的未经许可
 第三方源码拷贝。

@@ -3,9 +3,9 @@
   "version": "2.0.0",
   "platform": "all",
   "arch": "all",
-  "name": "SekerEagle 独立导入器",
+  "name": "SekerGallery 独立导入器",
   "logo": "/logo.svg",
-  "keywords": ["SekerEagle", "增量导入", "独立素材库"],
+  "keywords": ["SekerGallery", "增量导入", "独立素材库"],
   "devTools": false,
   "main": {
     "serviceMode": true,

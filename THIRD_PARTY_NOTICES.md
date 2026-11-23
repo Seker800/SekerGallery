@@ -1,6 +1,6 @@
 # Third-party notices
 
-SekerEagle depends on third-party packages and runtime images. The lockfiles are
+SekerGallery depends on third-party packages and runtime images. The lockfiles are
 the authoritative, version-specific inventory. This document highlights
 components whose terms materially affect redistribution; it is not a substitute
 for the license files shipped by those components.

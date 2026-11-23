@@ -24,7 +24,7 @@ async function generate(): Promise<void> {
   const document = SwaggerModule.createDocument(
     app,
     new DocumentBuilder()
-      .setTitle('SekerEagle API')
+      .setTitle('SekerGallery API')
       .setVersion('0.1.0')
       .addCookieAuth('sekereagle_access', { type: 'apiKey', in: 'cookie' }, 'cookie')
       .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'PAT' }, 'bearer')

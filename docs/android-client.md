@@ -54,7 +54,7 @@
 
 ## 0.9.27 识别服务器已删除并允许释放手机原图（2026-11-20）
 
-本机安装包为 `apps/android/release/SekerEagle-0.9.27-android-debug.apk`，versionCode44，同一调试签名；已覆盖安装到小米 25128PNA1C。
+本机安装包为 `apps/android/release/SekerGallery-0.9.27-android-debug.apk`，versionCode44，同一调试签名；已覆盖安装到小米 25128PNA1C。
 
 备份扫描在跳过本地已上传项前，用批量 `check-content-batch` 核对服务器正常库；不在正常库的项标记为“服务器已删除”，不计为已备份，也不自动重传（尊重用户在服务器上的删除）。状态显示“备份完成，N 张在服务器已删除（未上传）”，不再静默报完成。
 
@@ -64,7 +64,7 @@
 
 ## 0.9.26 修复媒体库路径匹配与自动任务并发（2026-11-20）
 
-本机安装包为 `apps/android/release/SekerEagle-0.9.26-android-debug.apk`，versionCode43，同一调试签名；已覆盖安装到小米 25128PNA1C。
+本机安装包为 `apps/android/release/SekerGallery-0.9.26-android-debug.apk`，versionCode43，同一调试签名；已覆盖安装到小米 25128PNA1C。
 
 0.9.25 引入用户发起数据传输任务后暴露两个问题：部分设备的媒体库 `relative_path` 不带前导斜杠（`DCIM/Camera/`），而聚合规则写成 `/DCIM/`，前缀匹配为空，扫描显示 0 张；自动备份仍并发使用前台服务，与手动任务抢跑并把服务卡在运行状态。0.9.26 对路径做前导斜杠归一化，自动备份改走带约束的普通系统任务，并与手动任务去重/节流；前台服务启动失败时清理运行状态。
 
@@ -72,7 +72,7 @@
 
 ## 0.9.25 按系统标准重装备份执行与释放空间判断（2026-11-20）
 
-本机安装包为 `apps/android/release/SekerEagle-0.9.25-android-debug.apk`，versionCode42，同一调试签名。
+本机安装包为 `apps/android/release/SekerGallery-0.9.25-android-debug.apk`，versionCode42，同一调试签名。
 
 - 手动备份在 Android 14+ 改用**用户发起的数据传输任务**（JobScheduler `setUserInitiated(true)`），不再长期占用受 6 小时/24 小时限制的 dataSync 前台服务；系统暂缓任务时会重试，旧系统保留前台服务兜底，被系统限制时直接显示“系统暂缓后台传输，请稍后重试”。通知栏的暂停/继续改为广播，不再直接启动前台服务。
 - 释放空间：没有当前方式的已确认检查点时，区分“需要先完成一次备份核对”和“确实没有可释放项”，并提供“开始核对”入口；核对走正常备份，不会重复上传，完成后重新检查即可。
@@ -82,7 +82,7 @@
 
 ## 0.9.24 相册备份优先使用媒体库（2026-11-20）
 
-本机安装包为 `apps/android/release/SekerEagle-0.9.24-android-debug.apk`，versionCode41，同一调试签名；已覆盖安装到小米 25128PNA1C。
+本机安装包为 `apps/android/release/SekerGallery-0.9.24-android-debug.apk`，versionCode41，同一调试签名；已覆盖安装到小米 25128PNA1C。
 
 “添加手机相册”现在直接提供“整个 DCIM／Download 等（含所有子相册）”的媒体库规则：照片和视频从 MediaStore 读取，回收站、隐藏内容和未写完的文件由平台语义排除；单个相册仍可多选，已有媒体规则覆盖的相册不再重复列出。“添加其他文件夹”保留给系统相册未收录的文件（例如部分 RAW），说明中明确这一分工；SAF 扫描继续按 0.9.22 的文档 ID 规则过滤。
 
@@ -90,7 +90,7 @@
 
 ## 0.9.23 停止并清除本次任务（2026-11-20）
 
-本机安装包为 `apps/android/release/SekerEagle-0.9.23-android-debug.apk`，versionCode40，同一调试签名；已覆盖安装到小米 25128PNA1C。
+本机安装包为 `apps/android/release/SekerGallery-0.9.23-android-debug.apk`，versionCode40，同一调试签名；已覆盖安装到小米 25128PNA1C。
 
 备份页“更多设置”新增“停止并清除本次任务”。它停止当前运行，清除本轮传输记录、待补传失败项和扫描进度，使下一次备份按当前目录重新扫描；已确认成功的回执、服务器已上传内容与服务器删除状态都不受影响。终态失败检查点会一并清除，下次扫描重新评估。
 
@@ -98,7 +98,7 @@
 
 ## 0.9.22 目录扫描按真实文件名识别回收站（2026-11-20）
 
-本机安装包为 `apps/android/release/SekerEagle-0.9.22-android-debug.apk`，versionCode39，同一调试签名；已覆盖安装到小米 25128PNA1C。
+本机安装包为 `apps/android/release/SekerGallery-0.9.22-android-debug.apk`，versionCode39，同一调试签名；已覆盖安装到小米 25128PNA1C。
 
 0.9.21 只按 `_display_name` 判断隐藏项，但系统目录接口会把回收目录和 `.trashed-` 文件的前缀从显示名里去掉：`.trashed-…-Screenshots` 显示为 `Screenshots`，`.trashed-…-Screenshot….jpg` 显示为 `Screenshot….jpg`。因此回收站里的截图仍被目录扫描放行并上传。0.9.22 同时检查文档 ID 最后一段的真实文件名（`BackupPolicy.documentName`），目录和文件都按真实名字判断隐藏。
 
@@ -106,7 +106,7 @@
 
 ## 0.9.21 目录扫描跳过隐藏项（2026-11-20）
 
-本机安装包为 `apps/android/release/SekerEagle-0.9.21-android-debug.apk`，versionCode38，同一调试签名。2026-11-20 11:07 已通过 USB 覆盖安装到小米 25128PNA1C，原账号、目录规则（DCIM 目录授权）和备份台账保留。
+本机安装包为 `apps/android/release/SekerGallery-0.9.21-android-debug.apk`，versionCode38，同一调试签名。2026-11-20 11:07 已通过 USB 覆盖安装到小米 25128PNA1C，原账号、目录规则（DCIM 目录授权）和备份台账保留。
 
 根源：手机把“只备份DCIM”挂在系统目录授权下时，目录扫描会读到 DCIM 里点开头的隐藏副本。它们是相册“删除/隐藏”后改名的暂存文件，系统相册索引本来不收录，所以此前的“整机备份”没有备份过。线上核查确认 2026-11-19 起有 1,293 个点开头文件被当作新照片上传，其中 1,284 个与 10 月已入库的同名照片字节数相同、仅约 50 字节 EXIF 差异；这些副本已通过现有 TRASH 操作队列移入服务器回收站。
 
@@ -116,7 +116,7 @@
 
 ## 0.9.20 适配后台上传校验（2026-11-15）
 
-本机安装包为 `apps/android/release/SekerEagle-0.9.20-android-debug.apk`，versionCode37，同一调试签名。生产 API 已改成 `complete` 只合并分片并写入 `UploadFinalizationJob`，由 operations 进程后台校验入库；客户端改为在 `complete` 未返回 assetId 时轮询上传会话（最多 120 秒），看到 COMPLETED 才确认成功，避免把排队中的文件误记为失败。15:52 已用同一份代码通过 USB 覆盖安装验证，但当时版本号仍是 0.9.19/36；本版只提升版本号以便区分已适配与未适配的客户端。此前 0.9.19 在新协议下每张照片首次提交会显示失败、下一轮重试才识别为已入库。
+本机安装包为 `apps/android/release/SekerGallery-0.9.20-android-debug.apk`，versionCode37，同一调试签名。生产 API 已改成 `complete` 只合并分片并写入 `UploadFinalizationJob`，由 operations 进程后台校验入库；客户端改为在 `complete` 未返回 assetId 时轮询上传会话（最多 120 秒），看到 COMPLETED 才确认成功，避免把排队中的文件误记为失败。15:52 已用同一份代码通过 USB 覆盖安装验证，但当时版本号仍是 0.9.19/36；本版只提升版本号以便区分已适配与未适配的客户端。此前 0.9.19 在新协议下每张照片首次提交会显示失败、下一轮重试才识别为已入库。
 
 验证：安卓 typecheck、JVM 单测、lint、build 通过；实机覆盖安装待 USB 连接后执行。本版同时包含 main 上 2026-11-15 释放空间分批等已提交改动，其独立验收边界见对应记录。
 
@@ -126,7 +126,7 @@
 
 ## 0.9.19 逐文件传输列表与真实重试（2026-11-14）
 
-本机安装包为 `apps/android/release/SekerEagle-0.9.19-android-debug.apk`，versionCode36，同一调试签名。起因：2026-11-14 21:24 生产 API 滚动重启约 13 秒，正在备份的手机收到 164 个 HTTP 502；旧实现把失败项记入台账后，只在备份目录变化、满 7 天全量或手动「重试失败文件」时才再次尝试，增量备份只扫描新增 ID 和最近一小时修改，因此当天新拍照与服务端 215 个失败项一直未补，界面仍显示「备份完成、失败 0」。服务端未改动。
+本机安装包为 `apps/android/release/SekerGallery-0.9.19-android-debug.apk`，versionCode36，同一调试签名。起因：2026-11-14 21:24 生产 API 滚动重启约 13 秒，正在备份的手机收到 164 个 HTTP 502；旧实现把失败项记入台账后，只在备份目录变化、满 7 天全量或手动「重试失败文件」时才再次尝试，增量备份只扫描新增 ID 和最近一小时修改，因此当天新拍照与服务端 215 个失败项一直未补，界面仍显示「备份完成、失败 0」。服务端未改动。
 
 传输页改为「自动备份 / 上传队列」两个标签，全部按文件展示：缩略图、文件名、大小、状态，正在上传的行显示真实字节进度；完成项折叠为一行，「移入回收站」等后台操作记录也折叠到页面底部。手动上传仍按每次选择保留内部批次用于持久化和暂停，但界面不再出现批次卡片；失败行可直接重试（移入独立批次）。自动备份新增逐文件实时状态与累计「待补传」计数，不再被下一次运行清零。
 
@@ -136,7 +136,7 @@
 
 ## 0.9.18 视频播放改为单连接流式缓冲（2026-11-11）
 
-本机安装包为 `apps/android/release/SekerEagle-0.9.18-android-debug.apk`，versionCode35，同一调试签名，可覆盖 0.9.17 并保留原账号、缓存和设置。此前原生播放器用 `MediaPlayer` + `MediaDataSource` 每 512 KB 取一次范围，每次新建连接且没有预读，局域网内也会在每段数据到达前等待服务器往返。现改用 Media3／ExoPlayer：一次打开持续读取并按顺序缓冲，默认播放在约 1.5 秒数据后开始、最多预读 30 秒且不超过 24 MB；拖动只在新位置重新建立一次范围请求，不再使用逐帧精确跳转。
+本机安装包为 `apps/android/release/SekerGallery-0.9.18-android-debug.apk`，versionCode35，同一调试签名，可覆盖 0.9.17 并保留原账号、缓存和设置。此前原生播放器用 `MediaPlayer` + `MediaDataSource` 每 512 KB 取一次范围，每次新建连接且没有预读，局域网内也会在每段数据到达前等待服务器往返。现改用 Media3／ExoPlayer：一次打开持续读取并按顺序缓冲，默认播放在约 1.5 秒数据后开始、最多预读 30 秒且不超过 24 MB；拖动只在新位置重新建立一次范围请求，不再使用逐帧精确跳转。
 
 认证与边界保持原样：仍使用同一会话 Cookie，每次读取校验会话 epoch，只允许本库 rendition 路径，且只接受 206、精确 `Content-Range` 和 `video/mp4` 的响应；整包、重定向、错误 MIME 或总量不符都会被拒绝，退出查看器即释放连接，不缓存原始视频。新增 4 MB 顺序读取回归，确认整段只产生 1 次 HTTP Range 请求。
 
@@ -144,7 +144,7 @@
 
 ## 0.9.13 智能文件夹多选发送（2026-10-31）
 
-生产下载：[SekerEagle 0.9.13 APK](https://yuntai.design:8181/downloads/android/SekerEagle-0.9.13.apk)。本机安装包为 `apps/android/release/SekerEagle-0.9.13-android-debug.apk`，versionCode30，同一调试签名，可覆盖0.9.12并保留原账号与缓存。照片在智能文件夹或普通图库多选后，可直接「发送到素材」；素材反向发送同样支持。此前安卓多选栏只有下载、标签、评分和删除，缺少发送入口，并非智能文件夹禁止此操作。
+生产下载：[SekerGallery 0.9.13 APK](https://yuntai.design:8181/downloads/android/SekerGallery-0.9.13.apk)。本机安装包为 `apps/android/release/SekerGallery-0.9.13-android-debug.apk`，versionCode30，同一调试签名，可覆盖0.9.12并保留原账号与缓存。照片在智能文件夹或普通图库多选后，可直接「发送到素材」；素材反向发送同样支持。此前安卓多选栏只有下载、标签、评分和删除，缺少发送入口，并非智能文件夹禁止此操作。
 
 确认后接入现有共用后台操作队列，传输列表显示成功、失败、取消和进行中数量；退出进度页刷新当前范围。失败保留选择，未确认提交的重试复用操作编号；接受请求不会提前隐藏源项，成功创建独立目标后由服务端直接移除源项，不进入回收站。处理未完成或非图片不能发送，实况配对视频仍由服务端随主照片处理。进度页不可见时停止新增轮询。
 
@@ -156,7 +156,7 @@ APK大小70,896,780字节，SHA256 `e91a67762028b2de5a24d1425b3519dc0deb19daf465
 
 ## 0.9.12 真实2B搜索验收（2026-10-31）
 
-当前候选为 `apps/android/release/SekerEagle-0.9.12-android-debug.apk`，versionCode29／原调试签名，覆盖安装不使用新账号／缓存命名空间。单独编号，避免将近期源码修订与旧0.9.11成品混淆。旧列表请求在换条件、模式、注销和ViewModel释放时断开；原生明确显示服务端向量不可用时仅名称／人工标签匹配，保留可用结果与手动重试。
+当前候选为 `apps/android/release/SekerGallery-0.9.12-android-debug.apk`，versionCode29／原调试签名，覆盖安装不使用新账号／缓存命名空间。单独编号，避免将近期源码修订与旧0.9.11成品混淆。旧列表请求在换条件、模式、注销和ViewModel释放时断开；原生明确显示服务端向量不可用时仅名称／人工标签匹配，保留可用结果与手动重试。
 
 Android16模拟器使用实际候选、普通生产HTTPS登录，在照片／素材分别上传公开宇航员样图，由现用worker生成真实1024维当前2B向量；搜索 `woman in an orange spacesuit`，名称／标签不能字面命中，两个模式均显示实际图片且无语义降级提示。没有连接用户实体手机，不冒充手机实机通过。18项设备搜索回归、80项JVM、安卓lint／编译／build、核心行96.28%／分支84.20%通过；已清理验收账号与对象，并恢复同一固定测试图库预览。
 
@@ -172,7 +172,7 @@ Android16模拟器使用实际候选、普通生产HTTPS登录，在照片／素
 
 验证：69 项编辑定向单测、10 项 API 36 编辑设备回归、真实双阶段覆盖升级通过；LUT 存储与原生编辑入口定向覆盖率为行 93.51%、分支 83.07%。真实隔离 HTTP 与 worker 验证内置 64³ LUT 的约 4.2 MB 参数和原尺寸独立成片、跨账号／模式／Origin／DTO／版本边界。隔离环境须配置有效 `EXIFTOOL_PATH` 和 `FFPROBE_PATH`，缺工具的超时不计通过。固定测试入口继续为 <http://localhost:49813>，账号和数据不重置。
 
-安装候选：`apps/android/release/SekerEagle-0.9.11-android-debug.apk`（versionCode 28，同一调试签名）。证据为 `.omx/artifacts/editor-compact-*`、`editor-lut-upgrade-{write,read}.log`。服务器已同步发布，当前证据与回滚见 [现用运行状态](current-runtime.md)。后续发布继续核验新旧服务端组合。
+安装候选：`apps/android/release/SekerGallery-0.9.11-android-debug.apk`（versionCode 28，同一调试签名）。证据为 `.omx/artifacts/editor-compact-*`、`editor-lut-upgrade-{write,read}.log`。服务器已同步发布，当前证据与回滚见 [现用运行状态](current-runtime.md)。后续发布继续核验新旧服务端组合。
 
 人工／模拟器交互验收统一连接固定测试图库 <http://localhost:49813>，运行 `npm run android:lab:preview` 恢复预览。账号、图库和手工修改持续保留；操作及故障处理见[安卓固定测试图库](android-test-lab.md)。下文隔离设备回归用于自动化测试，结束后须恢复固定预览。
 
@@ -184,7 +184,7 @@ Android16模拟器使用实际候选、普通生产HTTPS登录，在照片／素
 
 已有清理能力统一命名为「清空缓存」，经确认清空磁盘及内存缓存，显示完成结果；不影响原图、下载文件、上传任务和保存的容量。缓存文件损坏仍安全回退下载，注销／失效及版本变化的原隔离规则保持。
 
-验证：3 项统计 JVM 回归、10 项设备回归（含真实 HTTP 命中／回退、清空竞态、设置页即时更新）及真实两阶段 APK 覆盖升级通过；统计模块行覆盖率 100%，分支覆盖率 87.5%。安卓构建、Lint、全部 JVM 与核心覆盖率门禁通过。证据为 `.omx/artifacts/cache-stats-*` 和 `cache-upgrade-write.log`／`cache-upgrade-read.log`。安装包为 `apps/android/release/SekerEagle-0.9.10-android-debug.apk`，模拟器继续恢复固定测试图库 <http://localhost:49813>。
+验证：3 项统计 JVM 回归、10 项设备回归（含真实 HTTP 命中／回退、清空竞态、设置页即时更新）及真实两阶段 APK 覆盖升级通过；统计模块行覆盖率 100%，分支覆盖率 87.5%。安卓构建、Lint、全部 JVM 与核心覆盖率门禁通过。证据为 `.omx/artifacts/cache-stats-*` 和 `cache-upgrade-write.log`／`cache-upgrade-read.log`。安装包为 `apps/android/release/SekerGallery-0.9.10-android-debug.apk`，模拟器继续恢复固定测试图库 <http://localhost:49813>。
 
 ## 0.9.9 手机缩略预览与服务器原图成片（2026-10-25）
 
@@ -192,7 +192,7 @@ Android16模拟器使用实际候选、普通生产HTTPS登录，在照片／素
 
 任务绑定账号、图库、媒体版本及行版本，相同保存标识可恢复而不重复建图；来源变化、删除或权限变化不会被当作保存成功。成片继承标签、评分、说明和拍摄事实，继续进入既有缩略图／分析任务计划，预览就绪后才显示保存完成。发布沿用媒体租约，写对象前登记持久清理，成功发布在同一事务移除清理记录，避免中断产生孤儿或误删已提交成片。编辑作为显式交互操作优先于后台入库积压，但仍受部署白名单约束。
 
-安装包为 `apps/android/release/SekerEagle-0.9.9-android-debug.apk`。新 APK 需要配套的新 API、worker 与 `20261025040000_server_photo_edits`／`20261025041000_edit_render_mode_guard` 迁移；若部署设置媒体类型白名单，须加入 `RENDER_EDITED_COPY`。只更新 APK 不能让旧服务器支持此流程，本轮不自动部署生产。网页版仍保留既有本地导出／上传体验，只将渲染内核抽为共用实现。
+安装包为 `apps/android/release/SekerGallery-0.9.9-android-debug.apk`。新 APK 需要配套的新 API、worker 与 `20261025040000_server_photo_edits`／`20261025041000_edit_render_mode_guard` 迁移；若部署设置媒体类型白名单，须加入 `RENDER_EDITED_COPY`。只更新 APK 不能让旧服务器支持此流程，本轮不自动部署生产。网页版仍保留既有本地导出／上传体验，只将渲染内核抽为共用实现。
 
 验证记录：`editor-ci.log`、`server-edits-http.log`、`editor-device-tests.log`（均在本机私有测试产物目录）。真实隔离 HTTP／数据库／对象存储／worker 覆盖原图分辨率裁剪、水印、33³ 自定义滤镜、大请求体、幂等、来源版本、owner／模式／Origin／严格 DTO；9 项模拟器回归通过：编辑过程中不请求原图、不调用图片上传接口，旧的缩放原图查看仍按用户操作工作。
 
@@ -204,7 +204,7 @@ Android16模拟器使用实际候选、普通生产HTTPS登录，在照片／素
 
 APK 内置编辑器仍使用网页同一个 PhotoEditor，通过显式 native 呈现统一黑底、磨砂顶栏和工具胶囊、低饱和选中态及紧凑参数卡片；不复制编辑引擎。手机不再显示方向键／Shift／双击归零提示，提供当前参数的触摸重置。手机保存成功改为照片下方的短状态条，保留查看已保存照片入口，不覆盖预览或展开长文件名。
 
-验证：45 项编辑器网页回归、8 项 API 36 设备回归通过；原生编辑入口的网页组件行覆盖率 100%、分支 93.75%。安装包为 `apps/android/release/SekerEagle-0.9.8-android-debug.apk`；继续复用固定测试图库，不部署生产。
+验证：45 项编辑器网页回归、8 项 API 36 设备回归通过；原生编辑入口的网页组件行覆盖率 100%、分支 93.75%。安装包为 `apps/android/release/SekerGallery-0.9.8-android-debug.apk`；继续复用固定测试图库，不部署生产。
 
 ## 0.9.7 大图磨砂胶囊与收藏（2026-10-25）
 
@@ -212,7 +212,7 @@ APK 内置编辑器仍使用网页同一个 PhotoEditor，通过显式 native �
 
 网页图片右键、桌面大图与移动大图复用同一收藏按钮及标签操作，右键多选时可一起收藏／取消收藏。没有增加独立收藏系统或修改服务端契约。
 
-验证：119 项相关网页回归、API 36 模拟器 9 项定向回归通过；收藏共用按钮行覆盖率 97.9%、分支 80.9%。安卓 JVM、Lint、构建与核心覆盖率门禁通过。固定预览已恢复到原持久图库；预览读取界面增加三次有界重试，避免 Activity 启动繁忙时误判失败，另有 2 项恢复测试。安装包为 `apps/android/release/SekerEagle-0.9.7-android-debug.apk`，本轮仅本机验证，未部署网页生产。
+验证：119 项相关网页回归、API 36 模拟器 9 项定向回归通过；收藏共用按钮行覆盖率 97.9%、分支 80.9%。安卓 JVM、Lint、构建与核心覆盖率门禁通过。固定预览已恢复到原持久图库；预览读取界面增加三次有界重试，避免 Activity 启动繁忙时误判失败，另有 2 项恢复测试。安装包为 `apps/android/release/SekerGallery-0.9.7-android-debug.apk`，本轮仅本机验证，未部署网页生产。
 
 ## 0.9.1 自定义图片缓存（2026-10-25）
 
@@ -220,7 +220,7 @@ APK 内置编辑器仍使用网页同一个 PhotoEditor，通过显式 native �
 
 缩略图和普通预览以设备 Keystore AES-GCM 加密保存到应用私有缓存，重启后在重新认证、取得当前列表／详情后优先复用，不再为缓存命中重新下载图片文件。缓存键包含认证主体作用域（服务、部署、owner）、固定模式路径，以及资源更新时间／媒体与派生版本、格式、尺寸和字节数；同图并发请求合并，内存命中也更新磁盘使用顺序。私密图片、不在已取得元数据内的路径、原图、RAW 编辑源及视频不会写入此缓存。退出或认证失效触发清理，失效会话不能读取内存／磁盘命中。单条缓存至多 16 MiB 加密开销、至多 10 万条索引，避免大容量设置导致无界内存索引。
 
-图库列表仍以服务器授权为准，此功能不宣称完整离线图库；Android 系统可以回收缓存，丢失或损坏时安全重新下载。缓存目录由系统移除后可以自动重建，容量和缓存内容各自跨进程保留。安装包为 `apps/android/release/SekerEagle-0.9.1-android-debug.apk`，沿用旧调试版签名，无需部署服务器。 验证：完整 API 36 arm64 设备套件 65／65 通过，最终设置页／长列表／缓存安全等 8 项定向回归通过，零失败／跳过；写入后强制结束应用进程，再启动读取同一加密缓存成功。JVM 60 项、Lint 零错误（10 个既有警告）、核心行／分支覆盖率 96.9%／84.8%，完整 CI 通过。并发八次只请求一次图片，4200 条元数据索引换出后仍复用磁盘缓存；清理中的下载不使图片变灰且不能回填旧缓存。
+图库列表仍以服务器授权为准，此功能不宣称完整离线图库；Android 系统可以回收缓存，丢失或损坏时安全重新下载。缓存目录由系统移除后可以自动重建，容量和缓存内容各自跨进程保留。安装包为 `apps/android/release/SekerGallery-0.9.1-android-debug.apk`，沿用旧调试版签名，无需部署服务器。 验证：完整 API 36 arm64 设备套件 65／65 通过，最终设置页／长列表／缓存安全等 8 项定向回归通过，零失败／跳过；写入后强制结束应用进程，再启动读取同一加密缓存成功。JVM 60 项、Lint 零错误（10 个既有警告）、核心行／分支覆盖率 96.9%／84.8%，完整 CI 通过。并发八次只请求一次图片，4200 条元数据索引换出后仍复用磁盘缓存；清理中的下载不使图片变灰且不能回填旧缓存。
 
 ## 0.9.0 大图与编辑（2026-10-25）
 
@@ -230,23 +230,23 @@ APK 内置编辑器仍使用网页同一个 PhotoEditor，通过显式 native �
 
 仅当前照片双击／双指放大后读取原件，缩回适屏或离开立即取消在途读取，不预取相邻原片；高清读取失败保留预览并允许重试。RAW 使用与网页相同的当前版本高清显影副本，未就绪时明确提示。查看读取预算 256 MiB、解码预算 1600 万像素，编辑来源预算 64 MiB，编辑像素／输出不再设网页共用上限；不将大原件整份塞进缩略图内存缓存。城市使用网页同一份离线地名库，位置记录与当前媒体版本绑定；GPS 近邻结果显示「城市 附近」，没有可靠匹配时不猜行政区，不向第三方发送坐标。
 
-安装候选包为 `apps/android/release/SekerEagle-0.9.0-android-debug.apk`，沿用调试签名，可覆盖旧调试版。仅本机隔离合成图库与模拟器验证，不部署服务端。小米 HyperOS 真机手势、内存及系统分享仍需安装验收。 验证：API 36 arm64 模拟器 58／58 通过，零失败／跳过；Android JVM 53 项通过，Lint 零错误（10 个既有警告），核心行／分支覆盖率 97.2%／86.6%；完整 CI（lint、typecheck、unit、build、格式及共用架构门禁）通过。设备用例实际运行内置编辑器、水印渲染、保存副本、草稿返回确认和已保存回调，并验证原图不预取、旧版本拒绝、分片顺序及固定模式。
+安装候选包为 `apps/android/release/SekerGallery-0.9.0-android-debug.apk`，沿用调试签名，可覆盖旧调试版。仅本机隔离合成图库与模拟器验证，不部署服务端。小米 HyperOS 真机手势、内存及系统分享仍需安装验收。 验证：API 36 arm64 模拟器 58／58 通过，零失败／跳过；Android JVM 53 项通过，Lint 零错误（10 个既有警告），核心行／分支覆盖率 97.2%／86.6%；完整 CI（lint、typecheck、unit、build、格式及共用架构门禁）通过。设备用例实际运行内置编辑器、水印渲染、保存副本、草稿返回确认和已保存回调，并验证原图不预取、旧版本拒绝、分片顺序及固定模式。
 
-当前预览版本 **0.8.1**：在 0.7.0 的筛选、批量操作、下载、视频与全库日期滑块基础上，把手动上传和自动备份统一到同一个后台传输列表；网页未改。功能与边界见 [后台传输](history/records/android-background-transfers-2026-10-23.md)。0.8.1 进一步移除三点菜单里的“更多”中转页，备份和清理等直接进入；账号与连接页只保留账号信息与退出。最新本机包为 `apps/android/release/SekerEagle-0.8.1-android-debug.apk`。本轮全面检查与修复见 [安卓检查记录](history/reviews/android-review-2026-10-24.md)；下文 0.2.0 为迁移首版记录，后续段落保留各版本历史。
+当前预览版本 **0.8.1**：在 0.7.0 的筛选、批量操作、下载、视频与全库日期滑块基础上，把手动上传和自动备份统一到同一个后台传输列表；网页未改。功能与边界见 [后台传输](history/records/android-background-transfers-2026-10-23.md)。0.8.1 进一步移除三点菜单里的“更多”中转页，备份和清理等直接进入；账号与连接页只保留账号信息与退出。最新本机包为 `apps/android/release/SekerGallery-0.8.1-android-debug.apk`。本轮全面检查与修复见 [安卓检查记录](history/reviews/android-review-2026-10-24.md)；下文 0.2.0 为迁移首版记录，后续段落保留各版本历史。
 
 0.3.1 将查找条件集中到搜索页，结果以可移除胶囊显示条件；见 [搜索筛选使用说明](history/records/android-search-filters-2026-10-22.md)。
 
 0.3.2 移除右上角三个点中重复的照片／素材切换，统一从底部胶囊切换。
 
-0.4.0 新增大图单张下载和选择模式批量下载，保存到手机 Download/SekerEagle，支持进度、取消和失败重试；见 [原件下载说明](history/records/android-downloads-2026-10-22.md)。
+0.4.0 新增大图单张下载和选择模式批量下载，保存到手机 Download/SekerGallery，支持进度、取消和失败重试；见 [原件下载说明](history/records/android-downloads-2026-10-22.md)。
 
 0.5.0 新增右上角三个点 → 上传，支持手动选择单张／多张照片、视频和 RAW，确认目标模式后上传；无需开启自动备份。见 [手动上传说明](history/records/android-manual-upload-2026-10-22.md)。
 
-0.6.0 在右上角“视图”增加按拍摄时间／添加时间排序，照片与素材各自记忆，服务器负责对应顺序及分页；搜索页去掉“试试搜索”和示例词。本轮历史包：`apps/android/release/SekerEagle-0.6.0-android-debug.apk`。
+0.6.0 在右上角“视图”增加按拍摄时间／添加时间排序，照片与素材各自记忆，服务器负责对应顺序及分页；搜索页去掉“试试搜索”和示例词。本轮历史包：`apps/android/release/SekerGallery-0.6.0-android-debug.apk`。
 
-0.7.0 修正目录多选追加，新增可恢复原列表的“备份全部照片和视频”；补齐原生视频播放／暂停／进度，以及带全库日期索引的右侧快速滑块。未生成播放副本时提示等待，不播放原件。历史包：`apps/android/release/SekerEagle-0.7.0-android-debug.apk`。具体边界见 [原生计划](android-native-plan.md)。
+0.7.0 修正目录多选追加，新增可恢复原列表的“备份全部照片和视频”；补齐原生视频播放／暂停／进度，以及带全库日期索引的右侧快速滑块。未生成播放副本时提示等待，不播放原件。历史包：`apps/android/release/SekerGallery-0.7.0-android-debug.apk`。具体边界见 [原生计划](android-native-plan.md)。
 
-0.8.0 把手动上传从阻挡式对话框改为应用作用域后台队列，由私有 dataSync 前台服务执行；新增统一“传输列表”，可查看自动备份、暂停／继续／重试和移除记录。队列元数据与手动检查点按账号、来源和模式隔离，进程重启后需在列表继续。最新本机包：`apps/android/release/SekerEagle-0.8.0-android-debug.apk`。
+0.8.0 把手动上传从阻挡式对话框改为应用作用域后台队列，由私有 dataSync 前台服务执行；新增统一“传输列表”，可查看自动备份、暂停／继续／重试和移除记录。队列元数据与手动检查点按账号、来源和模式隔离，进程重启后需在列表继续。最新本机包：`apps/android/release/SekerGallery-0.8.0-android-debug.apk`。
 
 ## 原生首版 0.2.0 记录
 
@@ -254,7 +254,7 @@ APK 内置编辑器仍使用网页同一个 PhotoEditor，通过显式 native �
 
 安装升级后需要在原生登录页登录，不读取旧 WebView Cookie。已有同一服务／部署／账号的备份目录、检查点及上传令牌按原作用域保留。当前为本机候选版，小米实机体验尚未验收，后续按 [原生计划](android-native-plan.md) 推进。
 
-本机调试包：`apps/android/release/SekerEagle-0.2.0-android-debug.apk`。构建和安全边界见 [首版验收记录](history/reviews/android-native-verification-2026-10-22.md)。手机需要通过 USB 对本机隔离工作台做端口反向映射，调试版仍只额外允许 loopback HTTP；不能连接生产或群晖来验证本轮改动。`android:check:device` 保持仅允许模拟器，不为真机移除目标检查。
+本机调试包：`apps/android/release/SekerGallery-0.2.0-android-debug.apk`。构建和安全边界见 [首版验收记录](history/reviews/android-native-verification-2026-10-22.md)。手机需要通过 USB 对本机隔离工作台做端口反向映射，调试版仍只额外允许 loopback HTTP；不能连接生产或群晖来验证本轮改动。`android:check:device` 保持仅允许模拟器，不为真机移除目标检查。
 
 ## 0.1 系列历史预览版
 
@@ -262,7 +262,7 @@ APK 内置编辑器仍使用网页同一个 PhotoEditor，通过显式 native �
 
 ## 使用
 
-1. 首次打开在「账户」填写 SekerEagle 的 HTTPS 网关地址，在图库使用原账号登录。在「更多」顶部账号卡片可再次进入连接设置。调试 APK 额外允许 localhost／127.0.0.1 的 HTTP，正式构建不允许明文 HTTP。
+1. 首次打开在「账户」填写 SekerGallery 的 HTTPS 网关地址，在图库使用原账号登录。在「更多」顶部账号卡片可再次进入连接设置。调试 APK 额外允许 localhost／127.0.0.1 的 HTTP，正式构建不允许明文 HTTP。
 2. 点击「更多 → 备份」进入「手机备份」，启用备份。应用为当前主体创建仅有 `asset:write` 的独立令牌，使用 Android Keystore 加密保存在应用私有目录中；网页拿不到令牌。可在网页版账号令牌管理中撤销「Android 手机备份」。
 3. 选择一个或多个手机相册目录，或使用系统选择器授权其他文件夹。目录项可以修改目标模式、子目录范围或移除。初始目标为照片；切换当前浏览模式不会改变备份目标。目录移除不删除已备份资源。
 4. 按需启用「打开时自动备份」。手机的定时任务只需打开应用；应用确认登录身份后自动执行，无需再次点击备份。
@@ -349,14 +349,14 @@ npm run android:check:device
 - architecture:check、lint、typecheck、完整 unit test、build、format:check 通过；93 项定向界面测试覆盖手机单击浏览、长按选择、面板开关／焦点恢复／作用域关闭、模态内筛选及现有桌面行为。
 - Android lint、核心单测及 80% 行／分支覆盖门禁通过。8 项 Android 36 模拟器测试通过，其中 7 项功能回归和 1 项可选截图；导航回归确认顶部轻量入口、自动备份开关、账户连接与返回同一 WebView。
 - 测试初始化等待重新确认的登录主体，并自行准备模拟器媒体权限，避免将旧的持久身份或安装后重置的授权当作可用状态。截图只使用独立测试账号与合成图片；检查了中文照片首页、视图面板、备份页和账户页。
-- 本地安装包：`apps/android/release/SekerEagle-0.1.1-android-debug.apk`。未访问生产、群晖或 SekerChat；小米实机验收仍未执行。
+- 本地安装包：`apps/android/release/SekerGallery-0.1.1-android-debug.apk`。未访问生产、群晖或 SekerChat；小米实机验收仍未执行。
 
 ## 0.1.2 参考图布局与清理验收
 
 - 共用架构门禁、lint、typecheck、完整 unit test、build、format:check 通过。新增覆盖下拉与桌面切换的窗口缩放、按日三列网格、更多入口及普通浏览器原生操作禁用；保留已有单击／长按／筛选模态和桌面回归。
 - 安卓核心 18 项单测与行／分支至少 80% 覆盖门禁通过；清理决策覆盖未确认文件、账号／模式隔离、变化文件、已删除服务器副本和失效任务，固定导航覆盖来源、iframe、无手势、未知路径及参数负向情形。
 - Android 36 模拟器覆盖 10 项集成流程（含可选截图）：备份原有 6 项、无原生首页标题且返回同一 WebView、真实手势从更多进入原生页、实际 SQLite／MediaStore／HTTP 清理资格和系统请求构造，以及中文界面截图。测试确认构造系统请求不会提前删除文件；系统最终删除确认与不同小米机型、SAF 文件提供器仍需实机验收，不据此宣称全部机型可用。
-- 本地预览包 `apps/android/release/SekerEagle-0.1.2-android-debug.apk`；仅连接本机隔离工作台，没有访问或变更生产、群晖及 SekerChat。
+- 本地预览包 `apps/android/release/SekerGallery-0.1.2-android-debug.apk`；仅连接本机隔离工作台，没有访问或变更生产、群晖及 SekerChat。
 
 ## 0.1.3 审查修复验收
 
@@ -364,7 +364,7 @@ npm run android:check:device
 - 永久上传失败保存文件终态，避免每次扫描重复请求死会话；备份设置提供「重试失败文件」，保留成功回执。临时网络错误和入库中的会话继续保留检查点；会话 ID 在请求前校验。
 - 重新创建活动时恢复已保存的账号作用域，不再误停同账号手动备份。SQLite v1 升 v2 添加失败状态，保留成功文件和内容回执。
 - 本机 Android 36 模拟器 13 项设备测试全部通过，无跳过；新增覆盖重开活动继续手动备份、签名恢复与永久错误、旧检查点升级。23 项 JVM 单测、核心行／分支覆盖门禁、Android lint 与构建通过。
-- 完整项目检查及审查结论见 [审查核实记录](history/reviews/review-2026-10-21.md)。安装包为 `apps/android/release/SekerEagle-0.1.3-android-debug.apk`。小米实机后台限制仍需实机验证。
+- 完整项目检查及审查结论见 [审查核实记录](history/reviews/review-2026-10-21.md)。安装包为 `apps/android/release/SekerGallery-0.1.3-android-debug.apk`。小米实机后台限制仍需实机验证。
 
 ## 玻璃悬浮导航本机预览
 
@@ -390,7 +390,7 @@ npm run android:check:device
 - 系统返回先关闭当前弹层、展开菜单或大图，再返回设置分类／图库上级；原生连接、备份与清理页面返回前一原生页面或同一 WebView。仅根页面允许退出；横屏同样处理。没有新增 JavaScript 原生文件桥。
 - 已实际打开检查 27 个页面／状态，修复账号栏裁切、桌面侧栏挤压、标签按钮溢出及地图／人物控件与悬浮按钮遮挡，记录见 [逐页验收](history/reviews/mobile-ui-audit-2026-10-22.md)。
 - 本机 Android 36 模拟器 15 项集成测试通过；含真实系统返回事件、备份与清理回归。Android 核心单测、lint、构建与覆盖门禁，以及项目 lint、typecheck、unit test、build、architecture:check 均通过。小米 HyperOS 真机后台和系统分享目标的兼容性仍需真机确认。
-- 本地预览包：`apps/android/release/SekerEagle-0.1.4-android-debug.apk`。测试只使用 loopback 隔离工作台、临时账号及合成媒体，未连接生产、群晖或 SekerChat。
+- 本地预览包：`apps/android/release/SekerGallery-0.1.4-android-debug.apk`。测试只使用 loopback 隔离工作台、临时账号及合成媒体，未连接生产、群晖或 SekerChat。
 
 ### 0.6.0：视图排序与搜索精简
 

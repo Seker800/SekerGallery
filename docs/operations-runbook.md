@@ -113,7 +113,7 @@ AI 标签是否已完成，以同一 owner、素材、素材版本和处理器�
 
 ## 停止
 
-`docker compose --env-file .env -f deploy/mac/docker-compose.yml down` 只停止容器，不删除 volume。不要加 `-v`，除非明确决定删除新 SekerEagle 数据。
+`docker compose --env-file .env -f deploy/mac/docker-compose.yml down` 只停止容器，不删除 volume。不要加 `-v`，除非明确决定删除新 SekerGallery 数据。
 
 ## 图片向量与人工标签建议
 

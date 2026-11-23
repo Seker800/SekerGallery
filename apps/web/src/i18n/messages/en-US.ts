@@ -145,9 +145,31 @@ export const enUS = {
   查看照片: 'View photo',
   保留人物: 'Keep person',
   '正在合并…': 'Merging…',
+  合并标签: 'Merge tags',
+  合并: 'Merge',
+  '合并…': 'Merge…',
+  目标标签: 'Target tag',
+  合并目标标签: 'Merge target tag',
+  '把所选标签的素材并入目标标签，然后删除其余源标签。':
+    'Move the assets from the selected tags into the target tag, then delete the other source tags.',
+  '将删除 {{value1}} 个源标签，素材会保留在「{{value2}}」。':
+    '{{value1}} source tags will be deleted; assets stay in "{{value2}}".',
+  '「{{value1}}」是私密标签，请先在私密设置中处理，不能直接合并。':
+    '"{{value1}}" is a private tag. Resolve it in privacy settings before merging.',
+  '合并标签失败，请重试。': 'Could not merge tags. Please retry.',
+  '部分素材合并失败，请到任务中心重试。':
+    'Some assets could not be merged. Retry from the Task Center.',
+  '合并仍在进行，请到任务中心确认结果。':
+    'The merge is still running. Check the Task Center for the result.',
   合并所选人物: 'Merge selected people',
 
   确认永久删除: 'Permanently delete',
+  永久删除: 'Delete permanently',
+  永久删除所选: 'Delete selected permanently',
+  永久删除所选素材: 'Delete selected items permanently',
+  '将永久删除 {{value1}} 项素材及其原文件，无法恢复。':
+    'This permanently deletes {{value1}} items and their originals. It cannot be undone.',
+  '输入“永久删除”以确认': 'Type "Delete permanently" to confirm',
   '将永久删除当前图库回收站中的全部项目，包括尚未加载的项目。此操作无法撤销。':
     'Permanently delete every item in this library’s Trash, including items not yet loaded. This cannot be undone.',
   确认清空回收站: 'Confirm emptying Trash',
@@ -640,10 +662,10 @@ export const enUS = {
   拍摄日期: 'Capture Date',
   '按拍摄时间筛选，拍摄日期未知的照片不匹配。':
     'Filters by capture time. Photos with an unknown capture date do not match.',
-  '按在 SekerEagle 中的更新时间筛选，不是拍摄时间。':
-    'Filters by the time updated in SekerEagle, rather than capture time.',
-  '按加入 SekerEagle 的时间筛选，不是拍摄时间。':
-    'Filters by the time added to SekerEagle, rather than capture time.',
+  '按在 SekerGallery 中的更新时间筛选，不是拍摄时间。':
+    'Filters by the time updated in SekerGallery, rather than capture time.',
+  '按加入 SekerGallery 的时间筛选，不是拍摄时间。':
+    'Filters by the time added to SekerGallery, rather than capture time.',
   拍摄日期未知: 'Unknown capture date',
   拍摄量: 'Photos taken',
   拍摄量折线图: 'Photos over time',
@@ -663,6 +685,12 @@ export const enUS = {
   '正在加载统计…': 'Loading statistics…',
   没有可用于时间曲线的拍摄日期: 'No capture dates available for the time chart',
   清除选择: 'Clear selection',
+  全选筛选结果: 'Select all filtered',
+  标签颜色: 'Tag colors',
+  '设置颜色 {{value1}}': 'Set color {{value1}}',
+  清除颜色: 'Clear color',
+  标签组颜色: 'Tag group color',
+  清除标签组颜色: 'Clear tag group color',
   照片统计: 'Photo statistics',
   相机使用量: 'Camera usage',
   相机使用量柱状图: 'Camera usage chart',
@@ -879,6 +907,11 @@ export const enUS = {
   未评分: 'Unrated',
   发送到素材: 'Send to Materials',
   发送到照片: 'Send to Photos',
+  '部分所选尚未加载，暂不能发送。': 'Some selected items are not loaded yet.',
+  '发送只支持图片；请先排除视频或音频。':
+    'Sending supports images only; remove videos or audio first.',
+  '部分素材仍在处理中，完成后才能发送。':
+    'Some assets are still processing and cannot be sent yet.',
   '提交中…': 'Submitting…',
   '正在发送…': 'Sending…',
   '发送失败，请重试。': 'Sending failed. Please retry.',
@@ -930,6 +963,15 @@ export const enUS = {
   清除人物筛选: 'Clear person filter',
   人物: 'People',
   照片组: 'Photo groups',
+  展开照片组: 'Expand photo groups',
+  收起照片组: 'Collapse photo groups',
+  选择整组: 'Select group',
+  选择全部匹配项: 'Select all matching',
+  '正在选择 {{value1}} 项…': 'Selecting {{value1}} items…',
+  '选择全部匹配项失败，请重试。': 'Could not select all matching items. Please retry.',
+  整组加标签: 'Tag group',
+  为整组添加标签: 'Add tags to group',
+  '已取消「{{value1}}」的照片组': 'Ungrouped "{{value1}}"',
   分析人物: 'Analyze people',
   查找连拍与相似照片: 'Find bursts and similar photos',
   '人物识别服务尚未配置，暂时无法分析照片。':
@@ -1159,7 +1201,7 @@ export const enUS = {
   待手动分类: 'Pending manual classification',
   '待手动分类 {{value1}}': 'Pending Manual Categorization {{value1}}',
   待手动分类的素材: 'Assets pending manual classification',
-  '当前 SekerEagle 网关地址无效。': 'Current SekerEagle gateway URL is invalid.',
+  '当前 SekerGallery 网关地址无效。': 'Current SekerGallery gateway URL is invalid.',
   当前标签: 'Current tags',
   当前队列: 'Current queue.',
   '当前环境不支持复制到剪贴板。': 'Current environment does not support copying to the clipboard.',
@@ -1198,8 +1240,8 @@ export const enUS = {
   '读取图片失败（{{value1}}）。': 'Failed to read image ({{value1}}).',
   读取图片向量状态失败: 'Failed to read image embeddings status',
   读取向量处理状态失败: 'Failed to Load Vector Processing Status',
-  '对象存储上传地址不属于当前 SekerEagle。':
-    'Object storage upload URL does not belong to current SekerEagle.',
+  '对象存储上传地址不属于当前 SekerGallery。':
+    'Object storage upload URL does not belong to current SekerGallery.',
   '对象存储未返回分片校验值。': 'Object storage did not return chunk validation value.',
   '服务器未返回分片上传地址。': 'The server did not return a chunk upload URL.',
   返回标签推荐设置: 'Back to recommendation settings',
@@ -1232,6 +1274,15 @@ export const enUS = {
   '构建中…': 'Building...',
   固定: 'Pin',
   关闭: 'Close',
+  改为批量下载: 'Download in batches instead',
+  键盘快捷键: 'Keyboard shortcuts',
+  全选已加载素材: 'Select all loaded assets',
+  移入回收站: 'Move to trash',
+  打开标签选择器: 'Open tag picker',
+  '收藏 / 取消收藏': 'Favorite / unfavorite',
+  '设置星级，0 为清除': 'Set rating, 0 clears',
+  预览所选素材: 'Preview selected asset',
+  清除选择与菜单: 'Clear selection and menus',
   '关闭{{value1}}筛选': 'Close {{value1}} Filter',
   关闭标签选择: 'Deselect Tags',
   收起私密标签: 'Collapse Private Tags',
@@ -1481,7 +1532,7 @@ export const enUS = {
   失败的图片向量任务已重新排队: 'Failed embedding tasks requeued',
   失败任务已重新排队: 'Failed tasks have been requeued.',
   时长: 'Duration',
-  '使用你的 SekerEagle 独立账号继续。': 'Continue with your SekerEagle personal account.',
+  '使用你的 SekerGallery 独立账号继续。': 'Continue with your SekerGallery personal account.',
   '使用数：低到高': 'Usage: Low to High',
   '使用数：高到低': 'Usage: High to Low',
   始终执行: 'Always run.',
@@ -1617,6 +1668,9 @@ export const enUS = {
   新标签组: 'New Tag Group',
   新创建的令牌: 'Newly created token',
   新建标签: 'Create Tag',
+  输入名称后创建: 'Type a name to create',
+  按标签组筛选: 'Filter by tag group',
+  '已应用 {{value1}}/{{value2}}': 'Applied to {{value1}}/{{value2}}',
   新建标签组: 'Create New Tag Group',
   新建人工标签: 'Create Manual Tag',
   新建智能文件夹: 'Create smart folder',
@@ -1668,6 +1722,8 @@ export const enUS = {
   '移动到标签组…': 'Move to Tag Group…',
   移动到其他标签: 'Move to other tags',
   已撤销: 'Revoked',
+  '已从 {{value1}} 项素材移除「{{value2}}」': 'Removed "{{value2}}" from {{value1}} assets',
+  '已从 {{value1}} 项素材移除 {{value2}} 个标签': 'Removed {{value2}} tags from {{value1}} assets',
   已创建的令牌: 'Created tokens',
   '已从“{{value1}}”移除 {{value2}} 项素材{{value3}}':
     "Removed {{value2}} assets from '{{value1}}' {{value3}}",
@@ -1697,6 +1753,7 @@ export const enUS = {
   '已为 {{value1}} 项素材添加人工标签{{value2}}':
     'Added {{value1}} manual tags to assets {{value2}}',
   '已选{{value1}}': '{{value1}} selected',
+  多选: 'Select multiple',
   已选择: 'Selected',
   '已选择 {{value1}} 个标签': '{{value1}} Tags Selected',
   '已移动 {{value1}} 项素材{{value2}}': 'Moved {{value1}} assets to {{value2}}',
@@ -1818,7 +1875,7 @@ export const enUS = {
   '正在加载素材详情…': 'Loading asset details…',
   正在加载缩略图: 'Loading thumbnails',
   '正在检测连接…': 'Checking connection…',
-  '正在连接 SekerEagle…': 'Connecting to SekerEagle…',
+  '正在连接 SekerGallery…': 'Connecting to SekerGallery…',
   '正在启动…': 'Initializing...',
   '正在停止…': 'Stopping...',
   '正在下载 {{value1}} 项…': 'Downloading {{value1}} Items…',
@@ -1888,8 +1945,8 @@ export const enUS = {
   'Esc 关闭 · 双击素材或按 Enter 进入详情 · Space 快速预览':
     'Esc to close · Double-click asset or press Enter for details · Space for quick preview',
   'Metal 宿主': 'Metal Host',
-  'SekerEagle 介绍': 'SekerEagle Intro',
-  'SekerEagle 灵感采集': 'SekerEagle Inspiration Collection',
+  'SekerGallery 介绍': 'SekerGallery Intro',
+  'SekerGallery 灵感采集': 'SekerGallery Inspiration Collection',
   人工标签推荐: 'Manual Tag Recommendations',
   处理任务: 'Processing Tasks',
   '队列、调度与处理记录': 'Queue, schedule, and processing history',
@@ -2296,7 +2353,6 @@ export const enUS = {
     'This request is closed or expired. New operations cannot execute.',
   申请状态: 'Request status',
   申请详情: 'Request details',
-  移入回收站: 'Move to trash',
   '精确坐标 · 精度 {{value1}} 米': 'Exact coordinates · Accuracy {{value1}} m',
   补充位置: 'Add location',
   '让 Agent 将整理建议按批提交到这里。你可以整批同意，也可以排除部分照片；无需逐张回复 Agent。':

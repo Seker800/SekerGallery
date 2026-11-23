@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="apps/web/src/assets/seker-eagle-logo.svg" width="80" alt="SekerEagle" />
+  <img src="apps/web/src/assets/seker-gallery-logo.svg" width="80" alt="SekerGallery" />
 </p>
 
-<h1 align="center">SekerEagle</h1>
+<h1 align="center">SekerGallery</h1>
 
 <p align="center">
   <strong>简体中文</strong> · <a href="README.en.md">English</a>

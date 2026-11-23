@@ -5,7 +5,7 @@
 > 这份文档只回答三个问题：现在跑什么、先读什么、第一条命令是什么。具体设计边界见
 > [architecture](architecture.md)，现用部署事实见 [current-runtime](current-runtime.md)。
 
-SekerEagle 是**多用户、自托管**的素材与照片管理工具。每个账号由认证主体推导 `ownerId`，
+SekerGallery 是**多用户、自托管**的素材与照片管理工具。每个账号由认证主体推导 `ownerId`，
 数据按 owner 隔离，跨 owner 访问返回 404；账号由管理员创建，不对外公开注册。默认使用端是
 网页和桌面。
 
@@ -39,7 +39,7 @@ SekerEagle 是**多用户、自托管**的素材与照片管理工具。每个�
 - **产品／交互**：`product-frame` → `architecture` 的「前端工作区」→ `route-map` → `refresh-map`。
 - **后端**：`architecture` 的「能力归属」「进程与写入」「Invariants」→ `library-sharing-gate`
   → `background-work` → `performance-budget`。
-- **前端**：`route-map` → `refresh-map` → `eagle-workspace-cache.ts` → `SekerEaglePage.tsx`
+- **前端**：`route-map` → `refresh-map` → `eagle-workspace-cache.ts` → `SekerGalleryPage.tsx`
   及其周边 hook。
 
 ## 第一条命令

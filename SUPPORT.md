@@ -1,6 +1,6 @@
 # 支持范围
 
-SekerEagle 是早期社区项目，按“现状”提供，不承诺 SLA、数据恢复或向后兼容期限。
+SekerGallery 是早期社区项目，按“现状”提供，不承诺 SLA、数据恢复或向后兼容期限。
 
 - 缺陷和可复现的功能请求：使用 GitHub Issues。
 - 使用问题：先查 README、运行手册和已有 Issue。

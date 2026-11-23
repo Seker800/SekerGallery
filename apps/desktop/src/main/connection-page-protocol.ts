@@ -7,7 +7,7 @@ const ASSETS: Readonly<Record<string, ConnectionPageAsset>> = Object.freeze({
   '/': { file: 'index.html', type: 'text/html; charset=utf-8' },
   '/connection.js': { file: 'connection.js', type: 'text/javascript; charset=utf-8' },
   '/connection.css': { file: 'connection.css', type: 'text/css; charset=utf-8' },
-  '/seker-eagle-logo.svg': { file: 'seker-eagle-logo.svg', type: 'image/svg+xml' },
+  '/seker-gallery-logo.svg': { file: 'seker-gallery-logo.svg', type: 'image/svg+xml' },
 });
 
 export function connectionPageAsset(input: string): ConnectionPageAsset | null {

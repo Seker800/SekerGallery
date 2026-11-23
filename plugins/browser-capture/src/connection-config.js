@@ -7,7 +7,7 @@ export function normalizeServerUrl(value, { allowRemoteHttp = false } = {}) {
   }
   const loopback = isLoopbackHostname(url.hostname);
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && (loopback || allowRemoteHttp))) {
-    throw new Error('远程 SekerEagle 必须使用 HTTPS；HTTP 仅允许 loopback。');
+    throw new Error('远程 SekerGallery 必须使用 HTTPS；HTTP 仅允许 loopback。');
   }
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
 }
@@ -36,7 +36,7 @@ export function buildServerCandidates(config) {
     return [publicUrl];
   }
   const candidates = [...new Set([local, publicUrl].filter(Boolean))];
-  if (!candidates.length) throw new Error('请至少配置一个 SekerEagle 服务器地址。');
+  if (!candidates.length) throw new Error('请至少配置一个 SekerGallery 服务器地址。');
   return candidates;
 }
 
@@ -60,7 +60,7 @@ export function rewritePresignedUploadUrl(
   }
   if (upload.origin !== active.origin) {
     if (!isLoopbackHostname(upload.hostname)) {
-      throw new Error('对象存储上传地址不属于已配置的 SekerEagle。');
+      throw new Error('对象存储上传地址不属于已配置的 SekerGallery。');
     }
     upload.protocol = active.protocol;
     upload.hostname = active.hostname;
@@ -73,7 +73,7 @@ export function normalizePublicServerUrl(value, { allowInsecureHttp = false } = 
   const normalized = normalizeServerUrl(value, { allowRemoteHttp: true });
   const url = new URL(normalized);
   if (isLoopbackHostname(url.hostname)) {
-    throw new Error('公网 SekerEagle 地址不能使用 loopback。');
+    throw new Error('公网 SekerGallery 地址不能使用 loopback。');
   }
   if (url.protocol === 'http:' && !allowInsecureHttp) {
     throw new Error('公网 HTTP 会明文传输 PAT 和图片；请先显式允许。');

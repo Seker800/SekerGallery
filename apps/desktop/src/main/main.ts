@@ -69,7 +69,7 @@ try {
 } catch (error) {
   portableStartupFailed = true;
   dialog.showErrorBox(
-    'SekerEagle 便携版无法启动',
+    'SekerGallery 便携版无法启动',
     `无法在程序旁边创建或写入 SekerEagleData。请把程序移动到可写目录后重试。\n\n${error instanceof Error ? error.message : '未知错误'}`,
   );
   app.exit(1);
@@ -143,7 +143,7 @@ if (hasSingleInstanceLock)
     registerConnectionIpc(ctx, owner);
     registerClipboardIpc(ctx);
     const originalDragExporter = new OriginalDragExporter({
-      rootPath: path.join(app.getPath('temp'), 'SekerEagle', 'OriginalDrag'),
+      rootPath: path.join(app.getPath('temp'), 'SekerGallery', 'OriginalDrag'),
       fetchOriginal: (assetId, signal, libraryMode) =>
         ctx
           .currentBrowserSession()

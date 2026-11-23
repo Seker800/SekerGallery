@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢你帮助改进 SekerEagle。提交代码即表示你有权按相应目录的许可证提供贡献：默认是
+感谢你帮助改进 SekerGallery。提交代码即表示你有权按相应目录的许可证提供贡献：默认是
 Apache-2.0，`services/mlx-embedding` 是 GPL-3.0-only。
 
 ## 开始之前
@@ -8,7 +8,7 @@ Apache-2.0，`services/mlx-embedding` 是 GPL-3.0-only。
 1. 对较大的功能先创建 Issue，说明用户问题、边界、迁移与安全影响。
 2. 阅读 `AGENTS.md`、`docs/architecture.md` 和相关 ADR。
 3. 不要提交用户素材、真实 Eagle 图库、`.env`、数据库 dump、token 或私有网络信息。
-4. 保持 SekerEagle 与 SekerChat 的运行时和数据面完全隔离。
+4. 保持 SekerGallery 与 SekerChat 的运行时和数据面完全隔离。
 
 ## 开发要求
 

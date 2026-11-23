@@ -22,4 +22,4 @@ const domain = `gui/${process.getuid()}`;
 await run('launchctl', ['bootout', domain, target]).catch(() => undefined);
 await run('launchctl', ['bootstrap', domain, target]);
 await run('launchctl', ['enable', `${domain}/com.sekereagle.mlx-embedding`]);
-process.stdout.write('Installed and started the SekerEagle MLX launch agent\n');
+process.stdout.write('Installed and started the SekerGallery MLX launch agent\n');

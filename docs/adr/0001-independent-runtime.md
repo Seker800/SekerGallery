@@ -5,7 +5,7 @@
 
 ## Decision
 
-SekerEagle 使用独立仓库、认证、PostgreSQL、MinIO 和 secrets。新实例从空库开始，通过用户自己的 Eagle library/backup 重新导入，不迁移或清理 SekerChat 数据。
+SekerGallery 使用独立仓库、认证、PostgreSQL、MinIO 和 secrets。新实例从空库开始，通过用户自己的 Eagle library/backup 重新导入，不迁移或清理 SekerChat 数据。
 
 ## Consequences
 

@@ -705,8 +705,8 @@ function DateControl({
         {field === 'CAPTURED_AT'
           ? t('按拍摄时间筛选，拍摄日期未知的照片不匹配。')
           : field === 'MODIFIED_AT'
-            ? t('按在 SekerEagle 中的更新时间筛选，不是拍摄时间。')
-            : t('按加入 SekerEagle 的时间筛选，不是拍摄时间。')}
+            ? t('按在 SekerGallery 中的更新时间筛选，不是拍摄时间。')
+            : t('按加入 SekerGallery 的时间筛选，不是拍摄时间。')}
       </p>
       <label>
         {' ' + t('从') + ' '}

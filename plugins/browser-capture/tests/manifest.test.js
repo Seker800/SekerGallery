@@ -7,7 +7,7 @@ test('ships a minimal Manifest V3 extension with durable queue permissions', asy
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.version, '0.3.0');
-  assert.equal(manifest.name, 'SekerEagle 灵感采集');
+  assert.equal(manifest.name, 'SekerGallery 灵感采集');
   assert.equal(manifest.background.service_worker, 'src/service-worker.js');
   assert.deepEqual(manifest.permissions.sort(), ['alarms', 'notifications', 'storage']);
   assert.deepEqual(manifest.host_permissions, ['<all_urls>']);
@@ -32,7 +32,7 @@ test('ships a minimal Manifest V3 extension with durable queue permissions', asy
   assert.equal(manifest.content_security_policy.extension_pages.includes('http'), false);
 });
 
-test('uses the same PAT prefix as the SekerEagle authentication boundary', async () => {
+test('uses the same PAT prefix as the SekerGallery authentication boundary', async () => {
   const authConstants = await readFile(
     new URL('../../../apps/api/src/auth/auth.constants.ts', import.meta.url),
     'utf8',

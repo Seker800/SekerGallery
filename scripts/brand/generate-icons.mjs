@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * SekerEagle 九点阵品牌图标的唯一生成入口。
+ * SekerGallery 九点阵品牌图标的唯一生成入口。
  *
  * 几何只有一个来源：128 单位画布、白色圆角块、3×3 黑色圆点。网页、桌面、
  * 安卓、浏览器扩展和 Eagle 导入插件都从这里派生，避免各端手改后再次漂移。
@@ -197,7 +197,7 @@ function round(value) {
 async function textOutputs() {
   const mark = markSvg();
   return [
-    { file: 'apps/web/src/assets/seker-eagle-logo.svg', content: mark },
+    { file: 'apps/web/src/assets/seker-gallery-logo.svg', content: mark },
     { file: 'plugins/browser-capture/icons/icon.svg', content: mark },
     { file: 'plugins/eagle-importer/logo.svg', content: mark },
     {

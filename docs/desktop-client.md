@@ -1,4 +1,4 @@
-# SekerEagle desktop client
+# SekerGallery desktop client
 
 ## 2026-11-02 paired production release: client 0.1.9
 
@@ -6,7 +6,7 @@ The web/API/independent executors are now deployed, and Windows x64 portable plu
 
 Production acceptance also found that cached preview images could display while tainting editor canvases. Preview and full export now share the credentialed CORS image loader, using the client's existing exact-origin policy. Full CI and actual editor pixels in both modes passed locally and against production Chrome/Electron, along with real IPC/HTTP original export hashes. Physical Windows/DPI and OS drop-target acceptance remain unavailable on this Mac host. Deployment versions, rollback and validation are recorded in [the release report](history/releases/main-production-release-2026-11-02-evening.md). The older candidate sections below describe their original local checkpoints.
 
-The desktop client is a macOS and Windows wrapper around the same UI served by SekerEagle. It requires a reachable, authenticated SekerEagle server and accelerates repeated derived-image reads with a local, rebuildable cache. macOS remains the complete deployment-validation path; Windows x64 has a native internal single-file portable package and desktop-specific automated coverage.
+The desktop client is a macOS and Windows wrapper around the same UI served by SekerGallery. It requires a reachable, authenticated SekerGallery server and accelerates repeated derived-image reads with a local, rebuildable cache. macOS remains the complete deployment-validation path; Windows x64 has a native internal single-file portable package and desktop-specific automated coverage.
 
 By default it connects to `http://localhost:8180`, matching the local deployment's canonical browser origin. The home-page connection pill opens an offline-capable manager with Local, LAN, and Public slots. Automatic mode keeps a healthy current connection to avoid login and cache churn; after failure it probes configured slots concurrently and chooses Local, then LAN, then Public. A manual mode never falls back silently.
 
@@ -28,9 +28,9 @@ Desktop 0.1.8 adds capability-negotiated PHOTO and MATERIAL media URLs, isolated
 - Only non-private WebP thumbnails, previews, posters, and tiles explicitly authorized by the API are stored.
 - Cache entries are isolated by deployment and account. Signing out locks old entries; clearing the current account does not delete server media.
 - Physical quota includes media allocation, SQLite/WAL files, and active partial files. Writes preserve 5% free space, bounded to a 1–5 GiB reserve so a large volume does not disable caching unnecessarily; cache eviction runs before a write is rejected.
-- macOS data lives in `~/Library/Caches/SekerEagle/MediaCache/v2`, is excluded from Spotlight and Time Machine, and may be removed by the OS or user at any time.
+- macOS data lives in `~/Library/Caches/SekerGallery/MediaCache/v2`, is excluded from Spotlight and Time Machine, and may be removed by the OS or user at any time.
 - The Windows portable build creates `SekerEagleData` beside its executable. Browser profile, cookies, connection settings, and desktop settings live in `SekerEagleData\Profile`; derived media lives in `SekerEagleData\MediaCache\v2`. The portable default capacity is 10 GiB and remains configurable from 1–100 GiB.
-- A non-portable Windows development or setup build continues to use `%LOCALAPPDATA%\SekerEagle\MediaCache\v2` and the normal Electron user profile directories.
+- A non-portable Windows development or setup build continues to use `%LOCALAPPDATA%\SekerGallery\MediaCache\v2` and the normal Electron user profile directories.
 
 ## Failure and recovery
 

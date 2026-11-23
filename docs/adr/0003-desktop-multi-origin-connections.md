@@ -4,7 +4,7 @@ Status: accepted
 
 ## Context
 
-One SekerEagle library can be reachable through loopback, a private LAN address, and a public HTTPS origin. A desktop client should use the fastest reachable path without confusing an unavailable endpoint with an untrusted browser origin, switching to an unrelated deployment, or making the web application responsible for recovering its own transport.
+One SekerGallery library can be reachable through loopback, a private LAN address, and a public HTTPS origin. A desktop client should use the fastest reachable path without confusing an unavailable endpoint with an untrusted browser origin, switching to an unrelated deployment, or making the web application responsible for recovering its own transport.
 
 ## Decision
 

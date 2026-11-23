@@ -42,17 +42,17 @@
 
 初始隔离配置把模型地址设为 API 容器自身的 loopback，NAS 内没有 MLX 服务，因此内容搜索会正常降级到名称／人工标签。这不意味着恢复的图片向量损坏。模型仍运行在 Mac；先从 NAS API 容器验证模型鉴权、固定模型修订、1024 维和真实文字嵌入，再接通交互搜索。Mac 关机或模型离线时仍会降级。
 
-仅把 `deploy/nas/search-inference.yml` 复制到既有测试安装目录。在该目录权限 0600 的 `.env` 中单独设置 `NAS_SEARCH_EMBEDDING_URL` 和 `NAS_SEARCH_EMBEDDING_TOKEN`；token 从已验证的 SekerEagle MLX 服务安全传入，不打印、不提交，不替换数据库、存储或测试 worker 的独立凭据。无凭据时 Compose 插值必须拒绝启动。
+仅把 `deploy/nas/search-inference.yml` 复制到既有测试安装目录。在该目录权限 0600 的 `.env` 中单独设置 `NAS_SEARCH_EMBEDDING_URL` 和 `NAS_SEARCH_EMBEDDING_TOKEN`；token 从已验证的 SekerGallery MLX 服务安全传入，不打印、不提交，不替换数据库、存储或测试 worker 的独立凭据。无凭据时 Compose 插值必须拒绝启动。
 
 核对 owner marker 和基础配置后，在测试目录执行 `docker compose --env-file .env -f compose.yml -f search-inference.yml config --quiet`，再执行相同文件组合的 `up -d --no-deps api`。仅重建 API，沿用已部署镜像，不运行 migration、不更新 web、不启用 processing profile。后续维护 API 也必须带此覆盖文件，避免回到隔离地址；重新执行安装目录生成器不是更新已有安装的方式。取消连接时只以基础配置重建 API，并移除专用搜索凭据。
 
 接通后验证：无模型凭据被拒绝、有凭据文字嵌入成功、向量空间一致、共用图片搜索服务返回 READY 并对现有图片产生语义命中、浏览器入口仍健康。不要为消除降级提示而关闭身份校验、重算全库向量或顺便启动 8B／worker。
 
-2026-10-21 实测：对象恢复任务最终输出 `Restored 644206 Eagle objects.`。搜索故障由初始隔离地址的 `ECONNREFUSED` 引起；现有 68450 条 MATERIAL／READY 图片向量与模型空间一致。显式覆盖仅把 API 文字搜索接到 Mac 局域网的 SekerEagle MLX 服务，其他服务配置不变。NAS 到模型无凭据请求返回 401，有凭据真实文字请求返回 HTTP 200、1024 维归一化向量；共用搜索服务返回 READY、前五项均为语义命中，浏览器搜索「蓝天白云下的山川」显示山川图片且无降级提示。Mac 仍承担模型推理，不能据此宣称 NAS 能脱离 Mac 运行内容搜索。
+2026-10-21 实测：对象恢复任务最终输出 `Restored 644206 Eagle objects.`。搜索故障由初始隔离地址的 `ECONNREFUSED` 引起；现有 68450 条 MATERIAL／READY 图片向量与模型空间一致。显式覆盖仅把 API 文字搜索接到 Mac 局域网的 SekerGallery MLX 服务，其他服务配置不变。NAS 到模型无凭据请求返回 401，有凭据真实文字请求返回 HTTP 200、1024 维归一化向量；共用搜索服务返回 READY、前五项均为语义命中，浏览器搜索「蓝天白云下的山川」显示山川图片且无降级提示。Mac 仍承担模型推理，不能据此宣称 NAS 能脱离 Mac 运行内容搜索。
 
 ## 现用实例 HTTPS 入口
 
-2026-10-21 用户确认群晖版新增 `https://yuntai.design:8181`，保留 Mac 的原 8180 入口。OpenWrt 新增独立 TCP 8181 映射及 NAT reflection，由已有证书所在的 DSM 终止 TLS，再转发到 SekerEagle NAS 的局域网 HTTP 8181。DSM 仅承担入口代理，不访问 SekerChat 的数据、存储、运行时或凭据；应用、数据库及对象存储仍在独立 NAS Compose 项目内。公网 80／443 不可用，沿用现有域名解析，不新增 DDNS 或证书签发器。
+2026-10-21 用户确认群晖版新增 `https://yuntai.design:8181`，保留 Mac 的原 8180 入口。OpenWrt 新增独立 TCP 8181 映射及 NAT reflection，由已有证书所在的 DSM 终止 TLS，再转发到 SekerGallery NAS 的局域网 HTTP 8181。DSM 仅承担入口代理，不访问 SekerChat 的数据、存储、运行时或凭据；应用、数据库及对象存储仍在独立 NAS Compose 项目内。公网 80／443 不可用，沿用现有域名解析，不新增 DDNS 或证书签发器。
 
 现用安装目录额外保存 `https.yml` 与 `nginx.https.conf`；这是对既有安装的运行配置，不改变初始隔离包生成器。API、worker、migration 的 `CANONICAL_ORIGIN` 与 `S3_PUBLIC_ENDPOINT` 同时设为上述 HTTPS origin，关闭不安全公网 HTTP 兼容；网关上传回源 Host 固定为 `yuntai.design:8181`，与签名保持一致。安全 Cookie 只通过 HTTPS 使用，局域网 HTTP 端口作为代理回源。后续维护必须保留搜索与 HTTPS 两份覆盖：
 
@@ -67,7 +67,7 @@ DSM 中仅为新增代理绑定有效的 ZeroSSL ECC 同域名证书，未复制
 
 本次只调整部署配置及维护文档，未修改应用源码；本机 lint、typecheck、完整单测和 build 均通过。
 
-回滚应用入口时以基础文件加 `search-inference.yml` 重建上述三个服务；网络侧只撤销新增的 `pf_sekereagle_nas` 和 SekerEagle DSM 代理，不覆盖其他规则或全局证书。最新网络链路、备份与维护交接同步记录在用户的 OpenWrt 网络项目中。
+回滚应用入口时以基础文件加 `search-inference.yml` 重建上述三个服务；网络侧只撤销新增的 `pf_sekereagle_nas` 和 SekerGallery DSM 代理，不覆盖其他规则或全局证书。最新网络链路、备份与维护交接同步记录在用户的 OpenWrt 网络项目中。
 
 ## 2026-10-21 本地复制运行状态
 

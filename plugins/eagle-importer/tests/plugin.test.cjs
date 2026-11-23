@@ -19,7 +19,7 @@ test('独立导入器复用原版恢复引擎并只使用 PAT', () => {
 
 test('manifest 使用独立插件身份', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
-  assert.equal(manifest.name, 'SekerEagle 独立导入器');
+  assert.equal(manifest.name, 'SekerGallery 独立导入器');
   assert.equal(manifest.version, '2.0.0');
 });
 

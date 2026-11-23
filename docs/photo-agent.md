@@ -47,7 +47,7 @@ API：`POST /api/photos/agent/requests` 仅保存申请；`GET tasks`、`GET tas
   "mcpServers": {
     "sekereagle-photo-agent": {
       "command": "node",
-      "args": ["/absolute/path/to/SekerEagle/apps/photo-agent-mcp/main.mjs"],
+      "args": ["/absolute/path/to/SekerGallery/apps/photo-agent-mcp/main.mjs"],
       "env": {
         "SEKEREAGLE_AGENT_URL": "http://127.0.0.1:YOUR_TEST_PORT",
         "SEKEREAGLE_AGENT_PAT_FILE": "/absolute/private/path/photo-agent.pat"

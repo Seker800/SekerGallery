@@ -78,7 +78,7 @@ export class DesktopConnectionResolver {
         ...result,
         slot,
         state: 'DIFFERENT_DEPLOYMENT',
-        message: '该地址属于另一套 SekerEagle 图库。',
+        message: '该地址属于另一套 SekerGallery 图库。',
       };
     }
     return { ...result, slot };

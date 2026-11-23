@@ -132,4 +132,4 @@ for (let attempt = 0; attempt < 8; attempt += 1) {
 }
 if (!bruteForceStatuses.includes(429)) throw new Error('登录暴力尝试未触发限流');
 
-process.stdout.write('SekerEagle auth smoke passed\n');
+process.stdout.write('SekerGallery auth smoke passed\n');

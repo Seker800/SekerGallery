@@ -24,7 +24,7 @@ describe('translation catalogs', () => {
   });
 
   it('contains the primary English application journey', () => {
-    expect(enUS['正在连接 SekerEagle…']).toBe('Connecting to SekerEagle…');
+    expect(enUS['正在连接 SekerGallery…']).toBe('Connecting to SekerGallery…');
     expect(enUS['登录素材库']).toBe('Sign in to your library');
     expect(enUS['素材']).toBe('Assets');
     expect(enUS['智能文件夹']).toBe('Smart folders');

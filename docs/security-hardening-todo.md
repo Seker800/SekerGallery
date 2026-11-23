@@ -1,4 +1,4 @@
-# SekerEagle 安全加固待办
+# SekerGallery 安全加固待办
 
 > 2026-10-20 本地实施补充：以下原审计记录保留为历史依据。当前只修改仓库并在新建临时测试实例验证，未操作现有开发／生产服务。勾选表示本地代码完成，不表示已经部署。具体验证与本轮 review 结果见 [项目待办](todo.md)。永久 PAT、MFA 恢复、配额、备份密钥及旧令牌迁移属于需要产品／运维策略的剩余项。
 
@@ -85,7 +85,7 @@
 - 不要把证书私钥复制到每台机器；让一个反代统一终止 TLS，续约只维护一处。
 - Cookie 不区分端口：同一主机不同端口的应用会共享 Cookie，容易冲突；用子域隔离。
 - 端口隐蔽不是安全措施，扫描器会全端口扫描；只开一个反代端口并保持更新。
-- SekerEagle 是私人照片库，能走 VPN/Tailscale 就不要直接公网暴露；必须公网时至少上 HTTPS + 强密码 + MFA。
+- SekerGallery 是私人照片库，能走 VPN/Tailscale 就不要直接公网暴露；必须公网时至少上 HTTPS + 强密码 + MFA。
 
 **如果没有公网 IP 或端口被封**
 
@@ -308,7 +308,7 @@ lsof -nP -iTCP -sTCP:LISTEN
 - Cookie 不区分端口；同主机不同端口会共享 Cookie。用子域隔离应用。
 - 端口隐蔽不是安全措施；只开一个反代端口，后端端口不要公网暴露。
 - 没有公网 IP/端口被封：Cloudflare Tunnel、Tailscale Funnel、frp。
-- SekerEagle 优先走 VPN/Tailscale；必须公网时至少 HTTPS + 强密码 + MFA + 及时更新。
+- SekerGallery 优先走 VPN/Tailscale；必须公网时至少 HTTPS + 强密码 + MFA + 及时更新。
 
 ## 回来后的执行顺序
 
