@@ -2,7 +2,7 @@
 
 ## 0.9.31 标签内联编辑、系统标签保护与翻页收尾（2026-11-23）
 
-本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode48、versionName 0.9.31，调试 APK SHA-256 `91f1eb9c87600e481771924528ce7edd637180762ca86a66f1e22b652dcce756`。未发布 APK，未推送或部署。
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode48、versionName 0.9.31，调试 APK SHA-256 `91f1eb9c87600e481771924528ce7edd637180762ca86a66f1e22b652dcce756`。2026-11-23 18:27 用当前 main 源码（其后安卓代码未再变化）重新构建并覆盖安装到小米 25128PNA1C，重建 APK SHA-256 `24cfd10e…`（构建时间戳不同，与 09:20 包同源）；安装后启动并正常加载生产图库。未发布到下载页，未推送 APK 到生产分发。
 
 系统标签改为服务端稳定标识：`EagleManualTag.systemKey` 为 `FAVORITE`（收藏）或 `EDIT_COPY`（已编辑），迁移为 `20261123090000_manual_tag_system_key`。迁移会把现有对应名称标签回填；创建保留名称时自动标记；改名、删除由服务端拒绝；网页标签页和安卓标签页都显示只读。旧服务端无 `systemKey` 时安卓仍按名称回退，不会直接失效。部署 API 前必须执行新迁移。
 

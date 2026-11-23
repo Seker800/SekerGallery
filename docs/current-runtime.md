@@ -69,7 +69,7 @@ Web 最近覆盖：`main-d3568fc9`（11-23 18:04）→ `main-2405f5ed`（11-20 1
   `.omx/artifacts` 中未被文档引用的 7 天前产物已删除（1.4 GB），文档引用证据全部保留。
 - 最近一致性备份：941,432,321 字节，SHA-256 `356121ce301818ceefc6082a3e907edaf7478831f1d9089b41dd47758d502ae8`（2026-11-23 迁移前，`pg_restore --list` 完整解析）；上一轮 944,962,937 字节 `43b78471…`。
 - 证据目录：本次发布见 NAS 私有 `maintenance/main-d3568fc9/`；上一轮见 `maintenance/main-2405f5ed/`。
-- 2026-11-23 18:04 群晖发布 `d3568fc9`：API／operations／reader／web 四个应用容器切到 `main-d3568fc9`，应用 1 项迁移 `20261123090000_manual_tag_system_key`；发布前后计数一致（MATERIAL 64,876／PHOTO 58,869、回收站 13,755、草稿 243）；schema 仅新增 `EagleManualTag.systemKey` 列与唯一索引，收藏／已编辑各回填 1 个系统标签；公网首页／readiness 200、匿名 401，线上首页哈希与本地构建一致；无关容器未变，网关复用并 reload；API 成品镜像通过 `test:api-image`（隔离启动、102 条迁移、readiness 200、匿名 401、独立执行器无密钥启动退出 0）。未做登录后的生产浏览器交互；Android APK 与桌面重打包未包含在本轮。`main-d3568fc9` 还修复了 reader 性能用例在完整集成套件中因查询计划平局翻转的失败，完整套件现仅剩人员排序既有失败。
+- 2026-11-23 18:04 群晖发布 `d3568fc9`：API／operations／reader／web 四个应用容器切到 `main-d3568fc9`，应用 1 项迁移 `20261123090000_manual_tag_system_key`；发布前后计数一致（MATERIAL 64,876／PHOTO 58,869、回收站 13,755、草稿 243）；schema 仅新增 `EagleManualTag.systemKey` 列与唯一索引，收藏／已编辑各回填 1 个系统标签；公网首页／readiness 200、匿名 401，线上首页哈希与本地构建一致；无关容器未变，网关复用并 reload；API 成品镜像通过 `test:api-image`（隔离启动、102 条迁移、readiness 200、匿名 401、独立执行器无密钥启动退出 0）。未做登录后的生产浏览器交互；macOS 客户端已重打包并替换为 `/Applications/SekerGallery.app`，安卓 0.9.31 已覆盖安装到小米 25128PNA1C 并正常加载图库。`main-d3568fc9` 还修复了 reader 性能用例在完整集成套件中因查询计划平局翻转的失败，完整套件现仅剩人员排序既有失败。
 - 2026-11-20 11:02 群晖发布 `2405f5ed`：API／operations／reader／web 四个应用容器切到 `main-2405f5ed`，应用 1 项索引迁移；发布前后计数一致（MATERIAL 64,850／PHOTO 58,941、回收站 13,424、草稿 239），公网首页／readiness 200、匿名 401，线上首页哈希与本地一致；无关容器未变，网关复用并 reload。
 - 2026-11-18 11:30 桌面缓存身份改为 v3（不含连接地址）：当前账号在新命名空间重建，
   旧地址键文件成为一次性孤立缓存；网页与 API 未变。
