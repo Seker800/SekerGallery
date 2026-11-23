@@ -27,6 +27,15 @@ import {
   visibleManualTagWhere,
 } from './library-values';
 
+const SYSTEM_TAG_KEYS = new Map([
+  ['收藏', 'FAVORITE'],
+  ['已编辑', 'EDIT_COPY'],
+]);
+
+function systemKeyForName(normalizedName: string): string | null {
+  return SYSTEM_TAG_KEYS.get(normalizedName) ?? null;
+}
+
 const BATCH_TAG_WRITE_ASSET_CHUNK_SIZE = 100;
 
 @Injectable()
@@ -161,6 +170,7 @@ export class LibraryManualTagService {
         id: true,
         name: true,
         color: true,
+        systemKey: true,
         groupId: true,
         groupMemberships: { orderBy: { groupId: 'asc' }, select: { groupId: true } },
         isStarred: true,
@@ -192,12 +202,14 @@ export class LibraryManualTagService {
           name,
           normalizedName: normalizeKey(name),
           color: normalizeColor(input.color),
+          systemKey: systemKeyForName(normalizeKey(name)),
           libraryMode: this.libraryMode,
         },
         select: {
           id: true,
           name: true,
           color: true,
+          systemKey: true,
           isStarred: true,
           lastUsedAt: true,
           rowVersion: true,
@@ -229,6 +241,13 @@ export class LibraryManualTagService {
     if (!current) throw new NotFoundException('标签不存在。');
     const name =
       input.name === undefined ? current.name : normalizeName(input.name, 64, '标签名称');
+    const normalizedName = normalizeKey(name);
+    if (current.systemKey && normalizedName !== current.normalizedName) {
+      throw new ConflictException('系统标签不能改名。');
+    }
+    if (!current.systemKey && systemKeyForName(normalizedName)) {
+      throw new ConflictException('系统标签名已保留，请换一个名称。');
+    }
     if (
       input.groupId &&
       !(await db.eagleManualTagGroup.count({
@@ -247,7 +266,7 @@ export class LibraryManualTagService {
           },
           data: {
             name,
-            normalizedName: normalizeKey(name),
+            normalizedName,
             color: input.color === undefined ? current.color : normalizeColor(input.color),
             groupId: input.groupId === undefined ? current.groupId : input.groupId,
             isStarred: input.isStarred === undefined ? current.isStarred : input.isStarred,
@@ -279,6 +298,7 @@ export class LibraryManualTagService {
         id: true,
         name: true,
         color: true,
+        systemKey: true,
         groupId: true,
         groupMemberships: { orderBy: { groupId: 'asc' }, select: { groupId: true } },
         isStarred: true,
@@ -312,9 +332,12 @@ export class LibraryManualTagService {
         await lockOwnerPrivacyProjection(transaction, ownerId, this.libraryMode);
         const tag = await transaction.eagleManualTag.findFirst({
           where: { ownerId, id: tagId, libraryMode: this.libraryMode },
-          select: { id: true, marksAssetsPrivate: true },
+          select: { id: true, systemKey: true, marksAssetsPrivate: true },
         });
         if (!tag) throw new NotFoundException('标签不存在。');
+        if (tag.systemKey) {
+          throw new ConflictException('系统标签不能删除。');
+        }
         if (tag.marksAssetsPrivate) {
           throw new ConflictException('请先在私密设置中移除该标签，再删除标签。');
         }

@@ -259,7 +259,11 @@ for (const mode of ['MATERIAL', 'PHOTO'] as const) {
         normalizedName: '已编辑',
       });
       assert.equal(tagInput.create.name, '已编辑');
-      assert.deepEqual(tagInput.update, {}, 'existing tag preferences must remain intact');
+      assert.deepEqual(
+        tagInput.update,
+        { systemKey: 'EDIT_COPY' },
+        'the edited marker is promoted to a stable system tag without changing other preferences',
+      );
       assert.deepEqual(
         links.map((link) => link.tagId).sort(),
         privateSource ? ['edited', 'inherited', 'travel'] : ['edited', 'travel'],

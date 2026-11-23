@@ -821,6 +821,7 @@ model EagleManualTag {
   color              String?
   groupId            String?
   isStarred          Boolean                               @default(false)
+  systemKey          String?
   marksAssetsPrivate Boolean                               @default(false)
   lastUsedAt         DateTime?
   rowVersion         Int                                   @default(1)
@@ -839,6 +840,7 @@ model EagleManualTag {
   semanticBuilds     EagleTagSemanticBuild[]
 
   @@unique([ownerId, libraryMode, normalizedName])
+  @@unique([ownerId, libraryMode, systemKey])
   @@unique([ownerId, id])
   @@unique([ownerId, libraryMode, id])
   @@index([ownerId, libraryMode, name])

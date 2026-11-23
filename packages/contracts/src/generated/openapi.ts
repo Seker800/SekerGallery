@@ -4576,6 +4576,7 @@ export interface components {
       id: string;
       name: string;
       color: string | null;
+      systemKey?: string | null;
     };
     EagleAssetListResponseDto: {
       livePhotoMotion?: components['schemas']['EagleLivePhotoMotionResponseDto'];

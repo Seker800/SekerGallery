@@ -5,6 +5,7 @@ export class EagleManualTagResponseDto {
   @ApiProperty({ type: String }) id!: string;
   @ApiProperty({ type: String }) name!: string;
   @ApiProperty({ type: String, nullable: true }) color!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) systemKey?: string | null;
 }
 
 export class EaglePhotoMetadataResponseDto {

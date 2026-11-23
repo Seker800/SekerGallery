@@ -16,8 +16,14 @@ export function editedCopyTag(
       ownerId_libraryMode_normalizedName: { ownerId, libraryMode, normalizedName: '已编辑' },
       libraryMode,
     },
-    create: { ownerId, libraryMode, name: '已编辑', normalizedName: '已编辑' },
-    update: {},
+    create: {
+      ownerId,
+      libraryMode,
+      name: '已编辑',
+      normalizedName: '已编辑',
+      systemKey: 'EDIT_COPY',
+    },
+    update: { systemKey: 'EDIT_COPY' },
     select: { id: true, marksAssetsPrivate: true },
   });
 }

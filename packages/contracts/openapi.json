@@ -11201,6 +11201,10 @@
           "color": {
             "type": "string",
             "nullable": true
+          },
+          "systemKey": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": ["id", "name", "color"]
