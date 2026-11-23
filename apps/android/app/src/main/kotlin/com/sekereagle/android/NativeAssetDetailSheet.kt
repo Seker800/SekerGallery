@@ -24,6 +24,8 @@ internal fun NativeAssetDetailSheet(
     model: NativeGalleryViewModel,
     onDismiss: () -> Unit,
     onOpenStack: () -> Unit,
+    onEditTags: () -> Unit,
+    busy: Boolean = false,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -47,7 +49,7 @@ internal fun NativeAssetDetailSheet(
                         fontSize = 12.sp,
                     )
                 }
-                IconButton({ model.toggleFavorite(asset.id) }) {
+                IconButton({ model.toggleFavorite(asset.id) }, enabled = !busy) {
                     Icon(
                         if (asset.favorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
                         if (asset.favorite) "取消收藏" else "收藏",
@@ -62,7 +64,8 @@ internal fun NativeAssetDetailSheet(
                     IconButton(
                         onClick = {
                             model.setRating(asset.id, if (asset.rating == value) null else value)
-                        }
+                        },
+                        enabled = !busy,
                     ) {
                         Icon(
                             Icons.Outlined.Star,
@@ -75,7 +78,7 @@ internal fun NativeAssetDetailSheet(
                     }
                 }
                 if (asset.rating != null)
-                    TextButton({ model.setRating(asset.id, null) }) { Text("清除") }
+                    TextButton({ model.setRating(asset.id, null) }, enabled = !busy) { Text("清除") }
             }
 
             Text("标签", color = NativeMuted, fontSize = 12.sp)
@@ -99,7 +102,7 @@ internal fun NativeAssetDetailSheet(
                         )
                     }
                 }
-            TextButton({ model.openTagScreen(); onDismiss() }) { Text("管理标签") }
+            TextButton(onEditTags, enabled = !busy) { Text("编辑标签") }
 
             if (asset.stackId != null) {
                 Text("编辑副本关系", color = NativeMuted, fontSize = 12.sp)

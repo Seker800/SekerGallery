@@ -59,10 +59,12 @@ fun NativeViewer(
     var editing by remember { mutableStateOf(false) }
     var detailsOpen by remember { mutableStateOf(false) }
     var stackOpen by remember { mutableStateOf(false) }
+    var tagsOpen by remember { mutableStateOf(false) }
     var shareBusy by remember { mutableStateOf(false) }
     var shareStage by remember { mutableStateOf("正在准备分享…") }
     var shareBytes by remember { mutableLongStateOf(0L) }
     var shareSize by remember { mutableLongStateOf(-1L) }
+    var shareFallback by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -74,11 +76,46 @@ fun NativeViewer(
         zoomed = false
         detailsOpen = false
         stackOpen = false
+        tagsOpen = false
+        shareFallback = false
+        error = null
         if (pager.settledPage >= state.items.size - 4) model.load(true)
     }
     val backdrop = rememberGraphicsLayer()
     var sourceOffset by remember { mutableStateOf(Offset.Zero) }
     val asset = state.items.getOrNull(pager.currentPage) ?: return
+    fun startShare(allowOriginal: Boolean) {
+        shareBusy = true
+        shareFallback = false
+        shareStage = "正在准备分享…"
+        shareBytes = 0L
+        shareSize = -1L
+        scope.launch {
+            try {
+                shareNativeAsset(
+                    context,
+                    repo,
+                    state.mode,
+                    asset,
+                    shareCancellation,
+                    fallbackOriginal = allowOriginal,
+                    onStage = { shareStage = it },
+                    onProgress = { bytes, total ->
+                        shareBytes = bytes
+                        shareSize = total
+                    },
+                )
+            } catch (reason: kotlinx.coroutines.CancellationException) {
+                throw reason
+            } catch (reason: NativeShareFallbackRequired) {
+                shareFallback = true
+            } catch (reason: Exception) {
+                error = reason.message ?: "分享失败，请重试"
+            } finally {
+                shareBusy = false
+            }
+        }
+    }
     if (editing) {
         NativeEditor(
             repo,
@@ -198,32 +235,7 @@ fun NativeViewer(
                                 editing = true
                             }
                         ViewerTool(Icons.Outlined.Share, "分享", !state.busy && !shareBusy) {
-                            shareBusy = true
-                            shareStage = "正在准备分享…"
-                            shareBytes = 0L
-                            shareSize = -1L
-                            scope.launch {
-                                try {
-                                    shareNativeAsset(
-                                        context,
-                                        repo,
-                                        state.mode,
-                                        asset,
-                                        shareCancellation,
-                                        onStage = { shareStage = it },
-                                        onProgress = { bytes, total ->
-                                            shareBytes = bytes
-                                            shareSize = total
-                                        },
-                                    )
-                                } catch (reason: kotlinx.coroutines.CancellationException) {
-                                    throw reason
-                                } catch (reason: Exception) {
-                                    error = reason.message ?: "分享失败，请重试"
-                                } finally {
-                                    shareBusy = false
-                                }
-                            }
+                            startShare(false)
                         }
                     }
                 }
@@ -281,6 +293,19 @@ fun NativeViewer(
                 detailsOpen = false
                 stackOpen = true
             },
+            onEditTags = {
+                detailsOpen = false
+                tagsOpen = true
+            },
+            busy = state.busy,
+        )
+    if (tagsOpen)
+        NativeAssetTagsSheet(
+            asset = asset,
+            mode = state.mode,
+            repo = repo,
+            model = model,
+            onDismiss = { tagsOpen = false },
         )
     if (stackOpen && asset.stackId != null)
         NativeStackSheet(
@@ -292,6 +317,23 @@ fun NativeViewer(
                 model.openStackAsset(it)
             },
             onDismiss = { stackOpen = false },
+        )
+    if (shareFallback)
+        AlertDialog(
+            onDismissRequest = { shareFallback = false },
+            title = { Text(if (asset.video) "兼容视频准备失败" else "分享图生成失败") },
+            text = {
+                Text(
+                    if (asset.video) "没有自动发送原视频。要改发原文件吗？"
+                    else "没有自动发送可能带位置信息的原图。要改发原图吗？"
+                )
+            },
+            dismissButton = {
+                TextButton({ shareFallback = false }) { Text("取消") }
+            },
+            confirmButton = {
+                TextButton({ startShare(true) }) { Text("改发原图") }
+            },
         )
     if (deleting)
         AlertDialog(

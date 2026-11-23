@@ -8,6 +8,7 @@ class NativeTagRecordTest {
     fun onlyFavoriteAndEditedNamesAreClientSystemTags() {
         assertTrue(NativeTagRecord("a", "收藏").system)
         assertTrue(NativeTagRecord("b", "已编辑").system)
+        assertTrue(NativeTagRecord("c", "任意名称", systemKey = "FAVORITE").system)
         assertFalse(NativeTagRecord("c", "旅行").system)
         assertFalse(NativeTagRecord("d", "继承私密").system)
     }

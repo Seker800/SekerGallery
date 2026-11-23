@@ -271,10 +271,10 @@ internal fun NativeTagScreen(
             groups = groups,
             busy = busy,
             onDismiss = { groupsOpen = false },
-            onCreate = { name ->
+            onCreate = { name, color ->
                 groupsOpen = false
                 perform {
-                    repo.createTagGroup(mode, name)
+                    repo.createTagGroup(mode, name, color)
                     null
                 }
             },
@@ -463,11 +463,12 @@ private fun TagGroupsDialog(
     groups: List<NativeTagGroupRecord>,
     busy: Boolean,
     onDismiss: () -> Unit,
-    onCreate: (String) -> Unit,
+    onCreate: (String, String?) -> Unit,
     onEdit: (NativeTagGroupRecord) -> Unit,
     onDelete: (NativeTagGroupRecord) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
+    var color by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf<NativeTagGroupRecord?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -483,8 +484,30 @@ private fun TagGroupsDialog(
                     label = { Text("新建组名") },
                     singleLine = true,
                 )
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = color == null,
+                        onClick = { color = null },
+                        label = { Text("无颜色") },
+                    )
+                    tagColors.forEach { value ->
+                        FilterChip(
+                            selected = color == value,
+                            onClick = { color = value },
+                            label = {
+                                Box(Modifier.size(14.dp).background(tagColor(value), CircleShape))
+                            },
+                        )
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton({ onCreate(name.trim()) }, enabled = name.isNotBlank() && !busy) {
+                    TextButton(
+                        { onCreate(name.trim(), color) },
+                        enabled = name.isNotBlank() && !busy,
+                    ) {
                         Text("新建")
                     }
                 }

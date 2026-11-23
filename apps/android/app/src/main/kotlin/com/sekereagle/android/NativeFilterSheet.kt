@@ -67,6 +67,8 @@ fun NativeFilterSheet(state: GalleryState, model: NativeGalleryViewModel) {
             mutableStateOf(emptySet<String>())
         }
     val editingTags = panel == "添加标签" || panel == "移除标签"
+    var createTagOpen by remember { mutableStateOf(false) }
+    var newTagName by remember { mutableStateOf("") }
     val context = LocalContext.current
     val error = if (editingTags || panel == "评分") null else draft.validationError()
     val height =
@@ -152,6 +154,10 @@ fun NativeFilterSheet(state: GalleryState, model: NativeGalleryViewModel) {
                     }
                     if (!editingTags)
                         TextButton({ model.openTagScreen() }) { Text("管理标签") }
+                    if (editingTags && panel == "添加标签")
+                        TextButton({ createTagOpen = true }, enabled = !state.busy) {
+                            Text("新建标签并添加")
+                        }
                     if (!editingTags && draft.tags.isNotEmpty()) {
                         Text("多个标签如何匹配", color = NativeMuted)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -309,6 +315,32 @@ fun NativeFilterSheet(state: GalleryState, model: NativeGalleryViewModel) {
             }
         }
     }
+    if (createTagOpen)
+        AlertDialog(
+            onDismissRequest = { if (!state.busy) createTagOpen = false },
+            title = { Text("新建标签并添加") },
+            text = {
+                OutlinedTextField(
+                    newTagName,
+                    { newTagName = it.take(64) },
+                    label = { Text("名称") },
+                    singleLine = true,
+                )
+            },
+            dismissButton = {
+                TextButton({ createTagOpen = false }, enabled = !state.busy) { Text("取消") }
+            },
+            confirmButton = {
+                TextButton(
+                    {
+                        model.createTagAndAddSelected(newTagName)
+                        newTagName = ""
+                        createTagOpen = false
+                    },
+                    enabled = !state.busy && newTagName.isNotBlank(),
+                ) { Text("创建并添加") }
+            },
+        )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

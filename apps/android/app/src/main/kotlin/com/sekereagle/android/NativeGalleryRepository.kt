@@ -68,9 +68,10 @@ data class NativeTagRecord(
     val privateRule: Boolean = false,
     val pinyin: String = "",
     val pinyinInitials: String = "",
+    val systemKey: String? = null,
 ) {
     val system: Boolean
-        get() = name == "收藏" || name == "已编辑"
+        get() = systemKey != null || name == "收藏" || name == "已编辑"
 }
 
 data class NativeTagGroupRecord(
@@ -448,7 +449,9 @@ class NativeGalleryRepository(
             return (0 until tags.length())
                 .asSequence()
                 .map { tags.getJSONObject(it) }
-                .firstOrNull { it.getString("name") == "收藏" }
+                .firstOrNull {
+                    it.optString("systemKey") == "FAVORITE" || it.getString("name") == "收藏"
+                }
                 ?.getString("id")
         }
         val now = System.currentTimeMillis()
@@ -564,6 +567,34 @@ class NativeGalleryRepository(
                     favoritePrivacyCache.remove(mode)
                 }
             }
+        }
+
+    suspend fun updateAssetTags(
+        mode: GalleryMode,
+        assetId: String,
+        addTagIds: Set<String>,
+        removeTagIds: Set<String>,
+    ): String? =
+        withContext(Dispatchers.IO) {
+            require(addTagIds.isNotEmpty() || removeTagIds.isNotEmpty())
+            session
+                .json(
+                    "POST",
+                    "${NativeGalleryPolicy.base(mode.name)}/assets/batch/manual-tags",
+                    JSONObject()
+                        .put(
+                            "assetIds",
+                            org.json.JSONArray(listOf(NativeGalleryPolicy.identifier(assetId))),
+                        )
+                        .put("addTagIds", org.json.JSONArray(addTagIds.toList()))
+                        .put("removeTagIds", org.json.JSONArray(removeTagIds.toList())),
+                )
+                .optString("id")
+                .takeUnless { it.isBlank() || it == "null" }
+                .also {
+                    invalidateOptions(mode)
+                    invalidateFavorite(mode)
+                }
         }
 
     suspend fun listTags(mode: GalleryMode): List<NativeTagRecord> =
@@ -763,6 +794,7 @@ class NativeGalleryRepository(
             privacy.contains(row.optString("id")),
             row.optString("pinyin"),
             row.optString("pinyinInitials"),
+            row.optString("systemKey").takeUnless { it.isBlank() || it == "null" },
         )
     }
 

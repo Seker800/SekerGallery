@@ -202,6 +202,9 @@ class NativeGalleryTest {
         login()
         val first = firstAsset()
         val session = NativeSession.open(context, credentials.getString("origin"))
+        fun currentModel() =
+            androidx.lifecycle
+                .ViewModelProvider(compose.activity)[NativeGalleryViewModel::class.java]
         val tag =
             session.json(
                 "POST",
@@ -220,14 +223,18 @@ class NativeGalleryTest {
         compose.onNodeWithText(name).performScrollTo().performClick()
         compose.onNodeWithText("应用").assertIsDisplayed().performClick()
         compose.waitUntil(15_000) {
-            compose.onAllNodesWithTag("native-selection-count").fetchSemanticsNodes().isEmpty()
+            compose.onAllNodesWithTag("native-selection-count").fetchSemanticsNodes().isEmpty() &&
+                !currentModel().state.value.busy &&
+                !currentModel().state.value.loading
         }
         compose.onNodeWithTag("asset:$first").performTouchInput { longClick() }
         compose.onNodeWithText("评分").performClick()
         compose.onNodeWithContentDescription("3 星").performClick()
         compose.onNodeWithText("应用").assertIsDisplayed().performClick()
         compose.waitUntil(15_000) {
-            compose.onAllNodesWithTag("native-selection-count").fetchSemanticsNodes().isEmpty()
+            compose.onAllNodesWithTag("native-selection-count").fetchSemanticsNodes().isEmpty() &&
+                !currentModel().state.value.busy &&
+                !currentModel().state.value.loading
         }
         assertEquals(3, session.json("GET", "/api/photos/assets/$first").getInt("rating"))
         val filtered = session.json("GET", "/api/photos/assets?manualTagIds=$tagId")
@@ -367,12 +374,16 @@ class NativeGalleryTest {
         val id = firstAsset()
         val session = NativeSession.open(context, credentials.getString("origin"))
         val repo = NativeGalleryRepository(session, "favorite-test")
+        fun currentModel() =
+            androidx.lifecycle
+                .ViewModelProvider(compose.activity)[NativeGalleryViewModel::class.java]
         kotlinx.coroutines.runBlocking { repo.setFavorite(GalleryMode.PHOTO, id, false) }
         compose.onNodeWithTag("asset:$id").performClick()
         compose.onNodeWithContentDescription("收藏").performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithContentDescription("取消收藏").fetchSemanticsNodes().isNotEmpty()
         }
+        compose.waitUntil(15_000) { !currentModel().state.value.busy }
         compose.onNodeWithTag("native-viewer").assertExists()
         assertTrue(
             repo.parse(session.json("GET", "/api/photos/assets/$id"), GalleryMode.PHOTO).favorite
@@ -381,6 +392,7 @@ class NativeGalleryTest {
         compose.waitUntil(15_000) {
             compose.onAllNodesWithContentDescription("收藏").fetchSemanticsNodes().isNotEmpty()
         }
+        compose.waitUntil(15_000) { !currentModel().state.value.busy }
         assertFalse(
             repo.parse(session.json("GET", "/api/photos/assets/$id"), GalleryMode.PHOTO).favorite
         )

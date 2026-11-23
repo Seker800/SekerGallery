@@ -17,6 +17,8 @@ import android.os.Build;
 final class BackupLauncher {
   static final int JOB_ID = 7301;
   static final int AUTO_JOB_ID = 7302;
+  /** Legacy instrumentation uses the service directly; production always uses the job on 34+. */
+  static boolean forceForegroundService;
   private static long lastAutoRequest;
 
   private BackupLauncher() {}
@@ -31,7 +33,8 @@ final class BackupLauncher {
         lastAutoRequest = now;
       }
     }
-    if (Build.VERSION.SDK_INT >= 34
+    if (!forceForegroundService
+        && Build.VERSION.SDK_INT >= 34
         && scheduleJob(context, new BackupSettings(context), scope, manual)) return true;
     try {
       context.startForegroundService(

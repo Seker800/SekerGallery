@@ -147,7 +147,8 @@ internal fun NativeLibraryPage(
     val favoriteActive =
         state.query.isBlank() &&
             state.favoriteTagId != null &&
-            state.filters.tags == setOf(state.favoriteTagId)
+            state.filters.tags == setOf(state.favoriteTagId) &&
+            !state.filters.copy(tags = emptySet()).active
     val layout =
         remember(state.items, state.mode, state.trash, state.filters.active, state.query) {
             NativeGridLayout(
@@ -189,6 +190,7 @@ internal fun NativeLibraryPage(
         active,
         state.windowOffset,
         state.previousCursor,
+        state.prefetchPrevious,
         state.loading,
         state.timeline,
         state.error,
@@ -196,7 +198,7 @@ internal fun NativeLibraryPage(
         if (!active) return@LaunchedEffect
         snapshotFlow {
                 grid.firstVisibleItemIndex < PAGE_PREFETCH_ITEMS &&
-                    grid.lastScrolledBackward &&
+                    (grid.lastScrolledBackward || state.prefetchPrevious) &&
                     state.windowOffset > 0 &&
                     (state.previousCursor != null || state.timeline != null) &&
                     state.error == null
@@ -481,6 +483,7 @@ internal fun NativeLibraryPage(
                     Spacer(Modifier.height(14.dp))
                     Text(
                         if (favoriteActive) "还没有收藏"
+                        else if (state.trash) "回收站为空"
                         else if (state.query.isEmpty() && !state.filters.active)
                             "这里还没有${state.mode.title}"
                         else "没有找到符合条件的内容",
@@ -561,7 +564,8 @@ internal fun NativeLibrary(
                     val favoriteActive =
                         state.query.isBlank() &&
                             state.favoriteTagId != null &&
-                            state.filters.tags == setOf(state.favoriteTagId)
+                            state.filters.tags == setOf(state.favoriteTagId) &&
+                            !state.filters.copy(tags = emptySet()).active
                     GlassSurface(Modifier.size(46.dp), backdrop, sourceOffset) {
                         IconButton({ model.openFavorites() }, Modifier.fillMaxSize()) {
                             Icon(

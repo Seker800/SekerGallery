@@ -34,6 +34,10 @@ public final class MobileBackupTest {
   @Before
   public void setUp() throws Exception {
     context = getInstrumentation().getTargetContext();
+    BackupLauncher.forceForegroundService = true;
+    android.app.job.JobScheduler scheduler =
+        (android.app.job.JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+    if (scheduler != null) scheduler.cancelAll();
     settings = new BackupSettings(context);
     // This suite intentionally exercises the retained host after native migration.
     settings.setFlag("legacy", "web-session-cleared-v1", true);
@@ -1427,7 +1431,11 @@ public final class MobileBackupTest {
 
   @After
   public void tearDown() throws Exception {
+    BackupLauncher.forceForegroundService = false;
     context.stopService(new Intent(context, BackupService.class));
+    android.app.job.JobScheduler scheduler =
+        (android.app.job.JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+    if (scheduler != null) scheduler.cancelAll();
     settings.setFlag(scope, "auto", false);
     for (Uri uri : created) context.getContentResolver().delete(uri, null, null);
     if (activity != null) getInstrumentation().runOnMainSync(() -> activity.finish());

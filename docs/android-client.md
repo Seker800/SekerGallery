@@ -1,5 +1,17 @@
 # 安卓客户端与手机备份
 
+## 0.9.31 标签内联编辑、系统标签保护与翻页收尾（2026-11-23）
+
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode48、versionName 0.9.31，调试 APK SHA-256 `91f1eb9c87600e481771924528ce7edd637180762ca86a66f1e22b652dcce756`。未发布 APK，未推送或部署。
+
+系统标签改为服务端稳定标识：`EagleManualTag.systemKey` 为 `FAVORITE`（收藏）或 `EDIT_COPY`（已编辑），迁移为 `20261123090000_manual_tag_system_key`。迁移会把现有对应名称标签回填；创建保留名称时自动标记；改名、删除由服务端拒绝；网页标签页和安卓标签页都显示只读。旧服务端无 `systemKey` 时安卓仍按名称回退，不会直接失效。部署 API 前必须执行新迁移。
+
+大图信息弹层新增当前照片的“编辑标签”：可勾选/取消、直接新建并选中，应用后只改这张照片。多选“加标签”也增加“新建标签并添加”，不再要求退出选择去全局标签页。日期跳转后设置一次 `prefetchPrevious`，向上补页不再依赖 `lastScrolledBackward`；松手/惯性仍正常，补页后清除标记。批量标签/评分/收藏在操作终态前保持忙碌锁，返回键仍能关闭大图、退出回收站；组内临时查看的未加载成员会在关闭大图时移出主列表。
+
+4K/兼容视频分享失败不再自动改发原文件，而是弹出“改发原图/原文件”确认；手动 Job 备份会清除用户暂停，自动 Job 继续遵守暂停。标签组创建支持颜色，回收站空状态明确。
+
+验证：API 697 项通过；网页 157 文件／1226 项通过；安卓 JVM 116 项、`android:check` 通过；`NativeReviewTest` 21/21 通过；真实 API 的日期排序与向上补页用例通过；固定测试图库 57 组筛选通过。完整 132 项设备套件仍有 3 个旧夹具失败：`MobileBackupTest` 的 RAW/视频备份有失败项、增量计数断言，以及 `NativeGalleryTest` 的上传 journey 超时；本轮没有把旧夹具失败混同为产品通过。迁移已在隔离 workbench 实测：创建“收藏/已编辑”得到系统键，改名/删除操作以 STOPPED 失败且标签保持不变。
+
 ## 0.9.30 向上翻页双向游标与加载反馈（2026-11-22）
 
 本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode47、versionName 0.9.30，调试 APK SHA-256 `838f447299b3cd3807ccbdafecdb7c53fe668cef58dffc7b5a271653986b69b4`；当前分支上一轮已是 46／0.9.29，故本轮递增，未降回旧基线的 46。未发布 APK，未推送或部署。

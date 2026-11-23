@@ -31,6 +31,7 @@ fun NativeSearchConditions(
         val filters = if (state.searchOpen) state.searchFilters else state.filters
         val favoriteActive =
             !state.searchOpen &&
+                state.query.isBlank() &&
                 state.favoriteTagId != null &&
                 filters.tags == setOf(state.favoriteTagId)
         val tokens = filters.tokens(state.options.tags, state.options.folders)

@@ -17,12 +17,15 @@ import kotlinx.coroutines.withContext
  * System sharing prefers a server-rendered 4K JPEG for still images and the compatible MP4 playback
  * copy for video. An explicit "original" action remains available through the failure fallback.
  */
+internal class NativeShareFallbackRequired(message: String) : IOException(message)
+
 internal suspend fun shareNativeAsset(
     context: Context,
     repo: NativeGalleryRepository,
     mode: GalleryMode,
     asset: NativeAsset,
     cancellation: NativeTransferCancellation,
+    fallbackOriginal: Boolean = false,
     onStage: (String) -> Unit = {},
     onProgress: (Long, Long) -> Unit = { _, _ -> },
 ) {
@@ -50,6 +53,7 @@ internal suspend fun shareNativeAsset(
         } catch (reason: Exception) {
             if (reason is CancellationException) throw reason
             if (reason is NativeSession.Failure && reason.status == 401) throw reason
+            if (!fallbackOriginal) throw NativeShareFallbackRequired("分享图生成失败，未自动发送原图")
             onStage("分享图生成失败，正在改发原图…")
             source = NativeSharePolicy.Source.ORIGINAL
             file =
@@ -80,6 +84,8 @@ internal suspend fun shareNativeAsset(
         } catch (reason: Exception) {
             if (reason is CancellationException) throw reason
             if (reason is NativeSession.Failure && reason.status == 401) throw reason
+            if (!fallbackOriginal)
+                throw NativeShareFallbackRequired("兼容视频不可用，未自动发送原文件")
             onStage("兼容视频暂不可用，正在准备原文件…")
             source = NativeSharePolicy.Source.ORIGINAL
             file =

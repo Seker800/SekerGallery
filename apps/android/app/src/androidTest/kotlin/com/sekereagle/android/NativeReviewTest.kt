@@ -47,7 +47,9 @@ class NativeReviewTest {
                         while (!socket.isClosed) socket.accept().use { client ->
                             client.soTimeout = 5000
                             val reader = client.getInputStream().bufferedReader()
-                            val first = reader.readLine().split(" ")
+                            val requestLine = reader.readLine() ?: return@use
+                            val first = requestLine.split(" ")
+                            if (first.size < 2) return@use
                             val path = first[1]
                             paths.add(path)
                             var length = 0
@@ -601,7 +603,7 @@ class NativeReviewTest {
     }
 
     @Test
-    fun releasingAtTheTopStillRequestsThePreviousPage() {
+    fun jumpingToADayImmediatelyRequestsThePreviousPage() {
         Server().use { server ->
             val model = model(server)
             await { model.state.value.timeline?.days?.isNotEmpty() == true }
@@ -610,10 +612,6 @@ class NativeReviewTest {
             await {
                 !model.state.value.loading && model.state.value.items.firstOrNull()?.id == "asset60"
             }
-            // A jump itself does not set lastScrolledBackward; simulate an upward scroll and
-            // release. The request must start after release, without a second touch.
-            compose.onNodeWithTag("native-grid").performTouchInput { swipeUp() }
-            compose.onNodeWithTag("native-grid").performTouchInput { swipeDown() }
             await { model.state.value.windowOffset < 60 }
             assertEquals(0, model.state.value.windowOffset)
             main { model.logout() }

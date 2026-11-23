@@ -934,6 +934,11 @@ public final class BackupService extends Service {
       callbacks.finished();
       return false;
     }
+    if (manual) settings.setFlag(requested, "userPaused", false);
+    if (!BackupRunPolicy.mayStart(manual, settings.flag(requested, "userPaused", false))) {
+      callbacks.finished();
+      return false;
+    }
     jobCallbacks = callbacks;
     working.set(true);
     retiring = false;

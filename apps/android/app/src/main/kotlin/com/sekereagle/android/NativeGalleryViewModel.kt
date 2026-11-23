@@ -44,6 +44,7 @@ data class GalleryState(
     val cursor: String? = null,
     val previousCursor: String? = null,
     val loadingPrevious: Boolean = false,
+    val prefetchPrevious: Boolean = false,
     val query: String = "",
     val imageSearchStatus: String? = null,
     val loading: Boolean = false,
@@ -249,6 +250,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
     private val ratingRequests = mutableSetOf<String>()
     private var favoriteBatchPending = false
     private var trashEmptyPending = false
+    private val viewerExtras = mutableSetOf<String>()
 
     private fun refreshTransfersWhenIdle() {
         val current = state.value
@@ -397,6 +399,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         transferRefreshPending = false
         downloads.clear()
         uploadPickerTarget = null
+        viewerExtras.clear()
         cancelOperation()
         cancelOptions()
         timelineCancellation?.cancel()
@@ -411,6 +414,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                     current.copy(
                         loading = false,
                         loadingPrevious = false,
+                        prefetchPrevious = false,
                         refreshing = false,
                         optionStatus =
                             current.optionStatus.mapValues { (_, value) ->
@@ -453,6 +457,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 cursor = null,
                 previousCursor = null,
                 loadingPrevious = false,
+                prefetchPrevious = false,
                 selecting = false,
                 selected = emptySet(),
                 viewerId = null,
@@ -476,6 +481,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 cursor = null,
                 previousCursor = null,
                 loadingPrevious = false,
+                prefetchPrevious = false,
                 selecting = false,
                 selected = emptySet(),
                 viewerId = null,
@@ -495,6 +501,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
             snapshot.copy(
                 loading = true,
                 loadingPrevious = false,
+                prefetchPrevious = if (next) false else snapshot.prefetchPrevious,
                 refreshing = false,
                 error = null,
                 readRetry = null,
@@ -564,10 +571,10 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
     /** Re-read the loaded window atomically so stable item keys retain the visible anchor. */
     fun refresh() = refreshWindow(false)
 
-    private fun refreshWindow(deep: Boolean) {
+    private fun refreshWindow(deep: Boolean, fromOperation: Boolean = false) {
         val snapshot = state.value
         val repo = repository ?: return
-        if (snapshot.busy || snapshot.loading) return
+        if ((snapshot.busy && !fromOperation) || snapshot.loading) return
         val cancellation = beginPageRead()
         val request = ++generation
         transferRefreshPending = false
@@ -575,6 +582,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
             snapshot.copy(
                 loading = true,
                 loadingPrevious = false,
+                prefetchPrevious = false,
                 refreshing = true,
                 error = null,
                 readRetry = null,
@@ -656,7 +664,9 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                         selected = state.value.selected.intersect(merged.map { it.id }.toSet()),
                         loading = false,
                         loadingPrevious = false,
+                        prefetchPrevious = false,
                         refreshing = false,
+                        busy = false,
                     )
                 refreshTransfersWhenIdle()
             } catch (e: CancellationException) {
@@ -691,13 +701,17 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         val previous = snapshot.previousCursor
         val index = snapshot.timeline
         // Old servers have no previousCursor; fall back to the date boundary + day offset.
-        if (previous == null && index == null) return
+        if (previous == null && index == null) {
+            mutable.value = snapshot.copy(prefetchPrevious = false)
+            return
+        }
         val cancellation = beginPageRead()
         val request = ++generation
         mutable.value =
             snapshot.copy(
                 loading = true,
                 loadingPrevious = true,
+                prefetchPrevious = false,
                 refreshing = false,
                 error = null,
                 readRetry = null,
@@ -742,6 +756,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                         previousCursor = if (added == 0) null else page.previousCursor,
                         loading = false,
                         loadingPrevious = false,
+                        prefetchPrevious = false,
                         refreshing = false,
                     )
                 refreshTransfersWhenIdle()
@@ -755,6 +770,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                             state.value.copy(
                                 loading = false,
                                 loadingPrevious = false,
+                                prefetchPrevious = false,
                                 refreshing = false,
                                 error = e.message ?: "加载较新照片失败，请重试",
                                 readRetry = NativeReadRetry.Previous,
@@ -818,6 +834,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 cursor = null,
                 previousCursor = null,
                 loadingPrevious = false,
+                prefetchPrevious = true,
                 windowOffset = position,
                 scrollRequest = current.scrollRequest + 1,
                 selecting = false,
@@ -863,6 +880,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 cursor = null,
                 previousCursor = null,
                 loadingPrevious = false,
+                prefetchPrevious = false,
             )
         load()
     }
@@ -945,6 +963,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
             toggleSelection(id)
             return
         }
+        if (state.value.viewerId == null) viewerExtras.clear()
         mutable.value = state.value.copy(viewerId = id, cacheOpen = false)
     }
 
@@ -975,7 +994,6 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         val s = state.value
         mutable.value =
             when {
-                s.busy -> return true
                 s.tagScreenOpen -> s.copy(tagScreenOpen = false)
                 s.cacheOpen -> s.copy(cacheOpen = false)
                 s.transfersOpen -> s.copy(transfersOpen = false)
@@ -984,18 +1002,23 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                     return true
                 }
                 s.selecting -> s.copy(selecting = false, selected = emptySet())
-                s.viewerId != null -> s.copy(viewerId = null)
+                s.viewerId != null ->
+                    s.copy(
+                        viewerId = null,
+                        items = s.items.filterNot { it.id in viewerExtras },
+                    ).also { viewerExtras.clear() }
                 s.searchOpen ->
                     s.copy(searchOpen = false, searchDraft = s.query, searchFilters = s.filters)
                 s.accountOpen -> s.copy(accountOpen = false)
                 s.trash -> {
-                    openTrash(false)
+                    openTrash(false, force = true)
                     return true
                 }
                 s.filters.active || s.query.isNotEmpty() -> {
                     clearSearch()
                     return true
                 }
+                s.busy -> return true
                 else -> return false
             }
         if (s.transfersOpen && !state.value.transfersOpen) refresh()
@@ -1118,6 +1141,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 cursor = null,
                 previousCursor = null,
                 loadingPrevious = false,
+                prefetchPrevious = false,
                 selecting = false,
                 selected = emptySet(),
                 viewerId = null,
@@ -1125,10 +1149,11 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         load()
     }
 
-    fun openTrash(value: Boolean = true) {
-        if (state.value.busy) return
+    fun openTrash(value: Boolean = true, force: Boolean = false) {
+        if (state.value.busy && !force) return
         mutable.value =
             state.value.copy(
+                busy = if (force) false else state.value.busy,
                 trash = value,
                 relevance = false,
                 scrollRequest = state.value.scrollRequest + 1,
@@ -1139,6 +1164,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 cursor = null,
                 previousCursor = null,
                 loadingPrevious = false,
+                prefetchPrevious = false,
                 viewerId = null,
                 accountOpen = false,
                 selecting = false,
@@ -1184,6 +1210,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         // Optimistic icon state; the received operation is reconciled below.
         mutable.value =
             snapshot.copy(
+                busy = true,
                 message = null,
                 items =
                     state.value.items.map {
@@ -1197,7 +1224,10 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
             try {
                 val operationId = repo.setFavorite(mode, id, target)
                 staleLibraries.add(mode)
-                if (operationId == null) return@launch
+                if (operationId == null) {
+                    mutable.value = state.value.copy(busy = false)
+                    return@launch
+                }
                 watched = true
                 watchOperation(
                     mode,
@@ -1215,6 +1245,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                                             )
                                         else it
                                     },
+                                busy = false,
                                 message = "收藏操作未完成，已恢复原状态",
                             )
                     },
@@ -1235,11 +1266,16 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                                         it.copy(favorite = !target, rowVersion = asset.rowVersion)
                                     else it
                                 },
+                            busy = false,
                             message = "收藏操作未确认完成，请刷新核对后重试：${reason.message.orEmpty()}",
                         )
                 }
             } finally {
-                if (!watched) favoriteRequests.remove(id)
+                if (!watched) {
+                    favoriteRequests.remove(id)
+                    if (state.value.items.any { it.id == id })
+                        mutable.value = state.value.copy(busy = false)
+                }
             }
         }
     }
@@ -1323,7 +1359,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 val operationId = repo.setFavoriteAssets(snapshot.mode, ids, target)
                 mutable.value =
                     state.value.copy(
-                        busy = false,
+                        busy = operationId != null,
                         message = if (operationId != null) "收藏已提交，正在后台应用" else null,
                     )
                 if (operationId == null) {
@@ -1365,6 +1401,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         ratingRequests.add(id)
         mutable.value =
             snapshot.copy(
+                busy = true,
                 message = null,
                 items =
                     state.value.items.map {
@@ -1377,6 +1414,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 val operationId = repo.setRating(snapshot.mode, id, asset.rowVersion, rating)
                 if (operationId == null) {
                     ratingRequests.remove(id)
+                    mutable.value = state.value.copy(busy = false)
                     refresh()
                 } else {
                     watchOperation(
@@ -1398,6 +1436,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                                     if (it.id == id) it.copy(rating = asset.rating, rowVersion = asset.rowVersion)
                                     else it
                                 },
+                            busy = false,
                             message = "评分未确认完成，请重试",
                         )
             }
@@ -1438,6 +1477,78 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    fun applyAssetTags(asset: NativeAsset, selected: List<NativeAssetTag>) {
+        val snapshot = state.value
+        if (snapshot.busy || snapshot.trash) return
+        val repo = repository ?: return
+        val currentIds = asset.tags.map { it.id }.toSet()
+        val selectedIds = selected.map { it.id }.toSet()
+        val add = selectedIds - currentIds
+        val remove = currentIds - selectedIds
+        if (add.isEmpty() && remove.isEmpty()) return
+        val favorite = selected.any { it.name == "收藏" }
+        mutable.value =
+            snapshot.copy(
+                message = null,
+                items =
+                    state.value.items.map {
+                        if (it.id == asset.id)
+                            it.copy(tags = selected, favorite = favorite, rowVersion = it.rowVersion + 1)
+                        else it
+                    },
+            )
+        viewModelScope.launch {
+            try {
+                val operationId =
+                    repo.updateAssetTags(snapshot.mode, asset.id, add, remove)
+                if (operationId == null) refresh()
+                else watchOperation(snapshot.mode, operationId)
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                if (reason is NativeSession.Failure && reason.status == 401) expire()
+                else {
+                    mutable.value =
+                        state.value.copy(
+                            items =
+                                state.value.items.map {
+                                    if (it.id == asset.id) asset else it
+                                },
+                            message = "标签未确认完成，请重试",
+                        )
+                }
+            }
+        }
+    }
+
+    fun createTagAndAddSelected(name: String) {
+        val snapshot = state.value
+        val repo = repository ?: return
+        val clean = name.trim()
+        if (clean.isEmpty() || snapshot.busy || snapshot.selected.isEmpty()) return
+        if (clean == "收藏" || clean == "已编辑") {
+            mutable.value = snapshot.copy(message = "收藏／已编辑是系统标签名，请换一个")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val created = withContext(Dispatchers.IO) { repo.createTag(snapshot.mode, clean) }
+                repo.invalidateOptions(snapshot.mode)
+                if (state.value.mode != snapshot.mode) return@launch
+                changeSelection("tags", setOf(created.id))
+            } catch (reason: CancellationException) {
+                throw reason
+            } catch (reason: Exception) {
+                if (reason is NativeSession.Failure && reason.status == 401) expire()
+                else
+                    mutable.value =
+                        state.value.copy(
+                            message = "标签创建失败：${reason.message.orEmpty()}",
+                        )
+            }
+        }
+    }
+
     fun openStackAsset(asset: NativeAsset) {
         val current = state.value
         if (current.items.any { it.id == asset.id }) {
@@ -1445,6 +1556,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
             return
         }
         val index = current.items.indexOfFirst { it.id == current.viewerId }.coerceAtLeast(0)
+        viewerExtras.add(asset.id)
         val items = current.items.toMutableList().apply {
             add((index + 1).coerceAtMost(size), asset)
         }
@@ -1538,7 +1650,9 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 val metadataChanged = action in setOf("tags", "removeTags", "rating")
                 mutable.value =
                     state.value.copy(
-                        busy = false,
+                        // Keep the action lock until the queued operation reaches a terminal
+                        // state; accepting 202 must not allow an immediate conflicting edit.
+                        busy = operationId != null,
                         selecting = false,
                         selected = emptySet(),
                         filterPanel = null,
@@ -1597,6 +1711,7 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                         withContext(Dispatchers.IO) { repo.assetOperations.await(mode, operationId) }
                     if (repository !== repo) return@launch
                     if (result == null) {
+                        mutable.value = state.value.copy(busy = false)
                         if (state.value.mode == mode)
                             mutable.value =
                                 state.value.copy(
@@ -1606,8 +1721,12 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                     }
                     val failed = result.failed > 0 || result.state == "STOPPED"
                     if (failed) onFailure?.invoke()
-                    if (state.value.mode == mode) refreshWindow(failed)
-                    else staleLibraries.add(mode)
+                    if (state.value.mode == mode) {
+                        refreshWindow(failed, fromOperation = true)
+                    } else {
+                        mutable.value = state.value.copy(busy = false)
+                        staleLibraries.add(mode)
+                    }
                     mutable.value =
                         state.value.copy(
                             message =
@@ -1620,7 +1739,10 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                     if (reason is NativeSession.Failure && reason.status == 401) expire()
                     else if (state.value.mode == mode)
                         mutable.value =
-                            state.value.copy(message = "后台操作仍未确认，请稍后在传输列表查看")
+                            state.value.copy(
+                                busy = false,
+                                message = "后台操作仍未确认，请稍后在传输列表查看",
+                            )
                 }
             }
         job.invokeOnCompletion { onDone?.invoke() }
