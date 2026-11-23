@@ -6,7 +6,6 @@ import { pipeline } from 'node:stream/promises';
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const NAMESPACE_ID = /^[0-9a-f]{64}$/u;
-const MAX_DRAG_ASSETS = 100;
 const MAX_FILE_NAME_BYTES = 240;
 const DEFAULT_REQUEST_INTERVAL_MS = 110;
 const DEFAULT_DOWNLOAD_CONCURRENCY = 3;
@@ -46,9 +45,6 @@ export interface OriginalDragProgress {
 export function parseAssetDragInput(input: unknown): string[] {
   if (!Array.isArray(input) || input.length === 0) {
     throw new Error('待拖出的素材数量无效。');
-  }
-  if (input.length > MAX_DRAG_ASSETS) {
-    throw new Error(`一次最多只能拖出 ${MAX_DRAG_ASSETS} 个原文件。`);
   }
   const assetIds = input.map((value) => {
     if (typeof value !== 'string' || !UUID_V4.test(value)) {

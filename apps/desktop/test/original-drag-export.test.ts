@@ -52,15 +52,19 @@ describe('parseAssetDragInput', () => {
     ]);
   });
 
+  it('accepts large selections instead of forcing a manual split', () => {
+    const ids = Array.from(
+      { length: 250 },
+      (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    );
+    expect(parseAssetDragInput(ids)).toHaveLength(250);
+  });
+
   it.each([
     null,
     [],
     [firstAssetId, firstAssetId],
     ['../../etc/passwd'],
-    Array.from(
-      { length: 101 },
-      (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
-    ),
   ])('rejects an unsafe drag payload', (input) => {
     expect(() => parseAssetDragInput(input)).toThrow();
   });
