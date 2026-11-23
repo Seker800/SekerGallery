@@ -138,6 +138,8 @@ class NativeGalleryRepository(
     private val session: NativeSession,
     private val scope: String,
     private val disk: NativeMediaCache? = null,
+    /** Tablets use the 512 thumbnail tier; phones keep the smaller tier and decode budget. */
+    private val largeThumbnails: Boolean = false,
 ) {
     internal val editorHost
         get() =
@@ -861,7 +863,7 @@ class NativeGalleryRepository(
                                 options.outWidth.toLong() * options.outHeight > 100_000_000L
                         )
                             throw IOException("预览尺寸不可用")
-                        val edge = if (full) 2048 else 384
+                        val edge = if (full) 2048 else if (largeThumbnails) 512 else 384
                         options.inSampleSize = 1
                         while (
                             maxOf(options.outWidth, options.outHeight) / options.inSampleSize > edge
@@ -967,9 +969,12 @@ class NativeGalleryRepository(
             if (stamp != null) imageVersions.put(mediaPath, stamp)
             else imageVersions.remove(mediaPath)
         }
-        fun path(kind: String): String? =
+        fun path(kind: String, variant: String? = null): String? =
             images
-                .firstOrNull { it.optString("kind") == kind }
+                .firstOrNull {
+                    it.optString("kind") == kind &&
+                        (variant == null || it.optString("variant") == variant)
+                }
                 ?.let { NativeGalleryPolicy.mediaPath(mode.name, id, it.getString("id")) }
         val movie =
             (0 until renditions.length())
@@ -1013,7 +1018,8 @@ class NativeGalleryRepository(
             date?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "",
             json.optInt("width", 1),
             json.optInt("height", 1),
-            path("THUMBNAIL") ?: path("POSTER") ?: path("PREVIEW"),
+            if (largeThumbnails) path("THUMBNAIL", "512") ?: path("THUMBNAIL")
+            else path("THUMBNAIL") ?: path("POSTER") ?: path("PREVIEW"),
             path("PREVIEW") ?: path("POSTER") ?: path("THUMBNAIL"),
             json.optString("mimeType").startsWith("video/"),
             json.optInt("mediaRevision"),

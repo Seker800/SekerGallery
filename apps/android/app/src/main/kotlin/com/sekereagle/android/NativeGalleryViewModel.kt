@@ -360,7 +360,15 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 cityReady.await()
                 if (request != generation) return@launch
                 session = connection
-                repository = NativeGalleryRepository(connection, scope, mediaCache)
+                repository =
+                    NativeGalleryRepository(
+                        connection,
+                        scope,
+                        mediaCache,
+                        largeThumbnails =
+                            getApplication<Application>().resources.configuration.screenWidthDp >=
+                                600,
+                    )
                 mutable.value =
                     GalleryState(
                         identity = NativeIdentity(scope, user.getString("email"), normalized),
