@@ -124,7 +124,7 @@ function isPathInside(root: string, candidate: string): boolean {
 export function requirePat(environment: NodeJS.ProcessEnv): string {
   const pat = environment.SEKEREAGLE_PAT;
   if (!isSekerEaglePat(pat)) {
-    throw new Error('请通过环境变量 SEKEREAGLE_PAT 提供 SekerEagle PAT。');
+    throw new Error('请通过环境变量 SEKEREAGLE_PAT 提供 SekerGallery PAT。');
   }
   return pat;
 }

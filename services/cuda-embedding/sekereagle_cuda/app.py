@@ -44,7 +44,7 @@ def create_app(engine, token: str, limit: int = 3, batch_size: int = 4) -> FastA
                 pass
             await asyncio.to_thread(executor.shutdown, wait=True)
 
-    app = FastAPI(title="SekerEagle CUDA Executor", lifespan=lifespan)
+    app = FastAPI(title="SekerGallery CUDA Executor", lifespan=lifespan)
 
     def authorized(value):
         if not value or not hmac.compare_digest(value.encode("utf-8"), ("Bearer " + token).encode("utf-8")):

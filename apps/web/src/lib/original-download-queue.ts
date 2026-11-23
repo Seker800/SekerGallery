@@ -120,7 +120,7 @@ export class OriginalDownloadQueue {
       if (!picker) return;
       const parent = await picker({ mode: 'readwrite' });
       if (epoch !== this.epoch || controller.signal.aborted) return;
-      const folder = await parent.getDirectoryHandle(`SekerEagle-${crypto.randomUUID()}`, {
+      const folder = await parent.getDirectoryHandle(`SekerGallery-${crypto.randomUUID()}`, {
         create: true,
       });
       for (const item of pending) {

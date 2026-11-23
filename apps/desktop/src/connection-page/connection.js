@@ -2,7 +2,7 @@ const bridge = window.sekerDesktop;
 const locale = normalizeLocale(new window.URLSearchParams(window.location.search).get('lang'));
 const messages = {
   'zh-CN': {
-    pageTitle: 'SekerEagle 桌面设置',
+    pageTitle: 'SekerGallery 桌面设置',
     settingsNavigation: '桌面设置导航',
     desktopSettings: '桌面设置',
     connection: '连接',
@@ -126,7 +126,7 @@ const messages = {
       '本地 {{local}}，联网确认 {{revalidated}}，联网下载 {{network}}，同批等待 {{shared}}，失败 {{failed}}',
   },
   'en-US': {
-    pageTitle: 'SekerEagle Desktop Settings',
+    pageTitle: 'SekerGallery Desktop Settings',
     settingsNavigation: 'Desktop settings navigation',
     desktopSettings: 'Desktop Settings',
     connection: 'Connection',

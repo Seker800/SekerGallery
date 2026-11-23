@@ -1,1 +1,1 @@
-"""Stateless CUDA executor for the existing SekerEagle embedding contract."""
+"""Stateless CUDA executor for the existing SekerGallery embedding contract."""

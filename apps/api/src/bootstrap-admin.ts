@@ -22,7 +22,7 @@ async function bootstrapAdmin(): Promise<void> {
       throw new Error('数据库已经存在用户，拒绝再次执行管理员 bootstrap');
     }
     const user = await app.get(PasswordService).createUser(email, password, UserRole.ADMIN);
-    process.stdout.write(`Created SekerEagle admin: ${user.email} (${user.id})\n`);
+    process.stdout.write(`Created SekerGallery admin: ${user.email} (${user.id})\n`);
   } finally {
     await app.close();
   }

@@ -153,7 +153,7 @@ async def lifespan(_: FastAPI):
                 runtime.unload_timer = None
 
 
-app = FastAPI(title="SekerEagle MLX Embedding Host", version="1", lifespan=lifespan)
+app = FastAPI(title="SekerGallery MLX Embedding Host", version="1", lifespan=lifespan)
 
 
 class TextEmbeddingInput(BaseModel):

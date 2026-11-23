@@ -1,4 +1,4 @@
-# SekerEagle MLX embedding host
+# SekerGallery MLX embedding host
 
 This host-only service loads `Qwen/Qwen3-VL-Embedding-2B` with MLX-Embeddings on
 Apple Silicon. Docker workers send bounded preview bytes over authenticated HTTP;
@@ -41,5 +41,5 @@ space are unchanged. API text search shares the same bounded host admission.
 
 This component directly imports the GPLv3 `mlx-embeddings` package and is
 therefore distributed under `GPL-3.0-only`; see `LICENSE`. The rest of the
-SekerEagle repository is licensed separately under Apache-2.0. The default Qwen
+SekerGallery repository is licensed separately under Apache-2.0. The default Qwen
 model is downloaded at runtime and is not redistributed in this repository.

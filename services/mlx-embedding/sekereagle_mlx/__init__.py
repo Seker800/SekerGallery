@@ -1,2 +1,2 @@
-"""SekerEagle's authenticated MLX embedding host service."""
+"""SekerGallery's authenticated MLX embedding host service."""
 
