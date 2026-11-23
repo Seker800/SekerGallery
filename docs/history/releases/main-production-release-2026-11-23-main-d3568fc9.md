@@ -32,7 +32,7 @@
 - 本地门禁：`npm run ci:check` 全绿；生产依赖安全审计 0 漏洞；worker 租约测试通过；完整 `test:library-integration` 通过至人员排序既有失败之前（该失败在 2405f5ed 之前即存在，与本次改动无关）。
 - 未做登录后的生产浏览器交互（无生产账号凭据）；建议现场走一遍：多选 → 选择全部匹配项 → 批量加标签 → 合并标签 → 永久删除 1 条测试素材 → 保存智能文件夹。
 - macOS 客户端：用 `d3568fc9` 源码重打包 arm64 未签名客户端，替换安装为 `/Applications/SekerGallery.app` 0.1.9（app.asar `73a2d95a…`）；启动后已连接线上图库，无崩溃与错误日志，原服务器配置与缓存目录保留；旧版完整移动到 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`（app.asar `ca3a6a38…`）。未用真实文件实测 100 个以上原文件的原生拖拽。
-- 安卓客户端：0.9.31（versionCode 48）已覆盖安装到小米 25128PNA1C 并正常加载生产图库；0.9.32（versionCode 49）统一登录页、账户提示和备份通知的用户可见文案为 SekerGallery，`android:check` 通过，2026-11-23 20:06 安装到小米 Pad 7 Ultra（25032RP42C，`adb push` + `pm install -r`）。未复跑完整 132 项设备套件（其中仍有 3 个旧夹具失败，见 [安卓客户端](../android-client.md)）。Mac 业务 worker 未更新，“已编辑”标签 systemKey 保护待 worker 更新后完整。
+- 安卓客户端：0.9.31（versionCode 48）已覆盖安装到小米 25128PNA1C 并正常加载生产图库；0.9.32（versionCode 49）统一登录页、账户提示和备份通知的用户可见文案为 SekerGallery，`android:check` 通过，2026-11-23 20:06 安装到小米 Pad 7 Ultra（25032RP42C，`adb push` + `pm install -r`）；0.9.33（versionCode 50）让 ≥600dp 的平板网格改用 512 缩略图并把解码上限提到 512，手机保持原档位，已安装到 Pad 并确认缓存为 512 档、图库明显更清晰。未复跑完整 132 项设备套件（其中仍有 3 个旧夹具失败，见 [安卓客户端](../android-client.md)）。Mac 业务 worker 未更新，“已编辑”标签 systemKey 保护待 worker 更新后完整。
 
 ## 后续修复
 

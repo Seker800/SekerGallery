@@ -1,5 +1,9 @@
 # 安卓客户端与手机备份
 
+## 0.9.33 平板网格改用 512 缩略图（2026-11-23）
+
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode50、versionName 0.9.33，调试 APK SHA-256 `3f8213f5550095c6a88ee933345dd14e0f27b8f6eb48a828c72a4a17b69b00dd`。按屏幕宽度判断：≥600dp（平板）选择 `THUMBNAIL` 512 档，并把网格解码上限从 384 提到 512；手机保持 256 档与 384 上限不变。`npm run android:check` 通过；2026-11-23 22:35 安装到小米 Pad 7 Ultra（25032RP42C），登录后图库缩略图明显更清晰，应用缓存中的新缩略图为 23–31KB（对应 512 档）。
+
 ## 0.9.32 用户可见文案统一为 SekerGallery（2026-11-23）
 
 本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode49、versionName 0.9.32，调试 APK SHA-256 `ae05c7ea9fa19c8ac068c0cd297968b42b5e6abf0ad03b68edb3a56ac41bec02`。登录页副标题、账户与服务地址提示、备份通知标题、备份策略错误文案统一为 SekerGallery；下载目录 `Download/SekerEagle` 与 User-Agent 保持不变。`npm run android:check` 通过。2026-11-23 20:06 覆盖安装到小米 Pad 7 Ultra（25032RP42C）：`adb install` 被系统以 `INSTALL_FAILED_USER_RESTRICTED` 拒绝，改用 `adb push` + `pm install -r` 成功；启动后登录页显示“连接 SekerGallery 图库”。手机（25128PNA1C）仍为 0.9.31，下次连接时按同一方式更新。
