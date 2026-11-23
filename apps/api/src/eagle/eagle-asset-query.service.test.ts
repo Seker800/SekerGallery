@@ -3,6 +3,8 @@ import test from 'node:test';
 import { encodeColorCursor, colorPageKey } from './eagle-color-page';
 import { decodeEagleAssetCursor } from './eagle-cursor';
 import { EagleService } from './eagle.service';
+import { ResolveAssetSelectionDto } from './eagle.dto';
+import { plainToInstance } from 'class-transformer';
 
 test('a parent smart folder evaluates itself and its direct children as a union', async () => {
   const queries: Array<{ where: Record<string, unknown> }> = [];
@@ -763,4 +765,17 @@ test('permanent purge marks rows and schedules the worker job', async () => {
   assert.equal(update?.purgeAfter instanceof Date, true);
   assert.deepEqual(update?.rowVersion, { increment: 1 });
   assert.ok(rawSql);
+});
+
+test('selection request bodies keep array tag and format filters', () => {
+  const tagId = '11111111-1111-4111-8111-111111111111';
+  const dto = plainToInstance(ResolveAssetSelectionDto, {
+    manualTagIds: [tagId],
+    formats: ['png'],
+    tagMatch: 'ANY',
+    trash: false,
+  });
+  assert.deepEqual(dto.manualTagIds, [tagId]);
+  assert.deepEqual(dto.formats, ['png']);
+  assert.equal(dto.tagMatch, 'ANY');
 });

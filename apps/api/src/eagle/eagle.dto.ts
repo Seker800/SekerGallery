@@ -140,7 +140,7 @@ export class ListEagleAssetsDto {
 
   @ApiPropertyOptional({ type: String, description: 'Comma-separated values' })
   @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.split(',').filter(Boolean) : undefined,
+    typeof value === 'string' ? value.split(',').filter(Boolean) : value,
   )
   @IsOptional()
   @IsArray()
@@ -149,7 +149,7 @@ export class ListEagleAssetsDto {
 
   @ApiPropertyOptional({ type: String, description: 'Comma-separated values' })
   @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.split(',').filter(Boolean) : undefined,
+    typeof value === 'string' ? value.split(',').filter(Boolean) : value,
   )
   @IsOptional()
   @IsArray()

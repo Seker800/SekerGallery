@@ -168,13 +168,15 @@ export class LibraryOperationAdmissionService {
             assetIds,
             DATABASE_STATEMENTS.operationAssetLookup,
           )) {
+            const purgeCommand = input.type === 'ASSET_PURGE';
             const rows = await tx.eagleAsset.findMany({
               where: {
                 ownerId: principal.sub,
                 libraryMode: this.libraryMode,
                 id: { in: ids },
-                deletedAt: null,
-                purgeAfter: null,
+                ...(purgeCommand
+                  ? { deletedAt: { not: null } }
+                  : { deletedAt: null, purgeAfter: null }),
                 ...(principal.canViewPrivate ? {} : { isPrivate: false }),
               },
               select: { id: true, mediaRevision: true, isPrivate: true },
