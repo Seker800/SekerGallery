@@ -2,6 +2,7 @@ package com.sekereagle.android
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -47,7 +48,7 @@ fun NativeGalleryApp(model: NativeGalleryViewModel, openNative: (String) -> Unit
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val uploadPicker =
         rememberLauncherForActivityResult(
-            ActivityResultContracts.OpenMultipleDocuments(),
+            ActivityResultContracts.PickMultipleVisualMedia(),
             { selected ->
                 model.acceptUploadSelection(selected)
                 if (
@@ -93,7 +94,12 @@ fun NativeGalleryApp(model: NativeGalleryViewModel, openNative: (String) -> Unit
                             ) {
                                 NativeLibraryPager(state, model, repo, openNative) {
                                     if (model.prepareUploadSelection())
-                                        uploadPicker.launch(arrayOf("*/*"))
+                                        uploadPicker.launch(
+                                            PickVisualMediaRequest(
+                                                ActivityResultContracts.PickVisualMedia
+                                                    .ImageAndVideo
+                                            )
+                                        )
                                 }
                             }
                             if (state.accountOpen) NativeAccount(state.identity!!, model)
