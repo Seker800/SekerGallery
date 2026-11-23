@@ -43,7 +43,7 @@ fun NativeLogin(state: GalleryState, model: NativeGalleryViewModel) {
         Spacer(Modifier.height(24.dp))
         Text("你的照片，\n随时在手边。", fontSize = 30.sp, lineHeight = 40.sp)
         Spacer(Modifier.height(12.dp))
-        Text("连接 SekerEagle 图库", color = NativeMuted)
+        Text("连接 SekerGallery 图库", color = NativeMuted)
         Spacer(Modifier.height(32.dp))
         if (state.restoring) {
             CircularProgressIndicator()

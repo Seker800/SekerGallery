@@ -875,7 +875,7 @@ public final class BackupService extends Service {
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     return new Notification.Builder(this, CHANNEL)
         .setSmallIcon(R.drawable.ic_notification)
-        .setContentTitle("SekerEagle 手机备份")
+        .setContentTitle("SekerGallery 手机备份")
         .setContentText(text)
         .setContentIntent(open)
         .setOngoing(!paused)

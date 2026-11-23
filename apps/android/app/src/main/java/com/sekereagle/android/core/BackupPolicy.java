@@ -51,7 +51,7 @@ public final class BackupPolicy {
         throw new IllegalArgumentException();
       return gatewayOrigin + signed.getRawPath() + "?" + query;
     } catch (Exception e) {
-      throw new IllegalArgumentException("上传地址不属于当前 SekerEagle", e);
+      throw new IllegalArgumentException("上传地址不属于当前 SekerGallery", e);
     }
   }
 

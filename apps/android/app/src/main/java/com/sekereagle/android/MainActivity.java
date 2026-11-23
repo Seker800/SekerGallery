@@ -275,7 +275,7 @@ public final class MainActivity extends Activity {
               this,
               R.drawable.ic_account,
               settings.value(activeScope, "email", "当前账号"),
-              "SekerEagle 账号",
+              "SekerGallery 账号",
               null));
       Ui.divider(identity);
       identity.addView(
@@ -291,7 +291,7 @@ public final class MainActivity extends Activity {
     com.google.android.material.textfield.TextInputLayout field =
         new com.google.android.material.textfield.TextInputLayout(
             this, null, com.google.android.material.R.attr.textInputOutlinedStyle);
-    field.setHint("SekerEagle 服务地址");
+    field.setHint("SekerGallery 服务地址");
     field.setBoxBackgroundMode(
         com.google.android.material.textfield.TextInputLayout.BOX_BACKGROUND_OUTLINE);
     field.setBoxCornerRadii(Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 12));

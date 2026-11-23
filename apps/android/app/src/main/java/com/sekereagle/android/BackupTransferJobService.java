@@ -94,7 +94,7 @@ public final class BackupTransferJobService extends JobService {
       Notification notification =
           new Notification.Builder(this, BackupService.CHANNEL)
               .setSmallIcon(R.drawable.ic_notification)
-              .setContentTitle("SekerEagle 手机备份")
+              .setContentTitle("SekerGallery 手机备份")
               .setContentText("正在准备扫描")
               .setOngoing(true)
               .setOnlyAlertOnce(true)
