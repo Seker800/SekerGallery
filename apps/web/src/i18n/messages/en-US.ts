@@ -1832,6 +1832,8 @@ export const enUS = {
   智能文件夹名称: 'Smart folder name',
   '中心版本 v{{value1}}': 'Centroid version v{{value1}}',
   重命名: 'Rename',
+  系统标签不能改名: 'System tags cannot be renamed',
+  系统标签不能删除: 'System tags cannot be deleted',
   重命名标签: 'Rename Tag',
   重命名标签组: 'Rename Tag Group',
   重试: 'Retry',

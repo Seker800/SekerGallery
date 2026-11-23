@@ -66,6 +66,7 @@ export interface EaglePyramidDescriptor {
 }
 
 export interface EagleManualTag extends EagleManualTagRef {
+  systemKey?: string | null;
   groupId: string | null;
   groupIds: string[];
   isStarred: boolean;

@@ -33,6 +33,10 @@ import styles from './EagleTagPage.module.css';
 type TagScope = 'ALL' | 'UNCATEGORIZED' | 'STARRED' | `GROUP:${string}`;
 type SortMode = 'NAME_ASC' | 'COUNT_DESC' | 'COUNT_ASC';
 type LayoutMode = 'GRID' | 'LIST';
+
+function isSystemTag(tag: EagleManualTag): boolean {
+  return Boolean(tag.systemKey);
+}
 const TAG_PAGE_SIZE = 120;
 export interface EagleManualTagChanges {
   name?: string;
@@ -183,7 +187,7 @@ export function EagleTagPage({
   };
   const startTagEdit = () => {
     const tag = selectedManualTags[0];
-    if (!tag) return;
+    if (!tag || isSystemTag(tag)) return;
     setEditingTag(tag);
     setEditingGroup(null);
     setEditName(tag.name);
@@ -197,14 +201,14 @@ export function EagleTagPage({
   const submitEdit = (event: FormEvent) => {
     event.preventDefault();
     const name = editName.normalize('NFKC').trim();
-    if (!name) return;
+    if (!name || (editingTag && isSystemTag(editingTag))) return;
     if (editingTag) onUpdateManualTags([editingTag], { name });
     if (editingGroup) onUpdateManualTagGroup(editingGroup, { name });
     setEditingTag(null);
     setEditingGroup(null);
   };
   const deleteTags = () => {
-    if (selectedManualTags.length === 0) return;
+    if (selectedManualTags.length === 0 || selectedManualTags.some(isSystemTag)) return;
     const label =
       selectedManualTags.length === 1
         ? `“${selectedManualTags[0].name}”`
@@ -456,12 +460,23 @@ export function EagleTagPage({
                   ))}
                 </select>
                 {selectedManualTags.length === 1 && (
-                  <button type="button" onClick={startTagEdit}>
+                  <button
+                    type="button"
+                    onClick={startTagEdit}
+                    disabled={isSystemTag(selectedManualTags[0])}
+                    title={isSystemTag(selectedManualTags[0]) ? t('系统标签不能改名') : undefined}
+                  >
                     <IconEdit size={14} />
                     {' ' + t('重命名') + ' '}
                   </button>
                 )}
-                <button type="button" className={styles.danger} onClick={deleteTags}>
+                <button
+                  type="button"
+                  className={styles.danger}
+                  onClick={deleteTags}
+                  disabled={selectedManualTags.some(isSystemTag)}
+                  title={t('系统标签不能删除')}
+                >
                   <IconTrash size={14} />
                   {' ' + t('删除') + ' '}
                 </button>
