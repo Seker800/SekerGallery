@@ -30,6 +30,7 @@ const env = {
   ACCESS_TOKEN_TTL_SECONDS: '900',
   REFRESH_TOKEN_TTL_SECONDS: '2592000',
   CANONICAL_ORIGIN: 'http://localhost:8180',
+  BROWSER_TRUSTED_ORIGINS: 'http://localhost:8180',
   PORT: '3000',
   MLX_EMBEDDING_URL: 'http://127.0.0.1:1',
   MLX_EMBEDDING_TOKEN: tokenKey,
@@ -50,6 +51,23 @@ function run(args, timeout = 120000) {
     throw new Error(`API image smoke: docker ${args[0]} failed: ${diagnostic.slice(-12000)}`);
   }
   return result.stdout.trim();
+}
+async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
+  const controller = new globalThis.AbortController();
+  const abortTimer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  let guardTimer;
+  const guard = new Promise((_, reject) => {
+    guardTimer = globalThis.setTimeout(
+      () => reject(new Error(`HTTP timeout: ${url}`)),
+      timeoutMs + 1000,
+    );
+  });
+  try {
+    return await Promise.race([fetch(url, { ...options, signal: controller.signal }), guard]);
+  } finally {
+    globalThis.clearTimeout(abortTimer);
+    globalThis.clearTimeout(guardTimer);
+  }
 }
 async function waitFor(check, name, attempts = 120) {
   for (let i = 0; i < attempts; i++) {
@@ -217,10 +235,7 @@ try {
   const origin = `http://127.0.0.1:${port}`;
   await waitFor(async () => {
     try {
-      return (
-        (await fetch(`${origin}/api/health/ready`, { signal: AbortSignal.timeout(2000) }))
-          .status === 200
-      );
+      return (await fetchWithTimeout(`${origin}/api/health/ready`, {}, 2000)).status === 200;
     } catch {
       return false;
     }
@@ -234,7 +249,63 @@ try {
     '/api/photos/photography/people/summary',
     '/api/photos/photography/people/review',
   ])
-    assert.equal((await fetch(`${origin}${path}`)).status, 401);
+    assert.equal((await fetchWithTimeout(`${origin}${path}`)).status, 401);
+  const smokeEmail = `image-smoke-${randomUUID()}@example.test`;
+  const smokePassword = randomBytes(18).toString('hex');
+  run([
+    'run',
+    '--rm',
+    '--pull',
+    'never',
+    '--network',
+    prefix,
+    ...envArgs,
+    '--env',
+    `SEED_EMAIL=${smokeEmail}`,
+    '--env',
+    `SEED_PASSWORD=${smokePassword}`,
+    image,
+    'node',
+    '-e',
+    "const bcrypt=require('bcrypt');const {PrismaClient}=require('@prisma/client');const {createPrismaAdapter}=require('@sekereagle/library-persistence');const d=new PrismaClient({adapter:createPrismaAdapter()});d.user.create({data:{email:process.env.SEED_EMAIL,passwordHash:bcrypt.hashSync(process.env.SEED_PASSWORD,10),role:'USER'}}).finally(()=>d.$disconnect()).catch(()=>process.exit(1))",
+  ]);
+  const browserOrigin = 'http://localhost:8180';
+  const login = await fetchWithTimeout(`${origin}/api/auth/login`, {
+    method: 'POST',
+    headers: { origin: browserOrigin, 'content-type': 'application/json' },
+    body: JSON.stringify({ email: smokeEmail, password: smokePassword }),
+  });
+  assert.equal(login.status, 201);
+  const cookie = (
+    typeof login.headers.getSetCookie === 'function'
+      ? login.headers.getSetCookie()
+      : [login.headers.get('set-cookie') ?? '']
+  )
+    .map((value) => value.split(';', 1)[0])
+    .filter(Boolean)
+    .join('; ');
+  assert.match(cookie, /sekereagle_access=/);
+  const manualTags = await fetchWithTimeout(`${origin}/api/eagle/manual-tags`, {
+    headers: { cookie },
+  });
+  assert.equal(manualTags.status, 200, 'authenticated manual tag list');
+  assert.ok(Array.isArray(await manualTags.json()));
+  const photoTags = await fetchWithTimeout(`${origin}/api/photos/manual-tags`, {
+    headers: { cookie },
+  });
+  assert.equal(photoTags.status, 200, 'authenticated photo manual tag list');
+  const created = await fetchWithTimeout(`${origin}/api/eagle/manual-tags`, {
+    method: 'POST',
+    headers: { cookie, origin: browserOrigin, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: '收藏' }),
+  });
+  assert.equal(created.status, 201, 'tag creation with system key');
+  assert.equal((await created.json()).systemKey, 'FAVORITE');
+  const afterCreate = await fetchWithTimeout(`${origin}/api/eagle/manual-tags`, {
+    headers: { cookie },
+  });
+  assert.equal(afterCreate.status, 200);
+  assert.ok((await afterCreate.json()).some((tag) => tag.systemKey === 'FAVORITE'));
   if (process.argv.includes('--request-frequency-check')) {
     const pgPort = run(['port', pg, '5432']).split(':').at(-1);
     const fixture = spawnSync(process.execPath, ['scripts/testing/request-frequency.test.mjs'], {
@@ -320,6 +391,7 @@ try {
       migrations: true,
       readiness: 200,
       unauthenticatedPeople: 401,
+      authenticatedManualTags: true,
       independentExecutorWithoutApiSecrets: true,
       executorGracefulExit: 0,
       ...(readerCheck

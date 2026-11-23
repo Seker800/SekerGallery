@@ -1,6 +1,6 @@
 # 现用运行状态与交接
 
-> 状态：现行 | 核验日期：2026-11-23 18:40（北京时间） | 对应提交：d3568fc9（Windows 客户端 `9e5420c7`）
+> 状态：现行 | 核验日期：2026-11-23 20:55（北京时间） | 对应提交：d3568fc9（Windows 客户端 `9e5420c7`）
 >
 > 本文只记录现用部署事实与接手顺序。完整发布快照、备份哈希和历史恢复过程见
 > [2026-10/11 归档](history/releases/2026-11.md)。设计边界见 [architecture](architecture.md)，
@@ -12,7 +12,7 @@
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 图库                              | 群晖 SekerDesign（DS1522+，AMD64，8GB），入口 https://yuntai.design:8181/                                                                                                                   |
 | 运行源码                          | API `d3568fc9`；web `d3568fc9`；operations／reader `d3568fc9`；desktop 客户端 0.1.9（macOS `d3568fc9`，Windows 本机 `9e5420c7`）                                                            |
-| API / operations / library-reader | `sekereagle/api:main-d3568fc9`                                                                                                                                                              |
+| API / operations / library-reader | `sekereagle/api:main-d3568fc9-hotfix1`（d3568fc9 源码 + 重新生成的 Prisma 客户端；修复收藏／标签 500，见 20:55 热修记录）                                                                 |
 | Web                               | `sekereagle/web:main-d3568fc9`                                                                                                                                                              |
 | macOS 桌面客户端                  | `/Applications/SekerGallery.app` 0.1.9（`d3568fc9` 源码，app.asar `73a2d95a…`，已启动并连接线上图库；旧版备份 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`） |
 | Windows 便携客户端（本机）        | `D:\SekerEagle\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`9e5420c7` 源码原生构建；exe `e45b2cdc…`、app.asar `da6eb1c1…`；开始菜单 `SekerGallery-0.1.lnk`）                       |
@@ -22,7 +22,9 @@
 | 计数                              | MATERIAL / PHOTO / 回收站 / 草稿从运行检查点读取，本文不维护动态百分比                                                                                                                      |
 
 Web 最近覆盖：`main-d3568fc9`（11-23 18:04）→ `main-2405f5ed`（11-20 11:02）→
-`cacheopt-67e99d52`（11-18 11:18）。API／operations／reader 本轮一并升到 `main-d3568fc9`。
+`cacheopt-67e99d52`（11-18 11:18）。API／operations／reader 升到 `main-d3568fc9` 后，
+因该增量镜像未重新生成 Prisma 客户端（不识别 `EagleManualTag.systemKey`），20:55 热修为
+`main-d3568fc9-hotfix1`；web 未变。
 
 ## 进程入口
 
@@ -58,7 +60,7 @@ Web 最近覆盖：`main-d3568fc9`（11-23 18:04）→ `main-2405f5ed`（11-20 1
 ## 回退与证据
 
 - Web 回退：`sekereagle/web:main-2405f5ed`（再上一版 `cacheopt-67e99d52`）。
-- API／operations／reader 回退：`sekereagle/api:main-2405f5ed`（再上一版 `share4k-e57b7ab7`／`refactor-93b5d583`）。
+- API／operations／reader 回退：`sekereagle/api:main-2405f5ed`（再上一版 `share4k-e57b7ab7`／`refactor-93b5d583`）。不要回退到 `main-d3568fc9`：该镜像用于收藏／标签会 500。热修前的服务快照与 `images.json` 在 NAS 私有 `maintenance/manualtag-client-hotfix-20261123/`。
 - macOS 客户端回退：`~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`（app.asar `ca3a6a38…`）；更早的 `SekerGallery-0.1.9-20261118-before-cacheopt.app` 仍在。
 - Windows 客户端回退：`D:\SekerEagle\backup\SekerEagle-0.1.9-windows-x64-portable-20261123-before-upgrade.exe`（`597acca0…`）；回退时快捷方式要指回该文件名，`SekerEagleData` 不动。
 - Mac worker 回退：`.runtime/business-worker/releases/worker-b852071b`；plist 备份在
@@ -76,6 +78,7 @@ Web 最近覆盖：`main-d3568fc9`（11-23 18:04）→ `main-2405f5ed`（11-20 1
   `597acca0…` 备份在 `D:\SekerEagle\backup\`，开始菜单快捷方式改为 `SekerGallery-0.1.lnk`，
   `SekerEagleData` 未动。实机确认标题 SekerGallery、素材库 58,914 项正常加载，运行中解包 asar
   哈希与构建一致。注意：从带 `ELECTRON_RUN_AS_NODE=1` 的终端启动会按 Node 立即退出，不是包损坏。
+- 2026-11-23 20:55 群晖热修收藏／标签 500：`main-d3568fc9` 是以 `main-2405f5ed` 为基座的增量镜像，只覆盖了 dist、迁移和包产物，没有拷入新 schema、也没有重新生成 Prisma 客户端，导致登录后 GET `/api/eagle|photos/manual-tags` 报 `Unknown field systemKey`（手机小心心「收藏暂时不可用」）。线上以 `main-d3568fc9` 为基座补入 schema 并重跑 `prisma generate`，产出 `sekereagle/api:main-d3568fc9-hotfix1`，只切换 api／operations／library-reader；数据库、迁移、web 与无关容器未动，公网 readiness 200、匿名 401，三个容器内实际标签查询成功。`test:api-image` 已增加登录后标签列表与系统标签创建断言，旧镜像会在该检查处失败、热修镜像通过（NAS 证据见 `maintenance/manualtag-client-hotfix-20261123/`）。详见[热修记录](history/releases/main-production-release-2026-11-23-manualtag-client-hotfix.md)。
 - 2026-11-23 18:04 群晖发布 `d3568fc9`：API／operations／reader／web 四个应用容器切到 `main-d3568fc9`，应用 1 项迁移 `20261123090000_manual_tag_system_key`；发布前后计数一致（MATERIAL 64,876／PHOTO 58,869、回收站 13,755、草稿 243）；schema 仅新增 `EagleManualTag.systemKey` 列与唯一索引，收藏／已编辑各回填 1 个系统标签；公网首页／readiness 200、匿名 401，线上首页哈希与本地构建一致；无关容器未变，网关复用并 reload；API 成品镜像通过 `test:api-image`（隔离启动、102 条迁移、readiness 200、匿名 401、独立执行器无密钥启动退出 0）。未做登录后的生产浏览器交互；macOS 客户端已重打包并替换为 `/Applications/SekerGallery.app`，安卓 0.9.32 已安装到小米 Pad 7 Ultra（登录页等文案统一为 SekerGallery），手机 25128PNA1C 仍为 0.9.31、下次连接时更新。`main-d3568fc9` 还修复了 reader 性能用例在完整集成套件中因查询计划平局翻转的失败，完整套件现仅剩人员排序既有失败。
 - 2026-11-20 11:02 群晖发布 `2405f5ed`：API／operations／reader／web 四个应用容器切到 `main-2405f5ed`，应用 1 项索引迁移；发布前后计数一致（MATERIAL 64,850／PHOTO 58,941、回收站 13,424、草稿 239），公网首页／readiness 200、匿名 401，线上首页哈希与本地一致；无关容器未变，网关复用并 reload。
 - 2026-11-18 11:30 桌面缓存身份改为 v3（不含连接地址）：当前账号在新命名空间重建，

@@ -34,6 +34,10 @@
 - macOS 客户端：用 `d3568fc9` 源码重打包 arm64 未签名客户端，替换安装为 `/Applications/SekerGallery.app` 0.1.9（app.asar `73a2d95a…`）；启动后已连接线上图库，无崩溃与错误日志，原服务器配置与缓存目录保留；旧版完整移动到 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`（app.asar `ca3a6a38…`）。未用真实文件实测 100 个以上原文件的原生拖拽。
 - 安卓客户端：0.9.31（versionCode 48）已覆盖安装到小米 25128PNA1C 并正常加载生产图库；0.9.32（versionCode 49）统一登录页、账户提示和备份通知的用户可见文案为 SekerGallery，`android:check` 通过，2026-11-23 20:06 安装到小米 Pad 7 Ultra（25032RP42C，`adb push` + `pm install -r`）。未复跑完整 132 项设备套件（其中仍有 3 个旧夹具失败，见 [安卓客户端](../android-client.md)）。Mac 业务 worker 未更新，“已编辑”标签 systemKey 保护待 worker 更新后完整。
 
+## 后续修复
+
+- 本页的 `sekereagle/api:main-d3568fc9` 增量镜像未重新生成 Prisma 客户端，登录后读取标签会因 `EagleManualTag.systemKey` 报 500。同日 20:55 以 `main-d3568fc9-hotfix1` 修复并上线，见[热修记录](main-production-release-2026-11-23-manualtag-client-hotfix.md)。下文“回退到 main-2405f5ed”仍然有效；不要回退到 `main-d3568fc9`。
+
 ## 回退
 
 - API／operations／library-reader／web 回退：`sekereagle/api:main-2405f5ed`／`sekereagle/web:main-2405f5ed`。
