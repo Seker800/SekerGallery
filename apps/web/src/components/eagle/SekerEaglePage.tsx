@@ -79,6 +79,7 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconDownload,
+  IconFolderBolt,
   IconLayoutGrid,
   IconLayoutSidebarRight,
   IconLoader2,
@@ -137,6 +138,7 @@ import { EagleBatchTagPicker } from './EagleBatchTagPicker';
 import { EagleColorPalette } from './EagleColorPalette';
 import type { EagleVectorWorkspaceView } from './EagleVectorWorkspace';
 import { EagleSmartFolderDialog } from './EagleSmartFolderDialog';
+import { withSearchTextCondition } from './eagle-smart-folder-preset';
 import { EagleSmartFolderTree } from './EagleSmartFolderTree';
 import {
   EagleQuickFilterBar,
@@ -308,6 +310,7 @@ export function SekerEaglePage({
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
   const [isSmartFolderDialogOpen, setIsSmartFolderDialogOpen] = useState(false);
   const [editingSmartFolder, setEditingSmartFolder] = useState<EagleSmartFolder | null>(null);
+  const [smartFolderSearchTerm, setSmartFolderSearchTerm] = useState('');
   const compact = useCompactLayout();
   const [mobileMore, setMobileMore] = useState(false);
   const [mobileSearch, setMobileSearch] = useState(false);
@@ -602,10 +605,14 @@ export function SekerEaglePage({
       imagePreview.closePreview();
       clearAssetSelection();
     },
-    onSmartFolderCreated: () => setIsSmartFolderDialogOpen(false),
+    onSmartFolderCreated: () => {
+      setIsSmartFolderDialogOpen(false);
+      setSmartFolderSearchTerm('');
+    },
     onSmartFolderUpdated: (folder, changes) => {
       setIsSmartFolderDialogOpen(false);
       setEditingSmartFolder(null);
+      setSmartFolderSearchTerm('');
       if (activeSmartFolderId !== folder.id || changes.name === undefined) return;
       setSearch('');
       setQuickFilters(createEmptyEagleQuickFilterState());
@@ -1246,6 +1253,11 @@ export function SekerEaglePage({
     changeLibraryView('ACTIVE');
     setQuickFilters({ ...createEmptyEagleQuickFilterState(), manualTagIds: [tagId] });
   };
+  const openSmartFolderFromSearch = () => {
+    setEditingSmartFolder(null);
+    setSmartFolderSearchTerm(search.normalize('NFKC').trim());
+    setIsSmartFolderDialogOpen(true);
+  };
   const peopleOptionsAction =
     libraryMode === 'PHOTO' ? (
       <>
@@ -1382,6 +1394,7 @@ export function SekerEaglePage({
             aria-label={t('新建智能文件夹')}
             onClick={() => {
               setEditingSmartFolder(null);
+              setSmartFolderSearchTerm('');
               setIsSmartFolderDialogOpen(true);
             }}
           >
@@ -1407,6 +1420,7 @@ export function SekerEaglePage({
           onEdit={(folder) => {
             closeNavigation();
             setEditingSmartFolder(folder);
+            setSmartFolderSearchTerm('');
             setIsSmartFolderDialogOpen(true);
           }}
           onDelete={deleteSmartFolder}
@@ -1614,6 +1628,16 @@ export function SekerEaglePage({
               <IconX size={16} aria-hidden="true" />
             </button>
           )}
+          {!activeSmartFolderId && (search.trim() || activeFilterCount > 0) ? (
+            <button
+              type="button"
+              aria-label={t('保存为智能文件夹')}
+              title={t('保存为智能文件夹')}
+              onClick={openSmartFolderFromSearch}
+            >
+              <IconFolderBolt size={18} aria-hidden="true" />
+            </button>
+          ) : null}
         </>
       )}
       {libraryView === 'TRASH' && (
@@ -2979,11 +3003,19 @@ export function SekerEaglePage({
           initialQuery={
             editingSmartFolder
               ? toEagleFilterQuery(editingSmartFolder.queryJson)
-              : buildEagleQuickFilterQuery(quickFilters)
+              : withSearchTextCondition(
+                  buildEagleQuickFilterQuery(quickFilters),
+                  smartFolderSearchTerm,
+                )
           }
-          initialName={editingSmartFolder?.name}
+          initialName={
+            editingSmartFolder?.name ??
+            (smartFolderSearchTerm ? smartFolderSearchTerm.slice(0, 64) : '')
+          }
           mode={editingSmartFolder ? 'edit' : 'create'}
           manualTags={manualTags}
+          searchTerm={smartFolderSearchTerm}
+          imageSearchUnavailable={assetsQuery.data?.pages[0]?.imageSearch?.status === 'UNAVAILABLE'}
           pending={smartFolderMutation.isPending || updateSmartFolderMutation.isPending}
           error={
             (editingSmartFolder ? updateSmartFolderMutation.error : smartFolderMutation.error)
@@ -2992,6 +3024,7 @@ export function SekerEaglePage({
           onClose={() => {
             setIsSmartFolderDialogOpen(false);
             setEditingSmartFolder(null);
+            setSmartFolderSearchTerm('');
           }}
           onSave={(input) =>
             editingSmartFolder

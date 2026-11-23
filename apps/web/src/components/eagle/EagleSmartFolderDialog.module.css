@@ -368,3 +368,61 @@
   overflow: hidden;
   border-radius: var(--ui-radius-control);
 }
+
+.searchPreset {
+  padding: 10px 12px;
+  border: 1px solid rgb(var(--ui-accent-rgb) / 24%);
+  border-radius: var(--ui-radius-control);
+  display: grid;
+  gap: 4px;
+  background: rgb(var(--ui-accent-rgb) / 6%);
+}
+.searchPreset strong {
+  color: #e6e9ec;
+  font-size: 12px;
+  font-weight: 650;
+}
+.searchPreset p {
+  margin: 0;
+  color: #9aa0a8;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.semanticOption {
+  padding: 10px 12px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius-control);
+  display: grid;
+  gap: 8px;
+  background: rgb(255 255 255 / 2%);
+}
+.semanticToggle {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.semanticToggle input {
+  margin-top: 2px;
+  accent-color: var(--ui-accent);
+}
+.semanticToggle span {
+  display: grid;
+  gap: 3px;
+}
+.semanticToggle strong {
+  color: #d8dbe0;
+  font-size: 12px;
+  font-weight: 650;
+}
+.semanticToggle small {
+  color: #7f858e;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.semanticWarning {
+  margin: 0 0 0 24px;
+  color: #d6a85a;
+  font-size: 10px;
+  line-height: 1.45;
+}

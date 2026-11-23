@@ -2,7 +2,11 @@ import { renderInWorkspace as render } from '../../test/render-in-workspace';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { createEmptyEagleFilterQuery, type EagleFilterQuery } from '@sekereagle/eagle-filter-core';
+import {
+  createEmptyEagleFilterQuery,
+  readEagleSemanticIntent,
+  type EagleFilterQuery,
+} from '@sekereagle/eagle-filter-core';
 import type { EagleManualTag } from '../../lib/eagle-api';
 import { EagleSmartFolderDialog } from './EagleSmartFolderDialog';
 
@@ -35,6 +39,8 @@ function renderDialog(
   options: {
     initialQuery?: EagleFilterQuery;
     mode?: 'create' | 'edit';
+    searchTerm?: string;
+    imageSearchUnavailable?: boolean;
   } = {},
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -47,6 +53,8 @@ function renderDialog(
           initialQuery={options.initialQuery ?? createEmptyEagleFilterQuery()}
           mode={options.mode}
           manualTags={manualTags}
+          searchTerm={options.searchTerm}
+          imageSearchUnavailable={options.imageSearchUnavailable}
           onClose={vi.fn()}
           onSave={onSave}
         />
@@ -355,5 +363,62 @@ describe('EagleSmartFolderDialog', () => {
 
     expect(screen.getByRole('combobox', { name: '规则 1 字段' })).toHaveValue('NAME');
     expect(screen.getByRole('textbox', { name: '名称值' })).toHaveValue('海报');
+  });
+
+  it('shows what a search cannot carry into a smart folder', () => {
+    renderDialog(vi.fn(), { searchTerm: '海边' });
+    expect(screen.getByRole('note')).toHaveTextContent('已带入当前搜索词');
+    expect(screen.getByRole('note')).toHaveTextContent('搜索还包含文件名、人工标签和画面相似匹配');
+    expect(screen.getByRole('checkbox', { name: /同时保存画面相似条件/ })).not.toBeChecked();
+  });
+
+  it('adds an optional visual condition that stays editable in the rule builder', () => {
+    const onSave = vi.fn();
+    renderDialog(onSave, { searchTerm: '海边' });
+    fireEvent.click(screen.getByRole('checkbox', { name: /同时保存画面相似条件/ }));
+    expect(screen.getByRole('combobox', { name: '匹配范围' })).toHaveValue('BALANCED');
+    fireEvent.change(screen.getByRole('combobox', { name: '匹配范围' }), {
+      target: { value: 'STRICT' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存智能文件夹' }));
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: expect.objectContaining({
+          conditions: expect.arrayContaining([
+            expect.objectContaining({
+              match: 'ALL',
+              rules: [
+                expect.objectContaining({
+                  field: 'SEMANTIC',
+                  value: '海边',
+                  breadth: 'STRICT',
+                }),
+              ],
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('removes the visual condition when the option is turned off again', () => {
+    const onSave = vi.fn();
+    renderDialog(onSave, { searchTerm: '海边' });
+    const checkbox = screen.getByRole('checkbox', { name: /同时保存画面相似条件/ });
+    fireEvent.click(checkbox);
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: '保存智能文件夹' }));
+
+    const saved = onSave.mock.calls[0]?.[0] as { query: EagleFilterQuery };
+    expect(readEagleSemanticIntent(saved.query)).toBeUndefined();
+  });
+
+  it('warns when visual search is unavailable but still allows saving', () => {
+    renderDialog(vi.fn(), { searchTerm: '海边', imageSearchUnavailable: true });
+    expect(
+      screen.getByText('画面相似匹配当前不可用；仍可保存，后台会等待恢复后重试。'),
+    ).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: /同时保存画面相似条件/ })).toBeEnabled();
   });
 });

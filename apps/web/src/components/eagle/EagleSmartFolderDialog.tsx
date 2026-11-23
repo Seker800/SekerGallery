@@ -12,6 +12,7 @@ import {
   type EagleFilterQuery,
 } from '@sekereagle/eagle-filter-core';
 import type { EagleManualTag } from '../../lib/eagle-api';
+import { withSemanticIntent } from './eagle-smart-folder-preset';
 
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { EagleRuleBuilder, type EagleFilterOptions } from './EagleRuleBuilder';
@@ -27,6 +28,8 @@ interface EagleSmartFolderDialogProps {
   manualTags: EagleManualTag[];
   pending?: boolean;
   error?: string;
+  searchTerm?: string;
+  imageSearchUnavailable?: boolean;
   onClose: () => void;
   onSave: (input: { name: string; query: EagleFilterQuery }) => void;
 }
@@ -50,6 +53,8 @@ export function EagleSmartFolderDialog({
   manualTags,
   pending,
   error,
+  searchTerm = '',
+  imageSearchUnavailable = false,
   onClose,
   onSave,
 }: EagleSmartFolderDialogProps) {
@@ -66,6 +71,8 @@ export function EagleSmartFolderDialog({
   const scheduler = useMemo(() => new MediaLoadScheduler(), []);
   useEffect(() => () => scheduler.clear({ abortActive: true }), [scheduler]);
   const semantic = readEagleSemanticIntent(query);
+  const searchTermText = searchTerm.normalize('NFKC').trim();
+  const showSemanticOption = Boolean(searchTermText || semantic);
   const savedQuery = query;
   const deferredQuery = useDebouncedValue(query, 250);
   // Preview media belongs only to this dialog/privacy session, never the shared query cache.
@@ -90,6 +97,15 @@ export function EagleSmartFolderDialog({
     const normalized = name.normalize('NFKC').trim();
     if (!normalized) return;
     onSave({ name: normalized, query: savedQuery });
+  };
+  const toggleSemantic = (enabled: boolean) => {
+    if (!enabled) {
+      setQuery((current) => withSemanticIntent(current, null));
+      return;
+    }
+    const text = searchTermText || semantic?.text || '';
+    if (!text) return;
+    setQuery((current) => withSemanticIntent(current, { text, breadth: 'BALANCED' }));
   };
   return (
     <div
@@ -141,6 +157,34 @@ export function EagleSmartFolderDialog({
           <p className={styles.explainer}>
             {' ' + t('智能文件夹会依据筛选条件，自动把符合条件的素材显示在一起。') + ' '}
           </p>
+          {searchTermText && (
+            <section className={styles.searchPreset} role="note">
+              <strong>{t('已带入当前搜索词')}</strong>
+              <p>
+                {t('搜索还包含文件名、人工标签和画面相似匹配；这里默认只保存名称/描述与当前筛选。')}
+              </p>
+            </section>
+          )}
+          {showSemanticOption && (
+            <section className={styles.semanticOption} aria-label={t('画面相似条件')}>
+              <label className={styles.semanticToggle}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(semantic)}
+                  onChange={(event) => toggleSemantic(event.currentTarget.checked)}
+                />
+                <span>
+                  <strong>{t('同时保存画面相似条件')}</strong>
+                  <small>{t('会按画面语义在后台生成匹配，阈值与搜索结果可能略有差异。')}</small>
+                </span>
+              </label>
+              {imageSearchUnavailable && (
+                <p className={styles.semanticWarning} role="status">
+                  {t('画面相似匹配当前不可用；仍可保存，后台会等待恢复后重试。')}
+                </p>
+              )}
+            </section>
+          )}
           <EagleRuleBuilder
             fieldOptions={fieldOptions}
             value={query}

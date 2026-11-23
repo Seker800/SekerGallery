@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import type * as WorkspaceModule from '../../lib/library-workspace';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readEagleSemanticIntent } from '@sekereagle/eagle-filter-core';
 import { SekerEaglePage } from './SekerEaglePage';
 
 const { openSeadragonMock } = vi.hoisted(() => ({
@@ -2612,6 +2613,42 @@ describe('SekerEaglePage', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: '新建智能文件夹' })).not.toBeInTheDocument();
     });
+  });
+
+  it('prefills a smart folder from the current search and keeps visual matching optional', async () => {
+    renderPage();
+
+    fireEvent.change(await screen.findByRole('searchbox', { name: '搜索素材' }), {
+      target: { value: '海边' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存为智能文件夹' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '新建智能文件夹' });
+    expect(within(dialog).getByRole('textbox', { name: '智能文件夹名称' })).toHaveValue('海边');
+    expect(within(dialog).getByRole('textbox', { name: '名称值' })).toHaveValue('海边');
+    expect(within(dialog).getByRole('note')).toHaveTextContent('已带入当前搜索词');
+
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /同时保存画面相似条件/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存智能文件夹' }));
+
+    await waitFor(() => expect(createEagleSmartFolderMock).toHaveBeenCalledTimes(1));
+    const input = createEagleSmartFolderMock.mock.calls[0]?.[0] as {
+      name: string;
+      query: Parameters<typeof readEagleSemanticIntent>[0];
+    };
+    expect(input.name).toBe('海边');
+    expect(readEagleSemanticIntent(input.query)).toEqual({ text: '海边', breadth: 'BALANCED' });
+    expect(input.query.conditions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          match: 'ANY',
+          rules: expect.arrayContaining([
+            expect.objectContaining({ field: 'NAME', value: '海边' }),
+            expect.objectContaining({ field: 'DESCRIPTION', value: '海边' }),
+          ]),
+        }),
+      ]),
+    );
   });
 
   it('explains pending first builds instead of claiming the preview matched nothing', async () => {

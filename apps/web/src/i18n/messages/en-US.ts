@@ -1081,6 +1081,16 @@ export const enUS = {
   保存设置: 'Save settings',
   保存运行设置失败: 'Failed to Save Runtime Settings',
   保存智能文件夹: 'Save smart folder',
+  保存为智能文件夹: 'Save as smart folder',
+  已带入当前搜索词: 'Current search added',
+  '搜索还包含文件名、人工标签和画面相似匹配；这里默认只保存名称/描述与当前筛选。':
+    'Search also matches file names, tag names and visual similarity. Only name/description and the current filters are saved here.',
+  同时保存画面相似条件: 'Also save visual similarity',
+  '会按画面语义在后台生成匹配，阈值与搜索结果可能略有差异。':
+    'Visual matches are generated in the background; the threshold may differ slightly from the search results.',
+  画面相似条件: 'Visual similarity',
+  '画面相似匹配当前不可用；仍可保存，后台会等待恢复后重试。':
+    'Visual search is currently unavailable. You can still save; the background job will retry.',
   '北京时间，到点自动处理。': 'Auto-process at Beijing time, triggered on schedule.',
   本地: 'Local',
   本地媒体缓存: 'Local media cache',
