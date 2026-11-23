@@ -10,7 +10,7 @@
 
 自托管的素材与照片管理工具。支持 **Qwen3-VL-Embedding-2B 图片内容检索**、本地自动打标签、辅助归类和照片编辑，提供网页与 Windows、macOS 桌面客户端。
 
-[下载客户端](https://github.com/Seker800/SekerEagle/releases) · [部署指南](docs/operations-runbook.md) · [Eagle 迁移](apps/eagle-migrator/README.md)
+[下载客户端](https://github.com/Seker800/SekerGallery/releases) · [部署指南](docs/operations-runbook.md) · [Eagle 迁移](apps/eagle-migrator/README.md)
 
 ![素材库：风景、建筑、人像、产品与静物参考](docs/screenshots/showcase-library.jpg)
 
@@ -86,7 +86,7 @@
 先部署服务端，再通过浏览器或桌面客户端连接。
 
 - [服务端部署与本地 AI 配置](docs/operations-runbook.md)
-- [Windows / macOS 客户端下载](https://github.com/Seker800/SekerEagle/releases)
+- [Windows / macOS 客户端下载](https://github.com/Seker800/SekerGallery/releases)
 - [Chrome 采集插件](plugins/browser-capture/README.md)
 - [Eagle 图库迁移](apps/eagle-migrator/README.md)
 - [支持格式](docs/camera-media.md) · [隐私说明](PRIVACY.md) · [安全策略](SECURITY.md) · [贡献指南](CONTRIBUTING.md)

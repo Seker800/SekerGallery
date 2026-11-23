@@ -10,7 +10,7 @@
 
 A self-hosted asset and photo manager with **Qwen3-VL-Embedding-2B content search**, local AI tagging, classification suggestions, and photo editing. Available on the web and as Windows and macOS desktop clients.
 
-[Download](https://github.com/Seker800/SekerEagle/releases) · [Deployment](docs/operations-runbook.md) · [Import from Eagle](apps/eagle-migrator/README.md)
+[Download](https://github.com/Seker800/SekerGallery/releases) · [Deployment](docs/operations-runbook.md) · [Import from Eagle](apps/eagle-migrator/README.md)
 
 ![A library of landscapes, architecture, portraits, products, and still life](docs/screenshots/showcase-library.jpg)
 
@@ -86,7 +86,7 @@ Assets and photos have separate workspaces, tags, processing settings, and trash
 Deploy the server, then connect through a browser or desktop client.
 
 - [Server deployment and local AI setup](docs/operations-runbook.md)
-- [Windows / macOS downloads](https://github.com/Seker800/SekerEagle/releases)
+- [Windows / macOS downloads](https://github.com/Seker800/SekerGallery/releases)
 - [Chrome capture extension](plugins/browser-capture/README.md)
 - [Eagle migration](apps/eagle-migrator/README.md)
 - [Supported formats](docs/camera-media.md) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
