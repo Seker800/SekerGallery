@@ -1,6 +1,6 @@
 # 现用运行状态与交接
 
-> 状态：现行 | 核验日期：2026-11-23 18:04（北京时间） | 对应提交：d3568fc9
+> 状态：现行 | 核验日期：2026-11-23 18:40（北京时间） | 对应提交：d3568fc9（Windows 客户端 `9e5420c7`）
 >
 > 本文只记录现用部署事实与接手顺序。完整发布快照、备份哈希和历史恢复过程见
 > [2026-10/11 归档](history/releases/2026-11.md)。设计边界见 [architecture](architecture.md)，
@@ -11,11 +11,11 @@
 | 项目                              | 当前值                                                                                                                                                                                      |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 图库                              | 群晖 SekerDesign（DS1522+，AMD64，8GB），入口 https://yuntai.design:8181/                                                                                                                   |
-| 运行源码                          | API `d3568fc9`；web `d3568fc9`；operations／reader `d3568fc9`；desktop 客户端已重打包为 0.1.9（`d3568fc9` 源码）                                                                            |
+| 运行源码                          | API `d3568fc9`；web `d3568fc9`；operations／reader `d3568fc9`；desktop 客户端 0.1.9（macOS `d3568fc9`，Windows 本机 `9e5420c7`）                                                            |
 | API / operations / library-reader | `sekereagle/api:main-d3568fc9`                                                                                                                                                              |
 | Web                               | `sekereagle/web:main-d3568fc9`                                                                                                                                                              |
 | macOS 桌面客户端                  | `/Applications/SekerGallery.app` 0.1.9（`d3568fc9` 源码，app.asar `73a2d95a…`，已启动并连接线上图库；旧版备份 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`） |
-| Windows 便携客户端（本机）        | `D:\SekerGallery\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`13b1fbef` 源码；exe `597acca0…`、app.asar `e0fa70c0…`）                                                              |
+| Windows 便携客户端（本机）        | `D:\SekerEagle\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`9e5420c7` 源码原生构建；exe `e45b2cdc…`、app.asar `da6eb1c1…`；开始菜单 `SekerGallery-0.1.lnk`）                       |
 | 数据库                            | 102 项迁移，待应用 0；本轮新增 `EagleManualTag.systemKey` 与唯一索引，回填“收藏／已编辑”系统标签                                                                                            |
 | Mac 业务执行器                    | `.runtime/business-worker/releases/worker-93b5d583`（launchd；不是 Compose `worker`）                                                                                                       |
 | 未改动                            | 网关、Postgres、MinIO、计算协调器、中继；不要为排查重启或重建                                                                                                                               |
@@ -60,6 +60,7 @@ Web 最近覆盖：`main-d3568fc9`（11-23 18:04）→ `main-2405f5ed`（11-20 1
 - Web 回退：`sekereagle/web:main-2405f5ed`（再上一版 `cacheopt-67e99d52`）。
 - API／operations／reader 回退：`sekereagle/api:main-2405f5ed`（再上一版 `share4k-e57b7ab7`／`refactor-93b5d583`）。
 - macOS 客户端回退：`~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`（app.asar `ca3a6a38…`）；更早的 `SekerGallery-0.1.9-20261118-before-cacheopt.app` 仍在。
+- Windows 客户端回退：`D:\SekerEagle\backup\SekerEagle-0.1.9-windows-x64-portable-20261123-before-upgrade.exe`（`597acca0…`）；回退时快捷方式要指回该文件名，`SekerEagleData` 不动。
 - Mac worker 回退：`.runtime/business-worker/releases/worker-b852071b`；plist 备份在
   `.omx/artifacts/release-93b5d583/worker-before.plist`。
 - 2026-11-18 11:00 本地清理：删除了 18 个旧 worker release（保留现用 `worker-93b5d583` 与回退
@@ -69,6 +70,12 @@ Web 最近覆盖：`main-d3568fc9`（11-23 18:04）→ `main-2405f5ed`（11-20 1
   `.omx/artifacts` 中未被文档引用的 7 天前产物已删除（1.4 GB），文档引用证据全部保留。
 - 最近一致性备份：941,432,321 字节，SHA-256 `356121ce301818ceefc6082a3e907edaf7478831f1d9089b41dd47758d502ae8`（2026-11-23 迁移前，`pg_restore --list` 完整解析）；上一轮 944,962,937 字节 `43b78471…`。
 - 证据目录：本次发布见 NAS 私有 `maintenance/main-d3568fc9/`；上一轮见 `maintenance/main-2405f5ed/`。
+- 2026-11-23 18:35 本机 Windows 便携客户端升级：用 `9e5420c7` 源码原生重建为
+  `D:\SekerEagle\SekerGallery-0.1.9-windows-x64-portable.exe`（exe `e45b2cdc…`，app.asar
+  `da6eb1c1…`），补齐 `13b1fbef` 之后的品牌文案与「拖拽不再限制 100 个原文件」；旧 exe
+  `597acca0…` 备份在 `D:\SekerEagle\backup\`，开始菜单快捷方式改为 `SekerGallery-0.1.lnk`，
+  `SekerEagleData` 未动。实机确认标题 SekerGallery、素材库 58,914 项正常加载，运行中解包 asar
+  哈希与构建一致。注意：从带 `ELECTRON_RUN_AS_NODE=1` 的终端启动会按 Node 立即退出，不是包损坏。
 - 2026-11-23 18:04 群晖发布 `d3568fc9`：API／operations／reader／web 四个应用容器切到 `main-d3568fc9`，应用 1 项迁移 `20261123090000_manual_tag_system_key`；发布前后计数一致（MATERIAL 64,876／PHOTO 58,869、回收站 13,755、草稿 243）；schema 仅新增 `EagleManualTag.systemKey` 列与唯一索引，收藏／已编辑各回填 1 个系统标签；公网首页／readiness 200、匿名 401，线上首页哈希与本地构建一致；无关容器未变，网关复用并 reload；API 成品镜像通过 `test:api-image`（隔离启动、102 条迁移、readiness 200、匿名 401、独立执行器无密钥启动退出 0）。未做登录后的生产浏览器交互；macOS 客户端已重打包并替换为 `/Applications/SekerGallery.app`，安卓 0.9.31 已覆盖安装到小米 25128PNA1C 并正常加载图库。`main-d3568fc9` 还修复了 reader 性能用例在完整集成套件中因查询计划平局翻转的失败，完整套件现仅剩人员排序既有失败。
 - 2026-11-20 11:02 群晖发布 `2405f5ed`：API／operations／reader／web 四个应用容器切到 `main-2405f5ed`，应用 1 项索引迁移；发布前后计数一致（MATERIAL 64,850／PHOTO 58,941、回收站 13,424、草稿 239），公网首页／readiness 200、匿名 401，线上首页哈希与本地一致；无关容器未变，网关复用并 reload。
 - 2026-11-18 11:30 桌面缓存身份改为 v3（不含连接地址）：当前账号在新命名空间重建，
@@ -78,12 +85,13 @@ Web 最近覆盖：`main-d3568fc9`（11-23 18:04）→ `main-2405f5ed`（11-20 1
   只有容量上限、手动清理或库身份/账号/方案变化才会失效。完整回退清单与历史备份见
   [归档](history/releases/2026-11.md) 和 `rollback.json`。
 - 2026-11-18 13:25 本机 Windows 便携客户端升级：用 `13b1fbef` 源码原生重建并替换
-  `D:\SekerGallery\SekerGallery-0.1.9-windows-x64-portable.exe`（exe `597acca0…`，app.asar
-  `e0fa70c0…`）；旧 exe `2fb31110…` 备份在 `D:\SekerGallery\backup\`，`SekerEagleData` 未动。
+  `D:\SekerEagle\SekerEagle-0.1.9-windows-x64-portable.exe`（exe `597acca0…`，app.asar
+  `e0fa70c0…`）；旧 exe `2fb31110…` 备份在 `D:\SekerEagle\backup\`，`SekerEagleData` 未动。
   实机确认图库正常加载（数万项）、缓存控制台为 10.0 GiB 并含旧缓存清理入口；核验用的调试端口已关闭。
 
 ## 最新发布摘要
 
+- [2026-11-23 18:35 本机 Windows 客户端升级到 9e5420c7 原生构建](history/releases/main-production-release-2026-11-23-windows-client-upgrade.md)
 - [2026-11-23 18:04 批量选择、标签与回收站交互发布（d3568fc9）](history/releases/main-production-release-2026-11-23-main-d3568fc9.md)
 - [2026-11-20 11:02 照片排序与回收站排序发布（2405f5ed）](history/releases/main-production-release-2026-11-20-main-2405f5ed.md)
 - [2026-11-18 13:25 本机 Windows 客户端升级到 13b1fbef 原生构建](history/releases/main-production-release-2026-11-18-windows-native-install.md)
