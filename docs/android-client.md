@@ -1,5 +1,15 @@
 # 安卓客户端与手机备份
 
+## 0.9.38 失败重试保留目录归属（2026-11-24）
+
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode55、versionName 0.9.38，调试 APK SHA-256 `1c726b38b2363bc80d73c332fd2e6cd3bb3d90a52abd87445538bf9b6e9575ae`。2026-11-24 23:00 用 `adb push` + `pm install -r` 安装到小米 25128PNA1C（Android 17）。
+
+- 症状：备份列表有 20 个失败项，点「立即备份」或「重试失败」都不再产生任何上传请求，状态停在「备份完成」。服务端同期已无错误。
+- 根因：`MediaCatalog.selected(uri)` 在重试时重新读取文件，但把条目目录写成空字符串；按目录规则（如 `/DCIM/`）重新匹配时返回空模式，20 个失败项被静默跳过，本轮处理为 0。该缺陷与服务器无关，0.9.31–0.9.37 均存在。
+- 修复：`selected()` 读取 MediaStore 的 `relative_path`，保留与目录扫描一致的目录归属；`MobileBackupTest#testRetriedItemKeepsItsFolderForCurrentRules` 覆盖「重试条目仍匹配当前目录规则」（需隔离工作台，本轮未单独运行整套设备测试）。
+- 真机验证：升级到 0.9.38 后点「立即备份」，20 个失败项全部重新上传；台账从「已上传 60 / 待补传 20」变为「已上传 80 / 待补传 0 / 本轮处理 20」，状态收尾为「备份完成，部分文件等待入库确认」，服务端上传请求零 4xx/5xx。
+- 注意：测试期间 Gradle 安装被小米 `INSTALL_FAILED_USER_RESTRICTED` 拒绝并清除了应用数据，需要重新登录并重新开启备份设置（服务端照片不受影响，重新扫描会按内容去重）。
+
 ## 0.9.37 分享图任务化与缩略图选档统一（2026-11-24）
 
 本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode54、versionName 0.9.37，调试 APK SHA-256 `81d287715a1e7f13ab1315cd9ce04276842aef364e02a471d62c03d2d7606b9e`。在 0.9.36 基础上并入分享图任务化与缩略图规格/选档统一（`2f8dc30c`）。2026-11-24 17:21 用 `adb push` + `pm install -r` 覆盖安装到小米 Pad 7 Ultra（25032RP42C，Android 17；原 0.9.34），账号、设置与图库保留，启动后照片列表正常加载。

@@ -362,8 +362,13 @@ final class MediaCatalog {
           modifiedColumn >= 0 && !cursor.isNull(modifiedColumn)
               ? cursor.getLong(modifiedColumn) * (document ? 1 : 1000)
               : 0;
+      // Retried failures are matched against folder rules again, so the media item
+      // must keep the same relative folder that directory scans produce.
+      int pathColumn = cursor.getColumnIndex("relative_path");
+      String path =
+          pathColumn >= 0 && !cursor.isNull(pathColumn) ? cursor.getString(pathColumn) : "";
       Item item =
-          new Item(uri, null, name, "", entry.getString("mimeType"), size, modified, document);
+          new Item(uri, null, name, path, entry.getString("mimeType"), size, modified, document);
       checkSize(item);
       return item;
     }

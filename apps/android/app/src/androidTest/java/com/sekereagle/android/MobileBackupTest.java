@@ -504,6 +504,23 @@ public final class MobileBackupTest {
   }
 
   @Test
+  public void testRetriedItemKeepsItsFolderForCurrentRules() throws Exception {
+    // Retries re-read the file through MediaCatalog.selected; the item must still carry
+    // its relative folder, otherwise directory rules silently drop the retry.
+    Uri uri = image("retry-rule.png", 0xff335577, true);
+    MediaCatalog.Item selected = new MediaCatalog(context).selected(uri);
+    JSONArray rules =
+        new JSONArray()
+            .put(
+                new JSONObject()
+                    .put("type", "media")
+                    .put("path", "Pictures/")
+                    .put("mode", "PHOTO")
+                    .put("recursive", true));
+    assertEquals("PHOTO", MediaCatalog.selectedMode(rules, selected));
+  }
+
+  @Test
   public void testMultipartResigns403AndPersistsPermanentFailuresWithoutClearingSuccess()
       throws Exception {
     Uri uri = image("retry-part.png", 0xff123987, true);
