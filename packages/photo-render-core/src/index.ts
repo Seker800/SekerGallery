@@ -14,3 +14,4 @@ export * from './photo-watermark-drawing';
 export * from './photo-watermark-layouts';
 export * from './photo-editor-watermark';
 export * from './photo-editor-geometry';
+export * from './photo-output-format';

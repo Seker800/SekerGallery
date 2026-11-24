@@ -12,6 +12,10 @@ import {
   inheritPhotoEditedCopy,
   lockOwnerPrivacyProjection,
 } from '@sekereagle/library-persistence';
+import {
+  editedOutputFormat,
+  watermarkCoversPhotoBackground,
+} from '@sekereagle/photo-render-core/photo-output-format';
 import { renderServerPhoto } from '@sekereagle/photo-render-core/server';
 import { readPortableLut } from '@sekereagle/photo-render-core/portable-lut';
 import { withProcessableImage } from './image-media';
@@ -39,6 +43,10 @@ export async function renderEditedCopy(
   if (!source.originalObjectKey.startsWith(`users/${job.ownerId}/assets/`))
     throw new Error('EDIT_SOURCE_SCOPE');
   const recipe = readPhotoEditRecipe(row.recipe);
+  const outputFormat = editedOutputFormat(
+    source.mimeType,
+    watermarkCoversPhotoBackground(recipe.edits.watermark),
+  );
   const lut = await resolveEditRenderLut(db, row, recipe.edits.filter);
   const object = await storage.send(
     new GetObjectCommand({ Bucket: bucket, Key: source.originalObjectKey }),
@@ -54,7 +62,7 @@ export async function renderEditedCopy(
         recipe.edits,
         {},
         lut ? readPortableLut(lut) : undefined,
-        'jpeg',
+        outputFormat.format,
       ),
     false,
     'EDIT',
@@ -62,7 +70,7 @@ export async function renderEditedCopy(
   if (source.sha256 && source.sha256 !== sha256) throw new Error('EDIT_SOURCE_HASH_MISMATCH');
   const dimensions = await sharp(bytes).metadata();
   const id = randomUUID();
-  const key = `users/${job.ownerId}/assets/${id}/original.jpg`;
+  const key = `users/${job.ownerId}/assets/${id}/original.${outputFormat.extension}`;
   const digest = createHash('sha256').update(bytes).digest('hex');
   // An outbox precedes PUT: a crash or ambiguous storage response cannot strand an object.
   // Publication removes it atomically; uncertain DB commits never trigger an unsafe direct delete.
@@ -78,7 +86,12 @@ export async function renderEditedCopy(
   let committed = false;
   try {
     await storage.send(
-      new PutObjectCommand({ Bucket: bucket, Key: key, Body: bytes, ContentType: 'image/jpeg' }),
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: bytes,
+        ContentType: outputFormat.mimeType,
+      }),
     );
     committed = await db.$transaction(
       async (tx) => {
@@ -107,7 +120,7 @@ export async function renderEditedCopy(
         });
         if (retained.count !== 1) throw new Error('EDIT_PUBLICATION_EXPIRED');
         const tag = await editedCopyTag(tx, job.ownerId, job.libraryMode);
-        const name = `${source.displayName || source.originalName.replace(/\.[^.]+$/, '')}-已编辑.jpg`;
+        const name = `${source.displayName || source.originalName.replace(/\.[^.]+$/, '')}-已编辑.${outputFormat.extension}`;
         await tx.eagleAsset.create({
           data: {
             id,
@@ -116,8 +129,8 @@ export async function renderEditedCopy(
             originalName: name,
             displayName: name,
             normalizedDisplayName: name.normalize('NFKC').toLowerCase(),
-            mimeType: 'image/jpeg',
-            format: 'jpeg',
+            mimeType: outputFormat.mimeType,
+            format: outputFormat.format,
             mediaRevision: 1,
             byteSize: BigInt(bytes.length),
             originalObjectKey: key,

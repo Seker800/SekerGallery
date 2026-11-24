@@ -31,3 +31,14 @@ it('re-encodes each source format instead of inflating every photo into PNG', ()
     quality: 0.92,
   });
 });
+
+it('uses JPEG when a non-overlay watermark paints the whole background', () => {
+  expect(photoExportEncoding('image/png', true)).toEqual({
+    mimeType: 'image/jpeg',
+    quality: 0.92,
+  });
+  expect(photoExportEncoding('image/webp', true)).toEqual({
+    mimeType: 'image/jpeg',
+    quality: 0.92,
+  });
+});

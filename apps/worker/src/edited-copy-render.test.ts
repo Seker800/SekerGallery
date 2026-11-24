@@ -67,9 +67,9 @@ test('a lost render lease cannot publish a copy and retains durable cleanup for 
     leaseVersion: 1,
   } as EagleAssetProcessingJob);
   assert.deepEqual(events, ['outbox', 'put', 'cleanup-retry']);
-  assert.match(put!.input.Key!, /\/original\.jpg$/);
-  assert.equal(put!.input.ContentType, 'image/jpeg');
-  assert.equal((await sharp(put!.input.Body as Buffer).metadata()).format, 'jpeg');
+  assert.match(put!.input.Key!, /\/original\.png$/);
+  assert.equal(put!.input.ContentType, 'image/png');
+  assert.equal((await sharp(put!.input.Body as Buffer).metadata()).format, 'png');
 });
 test('source scope is verified before an original can be read', async () => {
   let reads = 0;

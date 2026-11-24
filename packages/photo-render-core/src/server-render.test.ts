@@ -30,6 +30,18 @@ test('encodes the finished copy as JPEG when the save asks for it', async () => 
   assert.equal(info.width, 64);
   assert.equal(info.height, 48);
 });
+test('encodes the finished copy as WebP when the save asks for it', async () => {
+  const source = await sharp({
+    create: { width: 64, height: 48, channels: 4, background: '#4477aa' },
+  })
+    .png()
+    .toBuffer();
+  const output = await renderServerPhoto(source, DEFAULT_PHOTO_EDITS, {}, undefined, 'webp');
+  const info = await sharp(output).metadata();
+  assert.equal(info.format, 'webp');
+  assert.equal(info.width, 64);
+  assert.equal(info.height, 48);
+});
 test('renders a straightened, inset crop without empty corners at server resolution', async () => {
   const source = await sharp({
     create: { width: 400, height: 200, channels: 4, background: '#4477aa' },

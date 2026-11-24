@@ -10,7 +10,7 @@ import { renderPhotoWatermark } from './photo-editor-watermark';
 import type { PhotoMetadata } from './photo-watermark-model';
 import type { PhotoLut } from './photo-lut';
 let ready = false;
-export type ServerPhotoFormat = 'png' | 'jpeg';
+export type ServerPhotoFormat = 'png' | 'jpeg' | 'webp';
 /** Same pixel, crop and watermark code as the phone preview; source bytes stay on the server. */
 async function renderServerPhotoLocal(
   source: Buffer,
@@ -39,7 +39,9 @@ async function renderServerPhotoLocal(
   const cropped = create();
   drawPhoto(cropped, canvas as unknown as HTMLCanvasElement, edits);
   const output = renderPhotoWatermark(cropped, edits, metadata, create) as unknown as Canvas;
-  return format === 'jpeg' ? output.toBuffer('image/jpeg', 92) : output.toBuffer('image/png');
+  if (format === 'jpeg') return output.toBuffer('image/jpeg', 92);
+  if (format === 'webp') return output.toBuffer('image/webp', 92);
+  return output.toBuffer('image/png');
 }
 
 /** Keep CPU-bound pixels off the lease/heartbeat event loop. One worker per bounded NAS slot. */
