@@ -121,7 +121,7 @@ npm run performance:media-memory
 2. schema 与 migration 一起提交；不要修改已经发布的 migration。
 3. migration 尽量 additive，但不能由此推断任意旧版本都兼容。使用标准部署入口，先构建，再停止 gateway／API／worker，等待 migration 成功后启动；失败不恢复写入，不自动降级数据库。
 4. 补 schema contract、owner 隔离和受影响服务测试。
-5. 用“旧镜像叠加 dist／迁移”的方式打包发布镜像时，必须同时拷入新的 `apps/api/prisma/schema.prisma` 并在镜像内重跑 `npm run db:generate`（或整镜像重建）；只覆盖 dist 会让新增字段在旧 Prisma 客户端上 500。`test:api-image` 会登录后读取标签列表验证这一组合，不要用启动就绪代替。
+5. 用“旧镜像叠加 dist／迁移”的方式打包发布镜像时，必须同时拷入新的 `apps/api/prisma/schema.prisma` 和每个 `packages/*/package.json`，并在镜像内重跑 `npm run db:generate`（或整镜像重建）；只覆盖 dist 会让新增字段在旧 Prisma 客户端上 500，也会让新增的 `exports` 子路径（如 `@sekereagle/photo-render-core/photo-output-format`）在运行时无法解析。`test:api-image` 会登录后读取标签列表验证这一组合，不要用启动就绪代替。
 6. 修改 `packages/library-persistence`、`packages/library-core` 等被多个运行时共用的包时，必须列出并发布所有消费方：API、operations、Compose worker 与 Mac worker release 分开更新，不能把容器发布当成 worker 已更新。Mac worker release 更新时还必须把 `apps/api/prisma/schema.prisma` 同步进 release 并在 release 目录重跑 `prisma generate`：只替换 dist 会让旧 Prisma 客户端在新字段上抛 `Unknown argument`（2026-11-24 `systemKey` 曾使 Mac worker 的编辑成片任务全部失败）。发布后用一次真实编辑保存或对应 kind 的任务确认 worker 能写入新字段。
 
 修改 Controller、DTO 或 OpenAPI 装饰器后先运行 `npm run contracts:generate`，审查并提交生成差异，再用 `npm run contracts:check` 检查漂移。以下文件是生成物，
