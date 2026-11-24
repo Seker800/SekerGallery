@@ -42,6 +42,7 @@ export class LibraryShareRenderWorker {
   private cleanupTimer: NodeJS.Timeout | undefined;
   private checkingHeartbeat = false;
   private cleaning = false;
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -51,10 +52,10 @@ export class LibraryShareRenderWorker {
   start(): void {
     if (this.loopPromise) return;
     this.stopping = false;
-    void this.heartbeat();
-    void this.cleanup();
-    this.heartbeatTimer = setInterval(() => void this.heartbeat(), 15_000);
-    this.cleanupTimer = setInterval(() => void this.cleanup(), 10 * 60_000);
+    this.track(this.heartbeat());
+    this.track(this.cleanup());
+    this.heartbeatTimer = setInterval(() => this.track(this.heartbeat()), 15_000);
+    this.cleanupTimer = setInterval(() => this.track(this.cleanup()), 10 * 60_000);
     this.loopPromise = this.loop();
   }
 
@@ -67,6 +68,13 @@ export class LibraryShareRenderWorker {
     this.cleanupTimer = undefined;
     await this.loopPromise;
     this.loopPromise = undefined;
+    await Promise.allSettled([...this.inFlight]);
+  }
+
+  private track(task: Promise<void>): void {
+    this.inFlight.add(task);
+    const remove = () => this.inFlight.delete(task);
+    void task.then(remove, remove);
   }
 
   private async loop(): Promise<void> {

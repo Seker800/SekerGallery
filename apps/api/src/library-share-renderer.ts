@@ -43,6 +43,20 @@ async function main(): Promise<void> {
       await prisma.onModuleDestroy();
     })());
 
+  // Install handlers before the ready file (and before connecting) so an
+  // immediate stop cannot be ignored by PID 1 while initialization is running.
+  for (const signal of ['SIGINT', 'SIGTERM'])
+    process.once(signal, () => {
+      // A stop must finish within Compose's grace period even if a storage or
+      // database call is still unwinding.
+      const deadline = setTimeout(() => process.exit(0), 15_000);
+      deadline.unref();
+      void shutdown().then(
+        () => process.exit(0),
+        () => process.exit(1),
+      );
+    });
+
   try {
     await rm(readyFile, { force: true });
     await prisma.onModuleInit();
@@ -54,12 +68,6 @@ async function main(): Promise<void> {
     throw error;
   }
 
-  for (const signal of ['SIGINT', 'SIGTERM'])
-    process.once(signal, () => {
-      void shutdown().catch(() => {
-        process.exitCode = 1;
-      });
-    });
   console.info('Share renderer ready; only on-demand share images are rendered.');
 }
 
