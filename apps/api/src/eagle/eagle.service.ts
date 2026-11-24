@@ -71,7 +71,8 @@ import type {
   UpdateManualTagGroupDto,
   UpdateSmartFolderDto,
 } from './eagle.dto';
-import { buildColorMatchWhere, COLOR_PROCESSOR_VERSION } from './eagle-color-search';
+import { COLOR_PROCESSOR_VERSION } from './eagle-color-search';
+import { legacyAssetFiltersToQuery, type LegacyAssetFilters } from './eagle-legacy-filters';
 import { readAssetTimeline } from './eagle-asset-timeline';
 import { assetDateField, type EagleAssetOrder, type EagleAssetSort } from './eagle-asset-order';
 import { decodeEagleAssetCursor, encodeEagleAssetCursor } from './eagle-cursor';
@@ -229,7 +230,7 @@ export class EagleService {
       .map(readSmartFolderFilters);
     const filters = omitRepeatedSmartFolderFilters(query, legacyFolderFilters);
     const baseConditions: AssetSearchWhere[] = [
-      buildAssetWhere(ownerId, filters, trash, includePrivate),
+      buildAssetWhere(ownerId, filters, trash, includePrivate, this.libraryMode),
     ];
     const ruleQuery = query.rules ? parseEncodedFilterQuery(query.rules) : null;
     if (ruleQuery) baseConditions.push(buildEagleFilterWhere(ruleQuery, this.libraryMode));
@@ -264,7 +265,9 @@ export class EagleService {
       if (query.cursor || query.search)
         throw new BadRequestException('日期定位不能与搜索或游标同时使用。');
       baseConditions.push({
-        [assetDateField(this.libraryMode, query.sort)]: { lt: new Date(query.before) },
+        [assetDateField(this.libraryMode, trash ? 'DELETED_AT' : query.sort)]: {
+          lt: new Date(query.before),
+        },
       });
     }
     const baseWhere: AssetSearchWhere = { AND: baseConditions };
@@ -294,7 +297,13 @@ export class EagleService {
     if (filters.search && this.imageSearch) {
       const context = await this.imageSearch.prepare(ownerId, filters.search);
       const semanticBaseConditions: AssetSearchWhere[] = [
-        buildAssetWhere(ownerId, { ...filters, search: undefined }, trash, includePrivate),
+        buildAssetWhere(
+          ownerId,
+          { ...filters, search: undefined },
+          trash,
+          includePrivate,
+          this.libraryMode,
+        ),
       ];
       semanticBaseConditions.push(...baseConditions.slice(1));
       const semanticBaseWhere: AssetSearchWhere = { AND: semanticBaseConditions };
@@ -1021,7 +1030,11 @@ export class EagleService {
           updatedAt: true,
           renditions: {
             where: { status: 'READY' },
-            orderBy: [{ revision: 'desc' as const }, { kind: 'asc' as const }, { width: 'asc' as const }],
+            orderBy: [
+              { revision: 'desc' as const },
+              { kind: 'asc' as const },
+              { width: 'asc' as const },
+            ],
             select: {
               id: true,
               kind: true,
@@ -1386,9 +1399,7 @@ export class EagleService {
   }
 }
 
-type StoredAssetFilters = Partial<ListEagleAssetsDto> & {
-  tagMatch?: 'ANY' | 'ALL';
-};
+type StoredAssetFilters = LegacyAssetFilters;
 
 function readSmartFolderFilters(value: Prisma.JsonValue): StoredAssetFilters {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -1484,6 +1495,7 @@ function buildStoredSmartFolderWhere(
     readSmartFolderFilters(query),
     trash,
     includePrivate,
+    libraryMode,
   );
   return Array.isArray(filterWhere.AND) && filterWhere.AND.length > 0 ? filterWhere : null;
 }
@@ -1497,6 +1509,7 @@ function buildAssetWhere(
   filters: StoredAssetFilters,
   trash: boolean,
   includePrivate: boolean,
+  libraryMode: LibraryMode,
 ): AssetSearchWhere {
   const conditions: AssetSearchWhere[] = [];
   const search = filters.search?.normalize('NFKC').trim();
@@ -1510,28 +1523,8 @@ function buildAssetWhere(
       ],
     });
   }
-  const formats = filters.formats?.length
-    ? filters.formats
-    : filters.format
-      ? [filters.format]
-      : [];
-  if (formats.length)
-    conditions.push({ format: { in: formats.map((value) => value.toLowerCase()) } });
-  const tagConditions: AssetSearchWhere[] = (filters.manualTagIds ?? []).map((tagId) => ({
-    manualTagLinks: { some: { tagId } },
-  }));
-  if (tagConditions.length) {
-    if (filters.tagMatch === 'ANY') conditions.push({ OR: tagConditions });
-    else conditions.push(...tagConditions);
-  }
-  if (filters.rating !== undefined) conditions.push({ rating: { gte: filters.rating } });
-  const width = rangeFilter(filters.minWidth, filters.maxWidth);
-  if (width) conditions.push({ width });
-  const height = rangeFilter(filters.minHeight, filters.maxHeight);
-  if (height) conditions.push({ height });
-  const libraryAddedAt = dateRangeFilter(filters.createdFrom, filters.createdTo);
-  if (libraryAddedAt) conditions.push({ libraryAddedAt });
-  if (filters.color) conditions.push(buildColorMatchWhere(filters.color));
+  const legacyQuery = legacyAssetFiltersToQuery(filters);
+  if (legacyQuery) conditions.push(buildEagleFilterWhere(legacyQuery, libraryMode));
   if (filters.privacy === 'PRIVATE' && !includePrivate) conditions.push({ isPrivate: true });
   return {
     ownerId,
@@ -1589,20 +1582,6 @@ function omitRepeatedSmartFolderFilters(
 
 function equalStringSets(left: Set<string>, right: Set<string>): boolean {
   return left.size === right.size && [...left].every((value) => right.has(value));
-}
-
-function rangeFilter(minimum?: number, maximum?: number): Prisma.IntNullableFilter | undefined {
-  if (minimum === undefined && maximum === undefined) return undefined;
-  return { gte: minimum, lte: maximum };
-}
-
-function dateRangeFilter(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
-  if (!from && !to) return undefined;
-  const start = from ? new Date(from) : undefined;
-  const end = to ? new Date(to) : undefined;
-  if ((start && Number.isNaN(start.getTime())) || (end && Number.isNaN(end.getTime())))
-    throw new BadRequestException('日期筛选无效。');
-  return { gte: start, lte: end };
 }
 
 type AnnotationData = {

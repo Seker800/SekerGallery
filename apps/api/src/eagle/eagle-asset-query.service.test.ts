@@ -108,7 +108,7 @@ test('an empty parent contributes no assets and only aggregates its active child
     ownerId: 'owner-1',
     deletedAt: null,
     isPrivate: false,
-    AND: [{ format: { in: ['png'] } }],
+    AND: [{ AND: [{ OR: [{ format: 'png' }] }] }],
   });
 });
 
@@ -134,9 +134,11 @@ test('ANY tag matching combines every selected manual and AI tag into one union'
   });
 
   const baseWhere = (queries[0]?.where.AND as Array<Record<string, unknown>>)[0]!;
-  const conditions = baseWhere.AND as Array<Record<string, unknown>>;
-  const tagUnion = conditions.find((condition) => Array.isArray(condition.OR))?.OR as unknown[];
-  assert.equal(tagUnion.length, 2);
+  const legacyGroup = (baseWhere.AND as Array<Record<string, unknown>>)[0]!;
+  const tagCondition = (legacyGroup.AND as Array<Record<string, unknown>>)[0]!;
+  assert.deepEqual(tagCondition, {
+    AND: [{ manualTagLinks: { some: { tagId: { in: ['manual-1', 'manual-2'] } } } }],
+  });
 });
 
 test('color filtering reports original global image-analysis coverage', async () => {
@@ -505,6 +507,27 @@ test('both libraries support independent explicit date ordering with matching ke
       );
     }
   }
+});
+
+test('trash date navigation uses deletion time rather than the library sort field', async () => {
+  const queries: any[] = [];
+  const service = new EagleService(
+    {
+      eagleAsset: {
+        findMany: async (q: any) => {
+          queries.push(q);
+          return [];
+        },
+      },
+    } as never,
+    undefined,
+    'PHOTO',
+  );
+  const before = '2026-10-01T00:00:00.000Z';
+  await service.listAssets('owner', { limit: 60, sort: 'CAPTURED_AT', before }, { trash: true });
+  const serialized = JSON.stringify(queries[0].where);
+  assert.ok(serialized.includes(`"deletedAt":{"lt":"${before}"}`));
+  assert.ok(!serialized.includes('"chronologicalAt"'));
 });
 
 test('trash lists newest deletions first regardless of library sort and binds its own cursors', async () => {
