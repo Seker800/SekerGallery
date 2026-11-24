@@ -1,3 +1,4 @@
+import { currentTimeZone, localDayKey } from '@sekereagle/library-core';
 import type { EagleAssetListItem, EagleAssetSort, PhotoMetadata } from '../../lib/eagle-api';
 import { getLocale } from '../../i18n';
 
@@ -8,6 +9,7 @@ type DatedAsset = Pick<EagleAssetListItem, 'chronologicalAt' | 'libraryAddedAt' 
 export function getPhotoTimelineDay(
   asset: DatedAsset,
   sort: EagleAssetSort = 'CAPTURED_AT',
+  timeZone = currentTimeZone(),
 ): string | undefined {
   const candidates =
     sort === 'ADDED_AT'
@@ -19,16 +21,17 @@ export function getPhotoTimelineDay(
           asset.createdAt,
         ];
   const date = candidates.find((value) => value && Number.isFinite(Date.parse(value)));
-  return date ? new Date(date).toISOString().slice(0, 10) : undefined;
+  return date ? localDayKey(date!, timeZone) : undefined;
 }
 
 export function createPhotoTimelineSectionKeys(
   assets: readonly (DatedAsset & { id: string })[],
   sort: EagleAssetSort = 'CAPTURED_AT',
+  timeZone = currentTimeZone(),
 ) {
   return new Map(
     assets.flatMap((asset) => {
-      const month = getPhotoTimelineMonth(asset, sort);
+      const month = getPhotoTimelineMonth(asset, sort, timeZone);
       return month ? [[asset.id, month] as const] : [];
     }),
   );
@@ -45,16 +48,18 @@ export function formatPhotoTimelineMonth(month: string): string {
 export function getPhotoTimelineMonth(
   asset: DatedAsset,
   sort: EagleAssetSort = 'CAPTURED_AT',
+  timeZone = currentTimeZone(),
 ): string | undefined {
-  return getPhotoTimelineDay(asset, sort)?.slice(0, 7);
+  return getPhotoTimelineDay(asset, sort, timeZone)?.slice(0, 7);
 }
 export function createPhotoTimelineDayKeys(
   assets: readonly (DatedAsset & { id: string })[],
   sort: EagleAssetSort = 'CAPTURED_AT',
+  timeZone = currentTimeZone(),
 ) {
   return new Map(
     assets.flatMap((asset) => {
-      const day = getPhotoTimelineDay(asset, sort);
+      const day = getPhotoTimelineDay(asset, sort, timeZone);
       return day ? [[asset.id, day] as const] : [];
     }),
   );

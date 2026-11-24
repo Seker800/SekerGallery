@@ -67,6 +67,8 @@ export interface EagleFilterCondition {
 export interface EagleFilterQuery {
   version: typeof EAGLE_FILTER_QUERY_VERSION;
   conditions: EagleFilterCondition[];
+  /** IANA zone for date-only rules; absent keeps the legacy UTC interpretation. */
+  timeZone?: string;
   /** Persistent smart-folder intent; ordinary filters remain live. */
   semantic?: EagleSemanticIntent;
 }
@@ -386,6 +388,7 @@ export function parseEagleFilterQuery(value: unknown): EagleFilterQuery {
   if (!Array.isArray(value.conditions)) throw new Error('筛选条件组无效。');
   const query: EagleFilterQuery = {
     version: EAGLE_FILTER_QUERY_VERSION,
+    ...(value.timeZone === undefined ? {} : { timeZone: parseTimeZone(value.timeZone) }),
     ...(value.semantic === undefined ? {} : { semantic: parseEagleSemanticIntent(value.semantic) }),
     conditions: value.conditions.map((condition, conditionIndex) =>
       parseCondition(condition, conditionIndex),
@@ -397,6 +400,17 @@ export function parseEagleFilterQuery(value: unknown): EagleFilterQuery {
   if (sceneRules.length + (query.semantic ? 1 : 0) > 1)
     throw new Error('每个智能文件夹支持一条画面内容条件。');
   return query;
+}
+
+function parseTimeZone(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 80)
+    throw new Error('时区无效。');
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value }).format();
+  } catch {
+    throw new Error('时区无效。');
+  }
+  return value;
 }
 
 function parseCondition(value: unknown, conditionIndex: number): EagleFilterCondition {

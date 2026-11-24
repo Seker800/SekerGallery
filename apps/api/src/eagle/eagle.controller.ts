@@ -396,7 +396,12 @@ export class EagleController {
   @ApiOkResponse({ type: AssetTimelineResponseDto })
   @Get('assets/timeline')
   assetTimeline(@CurrentPrincipal() principal: AuthPrincipal, @Query() query: AssetTimelineDto) {
-    return this.eagle.assetTimeline(principal.sub, query.sort, query.timeZone);
+    return this.eagle.assetTimeline(
+      principal.sub,
+      query.sort,
+      query.timeZone,
+      principal.canViewPrivate,
+    );
   }
 
   @Get('assets/:assetId/location')

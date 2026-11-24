@@ -149,8 +149,21 @@ export interface PhotoTimelineMonth {
   count: number;
   cursor: string;
 }
-export const getPhotoTimeline = (sort: EagleAssetSort, signal?: AbortSignal) =>
-  request<{ months: PhotoTimelineMonth[] }>(`${base}/timeline?sort=${sort}`, { signal });
+export interface PhotoTimelineDay {
+  date: string;
+  before: string;
+  count: number;
+  offset: number;
+}
+export const getPhotoTimeline = (
+  sort: EagleAssetSort,
+  timeZone: string,
+  signal?: AbortSignal,
+) =>
+  request<{ days: PhotoTimelineDay[]; months: PhotoTimelineMonth[]; total: number }>(
+    `${base}/timeline?sort=${sort}&timeZone=${encodeURIComponent(timeZone)}`,
+    { signal },
+  );
 
 export const updatePhotoPersonPrivacy = (
   person: Pick<PhotoPerson, 'id' | 'rowVersion'>,

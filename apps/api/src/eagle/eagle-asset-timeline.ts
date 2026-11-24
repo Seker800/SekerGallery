@@ -1,21 +1,20 @@
 import { BadRequestException } from '@nestjs/common';
+import { isValidTimeZone } from '@sekereagle/library-core';
 import { Prisma } from '@prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { LibraryIdentity } from './library-mode';
 import { assetDateField, type EagleAssetSort } from './eagle-asset-order';
 
-/** Unfiltered public library navigation; no asset IDs or private rows leave this aggregate. */
+/** Unfiltered library navigation; no asset IDs leave this aggregate. */
 export async function readAssetTimeline(
   db: PrismaService,
   scope: LibraryIdentity,
   sort: EagleAssetSort | undefined,
   timeZone = 'UTC',
+  includePrivate = false,
 ) {
-  try {
-    new Intl.DateTimeFormat('en', { timeZone }).format();
-  } catch {
-    throw new BadRequestException('时区无效。');
-  }
+  if (!isValidTimeZone(timeZone)) throw new BadRequestException('时区无效。');
+  const visibility = includePrivate ? Prisma.empty : Prisma.sql`AND "isPrivate" = false`;
   const column =
     assetDateField(scope.libraryMode, sort) === 'chronologicalAt'
       ? Prisma.sql`"chronologicalAt"`
@@ -24,7 +23,7 @@ export async function readAssetTimeline(
     WITH days AS (
       SELECT date_trunc('day', (${column} AT TIME ZONE 'UTC') AT TIME ZONE ${timeZone}) AS day, count(*) AS count
       FROM "EagleAsset" WHERE "ownerId" = ${scope.ownerId} AND "libraryMode" = ${scope.libraryMode}::"LibraryMode"
-        AND "deletedAt" IS NULL AND "isPrivate" = false GROUP BY 1
+        AND "deletedAt" IS NULL ${visibility} GROUP BY 1
     )
     SELECT to_char(day, 'YYYY-MM-DD') AS day,
       ((day + interval '1 day') AT TIME ZONE ${timeZone}) AT TIME ZONE 'UTC' AS boundary, count

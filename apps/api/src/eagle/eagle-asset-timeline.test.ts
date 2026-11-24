@@ -36,6 +36,24 @@ test('daily fast navigation scopes the complete library and uses the chosen date
   }
 });
 
+test('private rows join the aggregate only when the caller can view them', async () => {
+  let sql = '';
+  const db = {
+    $queryRaw: async (q: { sql: string }) => {
+      sql = q.sql;
+      return [];
+    },
+  };
+  await readAssetTimeline(
+    db as never,
+    { ownerId: 'owner', libraryMode: 'PHOTO' },
+    'CAPTURED_AT',
+    'Asia/Shanghai',
+    true,
+  );
+  assert.doesNotMatch(sql, /"isPrivate" = false/);
+});
+
 test('invalid timezone fails before querying storage', async () => {
   await assert.rejects(() =>
     readAssetTimeline(

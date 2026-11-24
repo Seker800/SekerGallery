@@ -8109,6 +8109,19 @@
               "type": "string",
               "enum": ["CAPTURED_AT", "ADDED_AT"]
             }
+          },
+          {
+            "name": "timeZone",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "UTC",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Object"
+                }
+              ]
+            }
           }
         ],
         "responses": {

@@ -22,20 +22,22 @@ it('keeps capture, added and modified dates independent and clears only the sele
     MODIFIED_AT: state.dates.MODIFIED_AT,
   });
 });
-it('includes the boundary day for one-sided quick date ranges', () => {
+it('sends date-only boundaries with the device timezone for one-sided ranges', () => {
   for (const field of ['ADDED_AT', 'MODIFIED_AT', 'CAPTURED_AT'] as const) {
     const state = createEmptyEagleQuickFilterState();
     state.dates[field] = { from: '', to: '2026-06-02' };
-    expect(buildEagleQuickFilterQuery(state).conditions[0]?.rules[0]).toMatchObject({
+    const before = buildEagleQuickFilterQuery(state, 'Asia/Shanghai');
+    expect(before.timeZone).toBe('Asia/Shanghai');
+    expect(before.conditions[0]?.rules[0]).toMatchObject({
       field,
       operator: 'BEFORE',
-      value: '2026-06-03T00:00:00.000Z',
+      value: '2026-06-02',
     });
     state.dates[field] = { from: '2016-01-01', to: '' };
     expect(buildEagleQuickFilterQuery(state).conditions[0]?.rules[0]).toMatchObject({
       field,
       operator: 'AFTER',
-      value: '2015-12-31T23:59:59.999Z',
+      value: '2016-01-01',
     });
   }
 });

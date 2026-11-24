@@ -162,12 +162,18 @@ export class EagleService {
   saveWatermarkPreset(ownerId: string, templateId: string, settings: unknown) {
     return saveWatermarkPreset(this.prisma, ownerId, this.libraryMode, templateId, settings);
   }
-  assetTimeline(ownerId: string, sort: EagleAssetSort | undefined, timeZone: string) {
+  assetTimeline(
+    ownerId: string,
+    sort: EagleAssetSort | undefined,
+    timeZone: string,
+    includePrivate = false,
+  ) {
     return readAssetTimeline(
       this.prisma,
       { ownerId, libraryMode: this.libraryMode },
       sort,
       timeZone,
+      includePrivate,
     );
   }
 

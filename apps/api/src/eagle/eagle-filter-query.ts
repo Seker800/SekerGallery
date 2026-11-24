@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { zonedDayEnd, zonedDayStart } from '@sekereagle/library-core';
 import type { Prisma } from '@prisma/client';
 import type { AssetSearchWhere } from './eagle-search-predicate';
 import {
@@ -36,7 +37,7 @@ export function buildEagleFilterWhere(
   )
     throw new BadRequestException('画面内容需要通过智能文件夹或预览查询。');
   const conditions = query.conditions
-    .map((condition) => buildConditionWhere(condition, semanticWhere))
+    .map((condition) => buildConditionWhere(condition, { timeZone: query.timeZone }, semanticWhere))
     .filter((where): where is AssetSearchWhere => where !== null);
   return conditions.length || query.semantic
     ? { AND: [...conditions, ...(query.semantic ? [semanticWhere!] : [])] }
@@ -57,19 +58,24 @@ export function readEagleFilterTagDependencies(query: EagleFilterQuery): {
   return { manualTagIds: [...manualTagIds] };
 }
 
+interface FilterContext {
+  timeZone?: string;
+}
+
 function buildConditionWhere(
   condition: EagleFilterCondition,
+  context: FilterContext,
   semanticWhere?: AssetSearchWhere,
 ): AssetSearchWhere | null {
   const rules = condition.rules
     .filter(isActiveEagleFilterRule)
-    .map((rule) => (rule.field === 'SEMANTIC' ? semanticWhere! : buildRuleWhere(rule)));
+    .map((rule) => (rule.field === 'SEMANTIC' ? semanticWhere! : buildRuleWhere(rule, context)));
   if (!rules.length) return null;
   const group: AssetSearchWhere = condition.match === 'ALL' ? { AND: rules } : { OR: rules };
   return condition.result === 'NOT_MATCH' ? { NOT: group } : group;
 }
 
-function buildRuleWhere(rule: EagleFilterRule): AssetSearchWhere {
+function buildRuleWhere(rule: EagleFilterRule, context: FilterContext): AssetSearchWhere {
   switch (rule.field) {
     case 'SEMANTIC':
       throw new BadRequestException('画面内容需要匹配上下文。');
@@ -150,11 +156,13 @@ function buildRuleWhere(rule: EagleFilterRule): AssetSearchWhere {
       return buildColorMatchWhere(color);
     }
     case 'ADDED_AT':
-      return { libraryAddedAt: buildDateFilter(rule) };
+      return { libraryAddedAt: buildDateFilter(rule, context.timeZone) };
     case 'MODIFIED_AT':
-      return { updatedAt: buildDateFilter(rule) };
+      return { updatedAt: buildDateFilter(rule, context.timeZone) };
     case 'CAPTURED_AT':
-      return { photoMetadata: { is: { capturedAt: buildDateFilter(rule) } } };
+      return {
+        photoMetadata: { is: { capturedAt: buildDateFilter(rule, context.timeZone) } },
+      };
   }
   throw new BadRequestException('当前部署不支持该筛选字段。');
 }
@@ -295,13 +303,32 @@ function buildBigIntFilter(rule: EagleFilterRule, multiplier: number): Prisma.Bi
   }
 }
 
-function buildDateFilter(rule: EagleFilterRule): Prisma.DateTimeFilter {
+function buildDateFilter(
+  rule: EagleFilterRule,
+  timeZone?: string,
+): Prisma.DateTimeFilter {
   if (rule.operator === 'WITHIN_DAYS') {
     const days = readNumberValues(rule)[0]!;
     if (days <= 0 || days > 36500) throw new BadRequestException('最近天数必须大于 0。');
     return { gte: new Date(Date.now() - days * 86_400_000) };
   }
   const values = Array.isArray(rule.value) ? rule.value : [rule.value];
+  const dateOnly = values.every((value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value)));
+  if (timeZone && dateOnly) {
+    const start = zonedDayStart(String(values[0]), timeZone);
+    if (!start) throw new BadRequestException('日期筛选值无效。');
+    if (rule.operator === 'AFTER') return { gte: start };
+    if (rule.operator === 'BEFORE') {
+      const end = zonedDayEnd(String(values[0]), timeZone);
+      if (!end) throw new BadRequestException('日期筛选值无效。');
+      return { lte: end };
+    }
+    if (rule.operator === 'BETWEEN') {
+      const end = zonedDayEnd(String(values[1]), timeZone);
+      if (!end) throw new BadRequestException('日期区间缺少结束日期。');
+      return { gte: start, lte: end };
+    }
+  }
   const dates = values.map((value) => {
     const date = new Date(String(value));
     if (Number.isNaN(date.getTime())) throw new BadRequestException('日期筛选值无效。');

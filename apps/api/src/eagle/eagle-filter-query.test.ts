@@ -244,6 +244,90 @@ test('date-only ranges include the complete end date even when entered in revers
   }
 });
 
+test('date-only rules use the query timezone and include the whole calendar day', () => {
+  for (const [operator, value, expected] of [
+    [
+      'BETWEEN',
+      ['2016-01-01', '2026-06-02'],
+      {
+        gte: new Date('2015-12-31T16:00:00.000Z'),
+        lte: new Date('2026-06-02T15:59:59.999Z'),
+      },
+    ],
+    ['AFTER', '2026-06-02', { gte: new Date('2026-06-01T16:00:00.000Z') }],
+    ['BEFORE', '2026-06-02', { lte: new Date('2026-06-02T15:59:59.999Z') }],
+  ] as const) {
+    const query = readEagleFilterQuery({
+      version: 2,
+      timeZone: 'Asia/Shanghai',
+      conditions: [
+        {
+          id: 'date',
+          match: 'ALL',
+          result: 'MATCH',
+          rules: [{ id: 'added', field: 'ADDED_AT', operator, value }],
+        },
+      ],
+    });
+    assert.deepEqual(buildEagleFilterWhere(query), {
+      AND: [{ AND: [{ libraryAddedAt: expected }] }],
+    });
+  }
+});
+
+test('explicit timestamps keep their exact instant even when a timezone is present', () => {
+  const query = readEagleFilterQuery({
+    version: 2,
+    timeZone: 'Asia/Shanghai',
+    conditions: [
+      {
+        id: 'date',
+        match: 'ALL',
+        result: 'MATCH',
+        rules: [
+          {
+            id: 'added',
+            field: 'ADDED_AT',
+            operator: 'BETWEEN',
+            value: ['2026-06-02T10:00:00+08:00', '2026-06-02T11:00:00+08:00'],
+          },
+        ],
+      },
+    ],
+  });
+  assert.deepEqual(buildEagleFilterWhere(query), {
+    AND: [
+      {
+        AND: [
+          {
+            libraryAddedAt: {
+              gte: new Date('2026-06-02T02:00:00Z'),
+              lte: new Date('2026-06-02T03:00:00Z'),
+            },
+          },
+        ],
+      },
+    ],
+  });
+});
+
+test('invalid query timezones are rejected instead of falling back to UTC', () => {
+  assert.throws(() =>
+    readEagleFilterQuery({
+      version: 2,
+      timeZone: 'not/a/zone',
+      conditions: [
+        {
+          id: 'date',
+          match: 'ALL',
+          result: 'MATCH',
+          rules: [{ id: 'added', field: 'ADDED_AT', operator: 'AFTER', value: '2026-06-02' }],
+        },
+      ],
+    }),
+  );
+});
+
 test('explicit timestamp ranges retain their exact instant rather than expanding to a day', () => {
   const query = readEagleFilterQuery({
     version: 2,

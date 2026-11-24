@@ -2,18 +2,20 @@ import { databaseBatches, DATABASE_STATEMENTS } from '../eagle/eagle-database-ba
 import { runLibraryTransaction } from '../eagle/eagle-library-command';
 import { readMemoryPhotoFacets } from './photo-memory-client';
 import { readPeopleCountPage } from './photo-person-count-page';
-import { representativePhotoFace } from '@sekereagle/library-core';
+import { representativePhotoFace, zonedNextMonthStart } from '@sekereagle/library-core';
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
 import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { encodeEagleAssetCursor } from '../eagle/eagle-cursor';
 import { defaultAssetSort, type EagleAssetSort } from '../eagle/eagle-asset-order';
+import { readAssetTimeline } from '../eagle/eagle-asset-timeline';
 import {
   lockOwnerPrivacyProjection,
   syncAssetPrivacy,
@@ -167,31 +169,44 @@ export class PhotoManagementService {
     )
       throw new NotFoundException('组内照片不存在。');
   }
-  async timeline(ownerId: string, includePrivate: boolean, sort?: EagleAssetSort) {
-    const column =
-      sort === 'ADDED_AT' ? Prisma.sql`"libraryAddedAt"` : Prisma.sql`"chronologicalAt"`;
-    const rows = await this.prisma.$queryRaw<Array<{ month: Date; count: bigint }>>(Prisma.sql`
-      SELECT date_trunc('month', ${column}) AS month, count(*) AS count
-      FROM "EagleAsset"
-      WHERE "ownerId" = ${ownerId} AND "libraryMode" = 'PHOTO' AND "deletedAt" IS NULL
-        ${includePrivate ? Prisma.empty : Prisma.sql`AND "isPrivate" = false`}
-      GROUP BY 1 ORDER BY 1 DESC
-    `);
-    return {
-      months: rows.map((row) => {
-        const boundary = new Date(row.month);
-        boundary.setUTCMonth(boundary.getUTCMonth() + 1);
-        return {
-          month: row.month.toISOString().slice(0, 7),
-          count: Number(row.count),
-          cursor: encodeEagleAssetCursor(
-            { libraryAddedAt: boundary, id: '00000000-0000-0000-0000-000000000000' },
-            { ownerId, libraryMode: 'PHOTO' },
-            sort ?? defaultAssetSort('PHOTO'),
-          ),
-        };
-      }),
-    };
+  async timeline(
+    ownerId: string,
+    includePrivate: boolean,
+    sort?: EagleAssetSort,
+    timeZone = 'UTC',
+  ) {
+    const scope = { ownerId, libraryMode: 'PHOTO' as const };
+    const { days, total } = await readAssetTimeline(
+      this.prisma,
+      scope,
+      sort,
+      timeZone,
+      includePrivate,
+    );
+    const months = new Map<
+      string,
+      { month: string; count: number; cursor: string }
+    >();
+    for (const day of days) {
+      const month = day.date.slice(0, 7);
+      const boundary = zonedNextMonthStart(month, timeZone);
+      if (!boundary) throw new BadRequestException('时区无效。');
+      const existing = months.get(month);
+      if (existing) {
+        existing.count += day.count;
+        continue;
+      }
+      months.set(month, {
+        month,
+        count: day.count,
+        cursor: encodeEagleAssetCursor(
+          { libraryAddedAt: boundary, id: '00000000-0000-0000-0000-000000000000' },
+          scope,
+          sort ?? defaultAssetSort('PHOTO'),
+        ),
+      });
+    }
+    return { days, months: [...months.values()], total };
   }
   async facets(ownerId: string, includePrivate: boolean) {
     const resident = await readMemoryPhotoFacets(ownerId, includePrivate);

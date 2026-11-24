@@ -14,23 +14,47 @@ afterEach(async () => {
   await i18next.changeLanguage('zh-CN');
 });
 it('uses the same canonical month as the rail, with capture and import fallbacks', () => {
-  expect(getPhotoTimelineMonth({ ...date, chronologicalAt: '2024-03-01T00:30:00+08:00' })).toBe(
-    '2024-02',
+  expect(
+    getPhotoTimelineMonth(
+      { ...date, chronologicalAt: '2024-03-01T00:30:00+08:00' },
+      'CAPTURED_AT',
+      'UTC',
+    ),
+  ).toBe('2024-02');
+  expect(
+    getPhotoTimelineMonth(
+      { ...date, photoMetadata: { capturedAt: '2023-02-02T00:00:00Z' } },
+      'CAPTURED_AT',
+      'UTC',
+    ),
+  ).toBe('2023-02');
+  expect(getPhotoTimelineMonth({ ...date, chronologicalAt: 'invalid' }, 'CAPTURED_AT', 'UTC')).toBe(
+    '2026-10',
+  );
+  expect(getPhotoTimelineMonth({ ...date, libraryAddedAt: 'invalid' }, 'CAPTURED_AT', 'UTC')).toBe(
+    '2026-09',
   );
   expect(
-    getPhotoTimelineMonth({ ...date, photoMetadata: { capturedAt: '2023-02-02T00:00:00Z' } }),
-  ).toBe('2023-02');
-  expect(getPhotoTimelineMonth({ ...date, chronologicalAt: 'invalid' })).toBe('2026-10');
-  expect(getPhotoTimelineMonth({ ...date, libraryAddedAt: 'invalid' })).toBe('2026-09');
-  expect(getPhotoTimelineMonth({ libraryAddedAt: 'invalid', createdAt: '' })).toBeUndefined();
+    getPhotoTimelineMonth({ libraryAddedAt: 'invalid', createdAt: '' }, 'CAPTURED_AT', 'UTC'),
+  ).toBeUndefined();
+});
+it('groups a near-midnight capture by the requested local day', () => {
+  const asset = { ...date, chronologicalAt: '2024-03-01T00:30:00+08:00' };
+  expect(getPhotoTimelineDay(asset, 'CAPTURED_AT', 'Asia/Shanghai')).toBe('2024-03-01');
+  expect(getPhotoTimelineDay(asset, 'CAPTURED_AT', 'UTC')).toBe('2024-02-29');
+  expect(getPhotoTimelineMonth(asset, 'CAPTURED_AT', 'Asia/Shanghai')).toBe('2024-03');
 });
 it('keeps one stable month key per asset without sorting or fabricating empty months', () => {
-  const keys = createPhotoTimelineSectionKeys([
-    { ...date, id: 'one' },
-    { ...date, id: 'two' },
-    { ...date, id: 'older', chronologicalAt: '2025-01-01T00:00:00Z' },
-    { id: 'invalid', libraryAddedAt: '', createdAt: '' },
-  ]);
+  const keys = createPhotoTimelineSectionKeys(
+    [
+      { ...date, id: 'one' },
+      { ...date, id: 'two' },
+      { ...date, id: 'older', chronologicalAt: '2025-01-01T00:00:00Z' },
+      { id: 'invalid', libraryAddedAt: '', createdAt: '' },
+    ],
+    'CAPTURED_AT',
+    'UTC',
+  );
   expect([...keys]).toEqual([
     ['one', '2026-10'],
     ['two', '2026-10'],
@@ -39,12 +63,13 @@ it('keeps one stable month key per asset without sorting or fabricating empty mo
 });
 it('groups by import time when sorting by added time', () => {
   const captured = { ...date, chronologicalAt: '2024-03-01T00:30:00+08:00' };
-  expect(getPhotoTimelineMonth(captured, 'ADDED_AT')).toBe('2026-10');
-  expect(getPhotoTimelineDay(captured, 'ADDED_AT')).toBe('2026-10-19');
+  expect(getPhotoTimelineMonth(captured, 'ADDED_AT', 'UTC')).toBe('2026-10');
+  expect(getPhotoTimelineDay(captured, 'ADDED_AT', 'UTC')).toBe('2026-10-19');
   expect(
     getPhotoTimelineMonth(
       { ...captured, libraryAddedAt: 'invalid', createdAt: '2026-09-01T00:00:00Z' },
       'ADDED_AT',
+      'UTC',
     ),
   ).toBe('2026-09');
   expect([
@@ -54,6 +79,7 @@ it('groups by import time when sorting by added time', () => {
         { ...captured, id: 'two', chronologicalAt: '2025-01-01T00:00:00Z' },
       ],
       'ADDED_AT',
+      'UTC',
     ),
   ]).toEqual([
     ['one', '2026-10'],
@@ -68,14 +94,22 @@ it('shows the full month and year in the selected display language', async () =>
 });
 
 it('groups mobile dates by day while retaining canonical timestamps and fallback rules', () => {
-  expect(getPhotoTimelineDay({ ...date, chronologicalAt: '2024-03-01T00:30:00+08:00' })).toBe(
-    '2024-02-29',
-  );
   expect(
-    createPhotoTimelineDayKeys([
-      { ...date, id: 'one' },
-      { ...date, id: 'two', chronologicalAt: '2026-10-18T03:00:00Z' },
-    ]),
+    getPhotoTimelineDay(
+      { ...date, chronologicalAt: '2024-03-01T00:30:00+08:00' },
+      'CAPTURED_AT',
+      'UTC',
+    ),
+  ).toBe('2024-02-29');
+  expect(
+    createPhotoTimelineDayKeys(
+      [
+        { ...date, id: 'one' },
+        { ...date, id: 'two', chronologicalAt: '2026-10-18T03:00:00Z' },
+      ],
+      'CAPTURED_AT',
+      'UTC',
+    ),
   ).toEqual(
     new Map([
       ['one', '2026-10-19'],

@@ -7,10 +7,11 @@ export function usePhotoTimeline(
   privateVisible: boolean,
   privacyRevision: number,
   sort: EagleAssetSort,
+  timeZone: string,
 ) {
   return useQuery({
-    queryKey: [...scope, 'timeline', privateVisible, privacyRevision, sort],
-    queryFn: ({ signal }) => getPhotoTimeline(sort, signal),
+    queryKey: [...scope, 'timeline', privateVisible, privacyRevision, sort, timeZone],
+    queryFn: ({ signal }) => getPhotoTimeline(sort, timeZone, signal),
     enabled,
     staleTime: 30_000,
     refetchOnWindowFocus: false,

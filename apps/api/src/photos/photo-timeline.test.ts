@@ -7,7 +7,10 @@ function createService(queries: Array<{ text: string; values: unknown[] }>) {
   return new PhotoManagementService({
     $queryRaw: async (query: { text: string; values: unknown[] }) => {
       queries.push(query);
-      return [{ month: new Date('2024-12-01T00:00:00Z'), count: 123n }];
+      return [
+        { day: '2024-12-15', boundary: new Date('2024-12-16T00:00:00Z'), count: 100n },
+        { day: '2024-12-01', boundary: new Date('2024-12-02T00:00:00Z'), count: 23n },
+      ];
     },
   } as never);
 }
@@ -17,13 +20,21 @@ test('timeline aggregates only this owner PHOTO library and hides private rows b
   const service = createService(queries);
   const result = await service.timeline('owner-1', false);
   assert.match(queries[0]!.text, /"chronologicalAt"/);
-  assert.match(queries[0]!.text, /"libraryMode" = 'PHOTO'/);
-  assert.match(queries[0]!.text, /"ownerId" = \$/);
+  assert.match(queries[0]!.text, /"libraryMode" = \$\d+::"LibraryMode"/);
+  assert.match(queries[0]!.text, /"ownerId" = \$\d+/);
   assert.match(queries[0]!.text, /"deletedAt" IS NULL/);
   assert.match(queries[0]!.text, /"isPrivate" = false/);
   assert.ok(queries[0]!.values.includes('owner-1'));
   assert.equal(result.months[0]!.month, '2024-12');
   assert.equal(result.months[0]!.count, 123);
+  assert.equal(result.total, 123);
+  assert.deepEqual(
+    result.days.map((day) => [day.date, day.offset]),
+    [
+      ['2024-12-15', 0],
+      ['2024-12-01', 100],
+    ],
+  );
   const scope = { ownerId: 'owner-1', libraryMode: 'PHOTO' as const };
   const decoded = decodeEagleAssetCursor(result.months[0]!.cursor, scope);
   assert.equal(decoded.libraryAddedAt.toISOString(), '2025-01-01T00:00:00.000Z');

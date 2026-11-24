@@ -40,6 +40,7 @@ import {
   formatPhotoTimelineMonth,
   getPhotoTimelineMonth,
 } from '../photos/photo-timeline-sections';
+import { currentTimeZone } from '@sekereagle/library-core';
 import { EagleSendAssetsMenuItem } from './EagleSendAssetsMenuItem';
 import type { EaglePhotoStack } from '../../lib/eagle-api';
 import { collapsePhotoStacks } from '../photos/photo-stacks';
@@ -509,12 +510,14 @@ export function SekerEaglePage({
     assetLocator.clearLocation,
   ]);
 
+  const timelineTimeZone = useMemo(() => currentTimeZone(), []);
   const timelineIndex = usePhotoTimeline(
     hasTimelineNavigation,
     queryKeys.assets,
     privateVisible,
     privacyRulesRevision,
     photoSort,
+    timelineTimeZone,
   );
   const relevanceOrder = Boolean(activeSmartFolderId && smartFolderOrder === 'RELEVANCE');
   const assetFilters: EagleAssetFilters = {
@@ -994,8 +997,8 @@ export function SekerEaglePage({
       !colorCoverage &&
       !(activeSmartFolderId && smartFolderOrder === 'RELEVANCE')
         ? compact
-          ? createPhotoTimelineDayKeys(assets, photoSort)
-          : createPhotoTimelineSectionKeys(assets, photoSort)
+          ? createPhotoTimelineDayKeys(assets, photoSort, timelineTimeZone)
+          : createPhotoTimelineSectionKeys(assets, photoSort, timelineTimeZone)
         : undefined,
     [
       assets,
@@ -1007,6 +1010,7 @@ export function SekerEaglePage({
       activeSmartFolderId,
       smartFolderOrder,
       photoSort,
+      timelineTimeZone,
     ],
   );
   const { containerRef: masonryRef, layout: masonryLayout } = useEagleMasonryLayout(assets, {
@@ -2711,7 +2715,9 @@ export function SekerEaglePage({
                             (item) => item.top + item.height > scrollTop,
                           );
                           const asset = first ? assetsById.get(first.id) : undefined;
-                          return asset ? getPhotoTimelineMonth(asset, photoSort) : undefined;
+                          return asset
+                            ? getPhotoTimelineMonth(asset, photoSort, timelineTimeZone)
+                            : undefined;
                         })()}
                         onLatest={() => {
                           assetLocator.clearLocation();

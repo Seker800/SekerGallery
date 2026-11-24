@@ -10145,6 +10145,7 @@ export interface operations {
     parameters: {
       query?: {
         sort?: 'CAPTURED_AT' | 'ADDED_AT';
+        timeZone?: components['schemas']['Object'];
       };
       header?: never;
       path?: never;

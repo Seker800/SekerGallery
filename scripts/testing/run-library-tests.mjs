@@ -271,6 +271,7 @@ try {
     'scripts/testing/upload-recovery-performance.test.mjs',
     'scripts/testing/upload-finalization-queue.test.mjs',
     'scripts/testing/upload-resume-part-size.test.mjs',
+    'scripts/testing/photo-timeline-timezone.test.mjs',
     'scripts/testing/upload-content-check-batch.test.mjs',
     'scripts/testing/empty-trash-performance.test.mjs',
     'scripts/testing/empty-trash-budget.test.mjs',

@@ -38,6 +38,24 @@ test('empty text rows are editable placeholders rather than active rules', () =>
   assert.equal(countActiveEagleFilterRules(createEmptyEagleFilterQuery()), 0);
 });
 
+test('query timezone is validated and survives editing', () => {
+  const query = parseEagleFilterQuery({
+    version: 2,
+    timeZone: 'Asia/Shanghai',
+    conditions: [],
+  });
+  assert.equal(query.timeZone, 'Asia/Shanghai');
+  assert.equal(
+    editableEagleFilterQuery({
+      ...query,
+      semantic: { text: '海边', breadth: 'BALANCED' },
+    }).timeZone,
+    'Asia/Shanghai',
+  );
+  for (const timeZone of ['', 'not/a/zone', 42])
+    assert.throws(() => parseEagleFilterQuery({ version: 2, timeZone, conditions: [] }));
+});
+
 test('parser rejects an operator that does not belong to the selected field', () => {
   assert.throws(
     () =>

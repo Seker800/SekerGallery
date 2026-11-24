@@ -46,6 +46,11 @@ export class PhotoTimelineQueryDto {
   @IsOptional()
   @IsIn(['CAPTURED_AT', 'ADDED_AT'])
   sort?: EagleAssetSort;
+  @ApiPropertyOptional({ default: 'UTC' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  timeZone = 'UTC';
 }
 export class PeopleCursorDto {
   @ApiPropertyOptional({ maxLength: 1024 })
@@ -152,7 +157,7 @@ export class PhotoManagementController {
   }
   @Get('timeline')
   timeline(@CurrentPrincipal() p: AuthPrincipal, @Query() query: PhotoTimelineQueryDto) {
-    return this.photos.timeline(p.sub, p.canViewPrivate, query.sort);
+    return this.photos.timeline(p.sub, p.canViewPrivate, query.sort, query.timeZone);
   }
   @Get('facets')
   facets(@CurrentPrincipal() p: AuthPrincipal) {

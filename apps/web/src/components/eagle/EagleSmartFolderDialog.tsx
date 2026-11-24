@@ -1,3 +1,4 @@
+import { currentTimeZone } from '@sekereagle/library-core';
 import { useLibraryWorkspace } from '../../lib/library-workspace';
 import { t } from '../../i18n';
 import { useEffect, useMemo, useState, type ReactNode, type FormEvent } from 'react';
@@ -65,9 +66,10 @@ export function EagleSmartFolderDialog({
   } = useLibraryWorkspace();
 
   const [name, setName] = useState(initialName);
-  const [query, setQuery] = useState(() =>
-    editableEagleFilterQuery(createEditableQuery(initialQuery)),
-  );
+  const [query, setQuery] = useState<EagleFilterQuery>(() => {
+    const editable = editableEagleFilterQuery(createEditableQuery(initialQuery));
+    return { ...editable, timeZone: editable.timeZone ?? currentTimeZone() };
+  });
   const scheduler = useMemo(() => new MediaLoadScheduler(), []);
   useEffect(() => () => scheduler.clear({ abortActive: true }), [scheduler]);
   const semantic = readEagleSemanticIntent(query);

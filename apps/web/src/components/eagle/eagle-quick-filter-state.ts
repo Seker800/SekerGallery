@@ -1,3 +1,4 @@
+import { currentTimeZone } from '@sekereagle/library-core';
 import { t } from '../../i18n';
 import {
   createEagleFilterCondition,
@@ -244,7 +245,10 @@ export function clearEagleQuickFilter(
     }
   }
 }
-export function buildEagleQuickFilterQuery(state: EagleQuickFilterState): EagleFilterQuery {
+export function buildEagleQuickFilterQuery(
+  state: EagleQuickFilterState,
+  timeZone = currentTimeZone(),
+): EagleFilterQuery {
   const conditions: EagleFilterQuery['conditions'] = [];
   const addCondition = (rules: EagleFilterRule[], match: 'ALL' | 'ANY' = 'ALL') => {
     if (!rules.length) return;
@@ -285,10 +289,8 @@ export function buildEagleQuickFilterQuery(state: EagleQuickFilterState): EagleF
     const range = state.dates[field];
     if (!range) continue;
     if (range.from && range.to) addRule(field, 'BETWEEN', [range.from, range.to]);
-    else if (range.from)
-      addRule(field, 'AFTER', new Date(Date.parse(range.from) - 1).toISOString());
-    else if (range.to)
-      addRule(field, 'BEFORE', new Date(Date.parse(range.to) + 86_400_000).toISOString());
+    else if (range.from) addRule(field, 'AFTER', range.from);
+    else if (range.to) addRule(field, 'BEFORE', range.to);
   }
   for (const field of [
     'NAME',
@@ -307,7 +309,7 @@ export function buildEagleQuickFilterQuery(state: EagleQuickFilterState): EagleF
     const value = state.choices?.[field];
     if (value) addRule(field, 'EQUALS', value);
   }
-  return { version: 2, conditions };
+  return { version: 2, timeZone, conditions };
 }
 function addChoiceRules(
   conditions: EagleFilterQuery['conditions'],
