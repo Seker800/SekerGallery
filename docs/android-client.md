@@ -1,12 +1,14 @@
 # 安卓客户端与手机备份
 
-## 下一版 分享图任务化（2026-11-24，本地候选，未发布）
+## 0.9.37 分享图任务化与缩略图选档统一（2026-11-24）
+
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode54、versionName 0.9.37，调试 APK SHA-256 `81d287715a1e7f13ab1315cd9ce04276842aef364e02a471d62c03d2d7606b9e`。在 0.9.36 基础上并入分享图任务化与缩略图规格/选档统一（`2f8dc30c`）。2026-11-24 17:21 用 `adb push` + `pm install -r` 覆盖安装到小米 Pad 7 Ultra（25032RP42C，Android 17；原 0.9.34），账号、设置与图库保留，启动后照片列表正常加载。
 
 - 图片分享与高清详情改用 `share-renders` 任务：POST 创建/复用 → GET 阶段 → DELETE 取消 → READY 后下载永久 `SHARE_JPEG` rendition 内容。旧的 `share-image` 同步 GET 退役，0.9.36 中“share-image 300 秒”的策略由本节替代。
 - 阶段：排队中 / 正在读取原图 / 解码 HEIC/RAW / 压缩 4K；取消会调用 DELETE 并终止本地等待，服务端同时终止外部解码。
 - `NativeRequestPolicy`：任务创建/状态保持普通 30 秒读超时；rendition 内容下载保留 300 秒；upload complete 660 秒不变。
 - 服务端渲染在 NAS 的独立 `share-renderer` 进程，安卓不再等待一个 15 秒网关内的同步响应；结果按素材+媒体版本永久保存，第二次分享直接命中。
-- 未验证：真实设备或固定测试图库的分享、取消、改发原图与弱网下载；发布前必须补，不以 JVM 单测替代。
+- `npm run android:check` 通过。未验证：分享、取消、改发原图与弱网下载的真实设备交互（手机与平板均未手动操作分享流程），不以 JVM 单测或启动冒烟替代。
 
 ## 0.9.36 统一上传协议与 4 路并发（2026-11-24）
 

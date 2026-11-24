@@ -1,6 +1,6 @@
 # 现用运行状态与交接
 
-> 状态：现行 | 核验日期：2026-11-24 17:16（北京时间） | 对应提交：22b9e92b（Windows 客户端 `9e5420c7`）
+> 状态：现行 | 核验日期：2026-11-24 17:21（北京时间） | 对应提交：22b9e92b（Windows 客户端 `9e5420c7`）
 >
 > 本文只记录现用部署事实与接手顺序。完整发布快照、备份哈希和历史恢复过程见
 > [2026-10/11 归档](history/releases/2026-11.md)。设计边界见 [architecture](architecture.md)，
@@ -82,6 +82,7 @@ Web 最近覆盖：`main-22b9e92b`（11-24 17:10）→ `main-d3568fc9`（11-23 1
   `597acca0…` 备份在 `D:\SekerEagle\backup\`，开始菜单快捷方式改为 `SekerGallery-0.1.lnk`，
   `SekerEagleData` 未动。实机确认标题 SekerGallery、素材库 58,914 项正常加载，运行中解包 asar
   哈希与构建一致。注意：从带 `ELECTRON_RUN_AS_NODE=1` 的终端启动会按 Node 立即退出，不是包损坏。
+- 2026-11-24 17:21 小米 Pad 7 Ultra（25032RP42C，Android 17）安卓客户端从 0.9.34 覆盖升级到 0.9.37（versionCode 54，APK SHA-256 `81d2877…`，含分享图任务化与缩略图选档统一）：`adb push` + `pm install -r` 成功，启动后账号、设置与图库保留，照片列表正常加载。未在真机手动执行分享、取消与改发原图交互。版本记录见 [安卓客户端](android-client.md)。
 - 2026-11-24 17:10 群晖发布 `22b9e92b`：API／operations／reader／web 与新增 `share-renderer` 切到 `main-22b9e92b`，应用 5 项迁移至 107；发布前后计数 MATERIAL 64,976／PHOTO 58,880（合计 123,856）、回收站 13,787、草稿 244 一致；schema 七项检查均由 0 变 1。五个应用容器 healthy、0 重启；公网首页／readiness 200，匿名 assets 与分享任务 401；网关复用并更新“大选择 150 秒、分享结果 120 秒”路由后 `nginx -t`／reload；无关容器 ID 未变。Mac 业务执行器切到 `worker-22b9e92b`（PID 27479，worker ID `worker-01185bc9-4aff-4602-a696-98fce404f500`，767 个程序文件哈希通过）；首次切换因共享 `photo-render-core` 缺少新导出而回退到 `worker-93b5d583`，补齐包后重试成功。未做登录后的生产分享复制交互，也未在 NAS 实测 HEIC/RAW 峰值。
 - 2026-11-23 20:55 群晖热修收藏／标签 500：`main-d3568fc9` 是以 `main-2405f5ed` 为基座的增量镜像，只覆盖了 dist、迁移和包产物，没有拷入新 schema、也没有重新生成 Prisma 客户端，导致登录后 GET `/api/eagle|photos/manual-tags` 报 `Unknown field systemKey`（手机小心心「收藏暂时不可用」）。线上以 `main-d3568fc9` 为基座补入 schema 并重跑 `prisma generate`，产出 `sekereagle/api:main-d3568fc9-hotfix1`，只切换 api／operations／library-reader；数据库、迁移、web 与无关容器未动，公网 readiness 200、匿名 401，三个容器内实际标签查询成功。`test:api-image` 已增加登录后标签列表与系统标签创建断言，旧镜像会在该检查处失败、热修镜像通过（NAS 证据见 `maintenance/manualtag-client-hotfix-20261123/`）。详见[热修记录](history/releases/main-production-release-2026-11-23-manualtag-client-hotfix.md)。
 - 2026-11-23 18:04 群晖发布 `d3568fc9`：API／operations／reader／web 四个应用容器切到 `main-d3568fc9`，应用 1 项迁移 `20261123090000_manual_tag_system_key`；发布前后计数一致（MATERIAL 64,876／PHOTO 58,869、回收站 13,755、草稿 243）；schema 仅新增 `EagleManualTag.systemKey` 列与唯一索引，收藏／已编辑各回填 1 个系统标签；公网首页／readiness 200、匿名 401，线上首页哈希与本地构建一致；无关容器未变，网关复用并 reload；API 成品镜像通过 `test:api-image`（隔离启动、102 条迁移、readiness 200、匿名 401、独立执行器无密钥启动退出 0）。未做登录后的生产浏览器交互；macOS 客户端已重打包并替换为 `/Applications/SekerGallery.app`，安卓 0.9.34 已安装到小米 Pad 7 Ultra（平板网格使用 512 缩略图、上传改用系统照片选择器），手机 25128PNA1C 仍为 0.9.31、下次连接时更新。`main-d3568fc9` 还修复了 reader 性能用例在完整集成套件中因查询计划平局翻转的失败，完整套件现仅剩人员排序既有失败。
