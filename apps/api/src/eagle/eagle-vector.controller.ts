@@ -13,7 +13,9 @@ import {
   Post,
   Query,
   UseGuards,
+  SetMetadata,
 } from '@nestjs/common';
+import { LIBRARY_MODE } from './library-mode';
 import { AccessAuthGuard } from '../auth/access-auth.guard';
 import { BrowserOriginGuard } from '../auth/browser-origin.guard';
 import { BrowserPrincipalGuard } from '../auth/browser-principal.guard';
@@ -30,6 +32,7 @@ import {
 } from './eagle-vector.dto';
 import { EagleVectorService } from './eagle-vector.service';
 
+@SetMetadata(LIBRARY_MODE, 'MATERIAL')
 @Controller('eagle/vector')
 @UseGuards(AccessAuthGuard, BrowserPrincipalGuard)
 export class EagleVectorController {

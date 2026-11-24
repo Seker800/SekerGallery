@@ -9,7 +9,9 @@ import {
   Post,
   Query,
   UseGuards,
+  SetMetadata,
 } from '@nestjs/common';
+import { LIBRARY_MODE } from './library-mode';
 import { ApiBearerAuth, ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { AccessAuthGuard } from '../auth/access-auth.guard';
 import { BrowserOrPatOriginGuard } from '../auth/browser-or-pat-origin.guard';
@@ -29,6 +31,7 @@ import { EagleImportsService } from './import/eagle-app-import.service';
 @ApiTags('eagle-imports')
 @ApiCookieAuth()
 @ApiBearerAuth()
+@SetMetadata(LIBRARY_MODE, 'MATERIAL')
 @Controller('eagle/imports')
 @UseGuards(AccessAuthGuard, PatScopeGuard)
 export class EagleImportController {

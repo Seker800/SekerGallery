@@ -13,6 +13,7 @@ import {
   Optional,
   Inject,
   NotFoundException,
+  SetMetadata,
 } from '@nestjs/common';
 import { IsIn, IsBoolean, IsInt, Min, Max, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
@@ -62,6 +63,7 @@ export class TaskPolicyDto {
   priority?: number;
 }
 
+@SetMetadata(LIBRARY_MODE, 'MATERIAL')
 @Controller('eagle/tasks')
 @UseGuards(AccessAuthGuard, BrowserPrincipalGuard)
 export class EagleTaskCenterController {

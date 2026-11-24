@@ -14,7 +14,9 @@ import {
   Post,
   Query,
   UseGuards,
+  SetMetadata,
 } from '@nestjs/common';
+import { LIBRARY_MODE } from './library-mode';
 import { AdminGuard } from '../auth/admin.guard';
 import { AccessAuthGuard } from '../auth/access-auth.guard';
 import { BrowserOriginGuard } from '../auth/browser-origin.guard';
@@ -27,6 +29,7 @@ import {
   UpdateEagleProcessingSettingsDto,
 } from './eagle-processing.dto';
 
+@SetMetadata(LIBRARY_MODE, 'MATERIAL')
 @Controller('admin/eagle-processing')
 @UseGuards(AccessAuthGuard, BrowserPrincipalGuard, AdminGuard)
 export class EagleProcessingController {

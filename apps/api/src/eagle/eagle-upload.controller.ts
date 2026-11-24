@@ -10,7 +10,9 @@ import {
   ParseUUIDPipe,
   Post,
   UseGuards,
+  SetMetadata,
 } from '@nestjs/common';
+import { LIBRARY_MODE } from './library-mode';
 import { ApiBearerAuth, ApiCookieAuth, ApiTags, ApiCreatedResponse } from '@nestjs/swagger';
 import { AccessAuthGuard } from '../auth/access-auth.guard';
 import { BrowserOrPatOriginGuard } from '../auth/browser-or-pat-origin.guard';
@@ -36,6 +38,7 @@ import { EagleUploadService } from './eagle-upload.service';
 @ApiTags('eagle-uploads')
 @ApiCookieAuth()
 @ApiBearerAuth()
+@SetMetadata(LIBRARY_MODE, 'MATERIAL')
 @Controller('eagle/uploads')
 @UseGuards(AccessAuthGuard, PatScopeGuard)
 @RequirePatScopes('asset:write')

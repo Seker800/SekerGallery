@@ -8,7 +8,9 @@ import {
   ParseUUIDPipe,
   Post,
   UseGuards,
+  SetMetadata,
 } from '@nestjs/common';
+import { LIBRARY_MODE } from './library-mode';
 import { ApiBearerAuth, ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { AccessAuthGuard } from '../auth/access-auth.guard';
 import { BrowserOrPatOriginGuard } from '../auth/browser-or-pat-origin.guard';
@@ -23,6 +25,7 @@ import { CompleteEagleUploadDto } from './eagle-upload.dto';
 @ApiTags('eagle-browser-captures')
 @ApiCookieAuth()
 @ApiBearerAuth()
+@SetMetadata(LIBRARY_MODE, 'MATERIAL')
 @Controller('eagle/browser-captures')
 @UseGuards(AccessAuthGuard, PatScopeGuard)
 @RequirePatScopes('capture:write')

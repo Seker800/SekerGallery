@@ -43,6 +43,7 @@ import {
   EagleDuplicateAdmissionResponseDto,
 } from './eagle-operation-response.dto';
 import { Optional } from '@nestjs/common';
+import { LIBRARY_MODE } from './library-mode';
 import { PurgeEagleAssetsDto, SendEagleAssetsDto } from './eagle.dto';
 import {
   Body,
@@ -61,6 +62,7 @@ import {
   Res,
   StreamableFile,
   UseGuards,
+  SetMetadata,
 } from '@nestjs/common';
 import {
   ApiCookieAuth,
@@ -111,6 +113,7 @@ import { EagleMediaCapabilityService } from './eagle-media-capability.service';
 
 @ApiTags('eagle')
 @ApiCookieAuth()
+@SetMetadata(LIBRARY_MODE, 'MATERIAL')
 @Controller('eagle')
 @UseGuards(AccessAuthGuard, BrowserPrincipalGuard)
 export class EagleController {
