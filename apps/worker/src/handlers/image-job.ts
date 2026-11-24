@@ -6,6 +6,7 @@ import {
   mediaExecutionGuard,
 } from '@sekereagle/library-core';
 import type { Prisma } from '@prisma/client';
+import { createReadStream } from 'node:fs';
 import { extname } from 'node:path';
 import { catalogImageDimensions, canReuseImageBrowsing } from '../image-renditions';
 import { inspectJpegLivePhoto, inspectLivePhotoStream } from '../live-photo';
@@ -15,6 +16,7 @@ import { publishImage } from '../image-publication';
 import { MediaOutputAttempt } from '../media-output-attempt';
 import { selectImageJobSource } from '../image-job-source';
 import { PermanentMediaValidationError } from '../media-validation-error';
+import { workerSourceCacheKey } from '../source-cache';
 import { generateImagePyramid } from './image-pyramid';
 import { assertExpectedHash, assertOwnedKey } from './shared';
 import type { AssetFamilyHandler } from './types';
@@ -87,6 +89,33 @@ export const imageJob: AssetFamilyHandler = async ({ job, remoteRequired, contex
       })}\n`,
     );
     assertOwnedKey(asset.ownerId, sourceDetails.storageKey);
+    const cacheKey = sourceDetails.verifiesOriginalHash
+      ? workerSourceCacheKey({
+          ownerId: asset.ownerId,
+          libraryMode: asset.libraryMode,
+          objectKey: sourceDetails.storageKey,
+          mediaRevision: job.assetRevision,
+          size: asset.byteSize,
+        })
+      : null;
+    // Pyramid jobs reuse the copy the preview job already downloaded and hashed.
+    if (job.kind === 'GENERATE_IMAGE_PYRAMID' && cacheKey) {
+      const cached = await context.sourceCache.lookup(cacheKey);
+      if (cached) {
+        try {
+          await generateImagePyramid(
+            execution,
+            asset,
+            createReadStream(cached.path),
+            cached.sha256,
+          );
+          return;
+        } catch {
+          // The cache is only an accelerator; object storage decides the truth.
+          await context.sourceCache.invalidate(cached);
+        }
+      }
+    }
     const object = await context.storage.send(
       new GetObjectCommand({ Bucket: context.s3Bucket, Key: sourceDetails.storageKey }),
     );
@@ -117,24 +146,36 @@ export const imageJob: AssetFamilyHandler = async ({ job, remoteRequired, contex
       detailsOnly: sourceDetailsOnly,
       verifiesOriginalHash: sourceDetails.verifiesOriginalHash,
     };
-    const {
-      result: processed,
-      sha256,
-      sourceMode,
-    } = await (
-      remoteRequired
-        ? context.remoteMediaClient.image.bind(context.remoteMediaClient)
-        : processImageWork
-    )(object.Body as AsyncIterable<Uint8Array>, imageWork);
-    process.stdout.write(
-      `${JSON.stringify({ event: 'eagle_image_rendered', jobId: job.id, processorVersion: job.processorVersion, mimeType: asset.mimeType, sourceMode })}\n`,
-    );
-    if (sourceDetails.verifiesOriginalHash) {
-      assertExpectedHash(
-        asset.uploadSessions[0]?.eagleState?.expectedContentSha256 ?? asset.sha256,
-        sha256,
-      );
-    }
+    // The preview job already receives the original: keep one bounded local copy
+    // so the later pyramid job does not download and hash it a second time.
+    const capture =
+      job.kind === 'GENERATE_RENDITIONS' && cacheKey
+        ? await context.sourceCache.tee(cacheKey, object.Body as AsyncIterable<Uint8Array>)
+        : null;
+    const { result: processed, sha256 } = await (async () => {
+      try {
+        const output = await (
+          remoteRequired
+            ? context.remoteMediaClient.image.bind(context.remoteMediaClient)
+            : processImageWork
+        )(capture ? capture.source : (object.Body as AsyncIterable<Uint8Array>), imageWork);
+        process.stdout.write(
+          `${JSON.stringify({ event: 'eagle_image_rendered', jobId: job.id, processorVersion: job.processorVersion, mimeType: asset.mimeType, sourceMode: output.sourceMode })}\n`,
+        );
+        if (sourceDetails.verifiesOriginalHash) {
+          assertExpectedHash(
+            asset.uploadSessions[0]?.eagleState?.expectedContentSha256 ?? asset.sha256,
+            output.sha256,
+          );
+          // Only a fully verified source may seed the cache.
+          if (capture) await capture.commit(output.sha256);
+        }
+        return output;
+      } catch (error) {
+        await capture?.abort();
+        throw error;
+      }
+    })();
     if (job.kind === 'EXTRACT_COLOR_PALETTE') {
       await context.prisma.$transaction(async (transaction) => {
         const completed = await transaction.eagleAssetProcessingJob.updateMany({

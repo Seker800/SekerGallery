@@ -321,8 +321,13 @@ function buildDateFilter(rule: EagleFilterRule, timeZone?: string): Prisma.DateT
       return { lte: end };
     }
     if (rule.operator === 'BETWEEN') {
-      const end = zonedDayEnd(String(values[1]), timeZone);
-      if (!end) throw new BadRequestException('日期区间缺少结束日期。');
+      const first = String(values[0]);
+      const second = String(values[1]);
+      // Date inputs are YYYY-MM-DD, so lexical order matches calendar order.
+      const reversed = first > second;
+      const start = zonedDayStart(reversed ? second : first, timeZone);
+      const end = zonedDayEnd(reversed ? first : second, timeZone);
+      if (!start || !end) throw new BadRequestException('日期筛选值无效。');
       return { gte: start, lte: end };
     }
   }

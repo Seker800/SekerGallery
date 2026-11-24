@@ -10,6 +10,7 @@ import {
   HeadObjectCommand,
   ListObjectsV2Command,
   ListPartsCommand,
+  PutObjectCommand,
   S3Client,
   UploadPartCommand,
   type CompletedPart,
@@ -183,6 +184,17 @@ export class ObjectStorageService implements OnModuleDestroy {
         throw new ServiceUnavailableException('对象存储暂时不可用，请稍后重试。');
       throw error;
     }
+  }
+
+  async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
   }
 
   async copyObject(sourceKey: string, targetKey: string): Promise<void> {

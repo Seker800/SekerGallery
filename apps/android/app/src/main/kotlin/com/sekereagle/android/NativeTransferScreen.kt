@@ -295,7 +295,8 @@ fun NativeTransferScreen(
     val uploadFailed = uploadCounts.third
     val uploadQueued = (uploadCounts.first - uploadCounts.second - uploadCounts.third).coerceAtLeast(0)
     val uploadWorking = batches.any { it.id == queue.activeId || it.waiting }
-    val uploadResumable = batches.any { it.id != queue.activeId && it.unfinished.isNotEmpty() }
+    val uploadResumable =
+        batches.any { it.unfinished.isNotEmpty() && (it.id != queue.activeId || it.paused) }
     val uploadDoneBatches = batches.filter { it.unfinished.isEmpty() }
     val uploadFailedBatches = batches.filter { it.progress?.issues?.isNotEmpty() == true }
 

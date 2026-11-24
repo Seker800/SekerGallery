@@ -4,6 +4,7 @@ import type { MediaJobKind } from '@sekereagle/library-core';
 import type { EmbeddingProcessor } from '../embedding-job';
 import type { MediaResourcePool } from '../media-resource-pool';
 import type { RemoteMediaClient } from '../remote-media';
+import type { WorkerSourceCache } from '../source-cache';
 import type { JobMediaAsset } from './job-asset';
 
 export interface MediaJobContext {
@@ -16,6 +17,8 @@ export interface MediaJobContext {
   facesConfigured: boolean;
   remoteKinds: () => readonly MediaJobKind[];
   resourcePool: MediaResourcePool;
+  /** Bounded local copy of recently downloaded originals; never a publication input. */
+  sourceCache: WorkerSourceCache;
   embeddingSpaceId: string;
   embeddingDimensions: number;
 }

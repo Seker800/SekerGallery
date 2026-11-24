@@ -314,10 +314,10 @@ class NativeSession private constructor(context: Context, val origin: String) : 
         }
 
     /**
-     * Bounded download of the server-rendered 4K share JPEG. The server sets Content-Length, but a
+     * Bounded download of the permanent share rendition. The server sets Content-Length, but a
      * missing length still stops at the same ceiling instead of reading an unbounded body.
      */
-    internal fun downloadShareImage(
+    internal fun downloadShareRendition(
         path: String,
         output: java.io.OutputStream,
         cancellation: NativeTransferCancellation,
@@ -325,14 +325,16 @@ class NativeSession private constructor(context: Context, val origin: String) : 
     ): Long {
         require(
             path.matches(
-                Regex("/api/(photos|eagle)/assets/[a-zA-Z0-9_-]{1,100}/share-image")
+                Regex(
+                    "/api/(photos|eagle)/assets/[a-zA-Z0-9_-]{1,100}/renditions/[a-zA-Z0-9_-]{1,100}/content"
+                )
             )
         )
         return exchange("GET", path, null, true, "image/jpeg", cancellation = cancellation) {
             connection,
             active ->
             cancellation.check()
-            if (connection.responseCode != 200) throw IOException("分享图生成失败")
+            if (connection.responseCode != 200) throw IOException("分享图下载失败")
             if (connection.contentType.orEmpty().substringBefore(';').trim() != "image/jpeg")
                 throw IOException("分享图格式不正确")
             val declared = connection.contentLengthLong

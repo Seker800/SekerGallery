@@ -234,7 +234,7 @@ test('upgrade drains operations together with old API writers before any migrati
   });
   const stop = calls.findIndex((args) => args.includes('stop'));
   assert.ok(stop >= 0);
-  for (const name of ['api', 'worker', 'operations'])
+  for (const name of ['api', 'worker', 'operations', 'share-renderer'])
     assert.ok(calls[stop].includes(name), `${name} must finish stopping before the next step`);
   assert.ok(stop < calls.findIndex((args) => args.includes('up')));
 });

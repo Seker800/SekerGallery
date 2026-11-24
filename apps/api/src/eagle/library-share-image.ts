@@ -16,6 +16,11 @@ const QUALITY_STEPS = [90, 85, 80, 75, 70, 65, 60];
 const MAX_DOWNSCALE_ROUNDS = 4;
 const DOWNSCALE_FACTOR = 0.85;
 
+/** Bump when the rendering contract changes so permanent SHARE_JPEG renditions never mix specs. */
+export const SHARE_IMAGE_SPEC_VERSION = 'share-v1';
+export type ShareRenderStage = 'READING' | 'DECODING' | 'ENCODING';
+export type ShareStageReporter = (stage: ShareRenderStage) => void | Promise<void>;
+
 export interface RenderedShareImage {
   buffer: Buffer;
   width: number;
@@ -50,6 +55,31 @@ export function shareImageBudget(): ShareImageBudget {
   return { maxEdge, maxBytes, minQuality };
 }
 
+/** Stable identity of the rendered bytes; also the EagleAssetRendition variant. */
+export function shareImageSpec(budget: ShareImageBudget = shareImageBudget()): string {
+  return `${SHARE_IMAGE_SPEC_VERSION}:edge=${budget.maxEdge}:bytes=${budget.maxBytes}:min=${budget.minQuality}`;
+}
+
+/** A queued job must render with the spec it was accepted under, not a later env change. */
+export function shareImageBudgetFromSpec(spec: string): ShareImageBudget {
+  const match = /^share-v1:edge=(\d+):bytes=(\d+):min=(\d+)$/.exec(spec);
+  if (!match) throw new Error('INVALID_SHARE_IMAGE_SPEC');
+  const maxEdge = Number(match[1]);
+  const maxBytes = Number(match[2]);
+  const minQuality = Number(match[3]);
+  if (
+    !Number.isSafeInteger(maxEdge) ||
+    !Number.isSafeInteger(maxBytes) ||
+    !Number.isSafeInteger(minQuality) ||
+    maxEdge < 1 ||
+    maxBytes < 1 ||
+    minQuality < 1 ||
+    minQuality > QUALITY_STEPS[0]!
+  )
+    throw new Error('INVALID_SHARE_IMAGE_SPEC');
+  return { maxEdge, maxBytes, minQuality };
+}
+
 let shareRenderLane: Promise<void> = Promise.resolve();
 /** Every share render decodes a camera-sized original; keep one decode in flight per API process. */
 export function withShareRenderSlot<T>(work: () => Promise<T>): Promise<T> {
@@ -69,15 +99,16 @@ export async function decodeShareSource(
   mimeType: string,
   inputPath: string,
   directory: string,
+  abortSignal?: AbortSignal,
 ): Promise<string> {
   if (requiresHeifDecode(mimeType, inputPath)) {
     const decoded = join(directory, 'decoded.png');
-    await decodeHeifFile(inputPath, decoded);
+    await decodeHeifFile(inputPath, decoded, abortSignal);
     return decoded;
   }
   if (isCameraRawMime(mimeType)) {
     const decoded = join(directory, 'decoded.tiff');
-    await readCameraRaw(inputPath, decoded, undefined, 'DEVELOP');
+    await readCameraRaw(inputPath, decoded, undefined, 'DEVELOP', abortSignal);
     return decoded;
   }
   return inputPath;
@@ -105,14 +136,26 @@ export async function renderShareImage(
   source: ShareImageSource,
   budget: ShareImageBudget,
   abortSignal?: AbortSignal,
+  onStage?: ShareStageReporter,
 ): Promise<RenderedShareImage> {
   return withShareRenderSlot(async () => {
     abortSignal?.throwIfAborted();
     const directory = await mkdtemp(join(tmpdir(), 'sekereagle-share-'));
     try {
+      await onStage?.('READING');
       const body = await source.openBody();
       const inputPath = await readOriginalToTemp(body, directory, abortSignal);
-      const decodedPath = await decodeShareSource(source.mimeType, inputPath, directory);
+      abortSignal?.throwIfAborted();
+      if (requiresHeifDecode(source.mimeType, inputPath) || isCameraRawMime(source.mimeType))
+        await onStage?.('DECODING');
+      const decodedPath = await decodeShareSource(
+        source.mimeType,
+        inputPath,
+        directory,
+        abortSignal,
+      );
+      abortSignal?.throwIfAborted();
+      await onStage?.('ENCODING');
       return await renderShareJpeg(decodedPath, budget, abortSignal);
     } finally {
       await rm(directory, { recursive: true, force: true });

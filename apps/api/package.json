@@ -15,7 +15,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "openapi:generate": "npm run build && node dist/openapi.js",
-    "start:operations": "node dist/asset-operation-executor.js"
+    "start:operations": "node dist/asset-operation-executor.js",
+    "start:share-renderer": "node dist/library-share-renderer.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",

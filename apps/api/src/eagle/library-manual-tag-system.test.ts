@@ -66,3 +66,41 @@ test('system tags cannot be renamed into another system or ordinary name', async
     (reason: unknown) => reason instanceof ConflictException,
   );
 });
+
+test('reserved names stay protected when an older runtime created them without a key', async () => {
+  const tag = {
+    id: 'tag',
+    name: '收藏',
+    normalizedName: '收藏',
+    systemKey: null,
+    color: null,
+    marksAssetsPrivate: false,
+    groupId: null,
+    groupMemberships: [],
+    isStarred: false,
+    lastUsedAt: null,
+    rowVersion: 2,
+    _count: { assetLinks: 1 },
+  };
+  const service = new LibraryManualTagService(
+    {
+      eagleManualTag: {
+        findMany: async () => [tag],
+        findFirst: async () => tag,
+      },
+      $queryRaw: async () => [],
+    } as never,
+    'MATERIAL',
+  );
+  const [listed] = await service.listManualTags('owner', false);
+  assert.ok(listed);
+  assert.equal(listed.systemKey, 'FAVORITE');
+  await assert.rejects(
+    () => service.updateManualTag('owner', 'tag', { rowVersion: 2, name: '旅行' }),
+    (reason: unknown) => reason instanceof ConflictException,
+  );
+  await assert.rejects(
+    () => service.deleteManualTag('owner', 'tag'),
+    (reason: unknown) => reason instanceof ConflictException,
+  );
+});

@@ -50,32 +50,59 @@ test('private-tag settings stay browser-only and require same-origin writes', ()
   );
 });
 
-test('share image responses are 4K JPEGs that never enter a shared cache', async () => {
-  const headers = new Map<string, string>();
-  const response = {
-    setHeader: (name: string, value: string) => headers.set(name, value),
-    once: () => undefined,
-  };
+test('share renders are queued instead of decoded by the HTTP API', async () => {
+  const calls: unknown[][] = [];
   const controller = new EagleController(
     {} as never,
     {} as never,
-    {
-      renderShareImage: async () => ({
-        buffer: Buffer.from('jpeg'),
-        byteSize: 4,
-        width: 4_096,
-        height: 2_731,
-      }),
-    } as never,
     {} as never,
+    {} as never,
+    undefined,
+    undefined,
+    undefined,
+    {
+      request: async (...args: unknown[]) => {
+        calls.push(['request', ...args]);
+        return { id: 'job-1', status: 'PENDING', stage: 'QUEUED', elapsedMs: 0 };
+      },
+      status: async (...args: unknown[]) => {
+        calls.push(['status', ...args]);
+        return { id: 'job-1', status: 'PROCESSING', stage: 'READING', elapsedMs: 1000 };
+      },
+      cancel: async (...args: unknown[]) => {
+        calls.push(['cancel', ...args]);
+        return { id: 'job-1', status: 'CANCELLED', stage: 'CANCELLED', elapsedMs: 1000 };
+      },
+    } as never,
   );
 
-  await controller.getShareImage({ sub: 'owner-a' } as never, 'asset-1', response as never);
+  await controller.createShareRender({ sub: 'owner-a', canViewPrivate: true } as never, 'asset-1');
+  await controller.getShareRenderStatus(
+    { sub: 'owner-a', canViewPrivate: false } as never,
+    'asset-1',
+    'job-1',
+  );
+  await controller.cancelShareRender(
+    { sub: 'owner-a', canViewPrivate: true } as never,
+    'asset-1',
+    'job-1',
+  );
 
-  assert.equal(headers.get('Content-Type'), 'image/jpeg');
-  assert.equal(headers.get('Content-Length'), '4');
-  assert.equal(headers.get('Cache-Control'), 'private, no-store');
-  assert.equal(headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.deepEqual(calls, [
+    ['request', 'owner-a', 'asset-1', true],
+    ['status', 'owner-a', 'asset-1', 'job-1', false],
+    ['cancel', 'owner-a', 'asset-1', 'job-1', true],
+  ]);
+  assert.deepEqual(Reflect.getMetadata(GUARDS_METADATA, controllerMethod('createShareRender')), [
+    BrowserOriginGuard,
+  ]);
+  assert.equal(
+    Reflect.getMetadata(GUARDS_METADATA, controllerMethod('getShareRenderStatus')),
+    undefined,
+  );
+  assert.deepEqual(Reflect.getMetadata(GUARDS_METADATA, controllerMethod('cancelShareRender')), [
+    BrowserOriginGuard,
+  ]);
 });
 
 test('public derived media must revalidate because tag rules can make the asset private', async () => {

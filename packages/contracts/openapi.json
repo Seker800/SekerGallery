@@ -1941,9 +1941,9 @@
         "tags": ["eagle"]
       }
     },
-    "/api/eagle/assets/{assetId}/share-image": {
-      "get": {
-        "operationId": "EagleController_getShareImage",
+    "/api/eagle/assets/{assetId}/share-renders": {
+      "post": {
+        "operationId": "EagleController_createShareRender",
         "parameters": [
           {
             "name": "assetId",
@@ -1955,8 +1955,95 @@
           }
         ],
         "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryShareRenderResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle"]
+      }
+    },
+    "/api/eagle/assets/{assetId}/share-renders/{renderId}": {
+      "get": {
+        "operationId": "EagleController_getShareRenderStatus",
+        "parameters": [
+          {
+            "name": "assetId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "renderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryShareRenderResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle"]
+      },
+      "delete": {
+        "operationId": "EagleController_cancelShareRender",
+        "parameters": [
+          {
+            "name": "assetId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "renderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryShareRenderResultDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2730,6 +2817,74 @@
         "responses": {
           "201": {
             "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle"]
+      }
+    },
+    "/api/eagle/tags/merge": {
+      "post": {
+        "operationId": "EagleController_mergeTags[0]",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeEagleManualTagsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EagleOperationSummaryResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle"]
+      }
+    },
+    "/api/eagle/manual-tags/merge": {
+      "post": {
+        "operationId": "EagleController_mergeTags[1]",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeEagleManualTagsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EagleOperationSummaryResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -6581,9 +6736,9 @@
         "tags": ["eagle", "photos"]
       }
     },
-    "/api/photos/assets/{assetId}/share-image": {
-      "get": {
-        "operationId": "PhotosController_getShareImage",
+    "/api/photos/assets/{assetId}/share-renders": {
+      "post": {
+        "operationId": "PhotosController_createShareRender",
         "parameters": [
           {
             "name": "assetId",
@@ -6595,8 +6750,95 @@
           }
         ],
         "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryShareRenderResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle", "photos"]
+      }
+    },
+    "/api/photos/assets/{assetId}/share-renders/{renderId}": {
+      "get": {
+        "operationId": "PhotosController_getShareRenderStatus",
+        "parameters": [
+          {
+            "name": "assetId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "renderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryShareRenderResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle", "photos"]
+      },
+      "delete": {
+        "operationId": "PhotosController_cancelShareRender",
+        "parameters": [
+          {
+            "name": "assetId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "renderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryShareRenderResultDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -7370,6 +7612,74 @@
         "responses": {
           "201": {
             "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle", "photos"]
+      }
+    },
+    "/api/photos/tags/merge": {
+      "post": {
+        "operationId": "PhotosController_mergeTags[0]",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeEagleManualTagsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EagleOperationSummaryResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": ["eagle", "photos"]
+      }
+    },
+    "/api/photos/manual-tags/merge": {
+      "post": {
+        "operationId": "PhotosController_mergeTags[1]",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeEagleManualTagsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EagleOperationSummaryResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -12109,6 +12419,50 @@
           "colorAnalysis"
         ]
       },
+      "LibraryShareRenderResultDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["PENDING", "PROCESSING", "READY", "FAILED", "CANCELLED"]
+          },
+          "stage": {
+            "type": "string",
+            "enum": ["QUEUED", "READING", "DECODING", "ENCODING", "READY", "FAILED", "CANCELLED"]
+          },
+          "elapsedMs": {
+            "type": "number"
+          },
+          "renditionId": {
+            "type": "string"
+          },
+          "contentUrl": {
+            "type": "string"
+          },
+          "width": {
+            "type": "number"
+          },
+          "height": {
+            "type": "number"
+          },
+          "byteSize": {
+            "type": "number"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "rendererOnline": {
+            "type": "boolean"
+          },
+          "cached": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "status", "stage", "elapsedMs"]
+      },
       "BatchUpdateEagleAssetsDto": {
         "type": "object",
         "properties": {
@@ -12224,6 +12578,22 @@
           }
         },
         "required": ["name"]
+      },
+      "MergeEagleManualTagsDto": {
+        "type": "object",
+        "properties": {
+          "sourceTagIds": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "targetTagId": {
+            "type": "string"
+          }
+        },
+        "required": ["sourceTagIds", "targetTagId"]
       },
       "UpdateManualTagDto": {
         "type": "object",

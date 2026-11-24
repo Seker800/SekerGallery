@@ -1,0 +1,127 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--ui-text);
+}
+.inline {
+  margin-top: 8px;
+}
+.floating {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 70;
+  max-width: 340px;
+}
+.mobile {
+  width: 100%;
+}
+.panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-line);
+  border-left: 2px solid var(--ui-accent);
+  border-radius: 6px;
+  background: var(--ui-raised);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+}
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  color: var(--ui-accent);
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ui-accent);
+  animation: shareCopyPulse 1.4s ease-in-out infinite;
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.main {
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.hint {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ui-muted);
+}
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.action,
+.iconButton {
+  border: 0;
+  border-radius: 4px;
+  padding: 2px 4px;
+  background: transparent;
+  color: var(--ui-accent-text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.action:hover,
+.iconButton:hover {
+  background: var(--ui-accent-soft);
+}
+.primary {
+  border: 0;
+  border-radius: 4px;
+  padding: 3px 8px;
+  background: var(--ui-accent);
+  color: var(--ui-bg);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.primary:hover {
+  background: var(--ui-accent-hover);
+}
+.danger .panel {
+  border-left-color: var(--ui-danger);
+}
+.danger .icon,
+.danger .main {
+  color: var(--ui-danger);
+}
+.success .panel {
+  border-left-color: var(--ui-success);
+}
+.success .icon,
+.success .main {
+  color: var(--ui-success);
+}
+@keyframes shareCopyPulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+    opacity: 0.8;
+  }
+}

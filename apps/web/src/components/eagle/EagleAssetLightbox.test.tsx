@@ -60,28 +60,80 @@ const imageAsset: EagleAssetListItem = {
   ],
 };
 
-const { copyImageMock, copyShareImageMock } = vi.hoisted(() => ({
+const {
+  copyImageMock,
+  copyShareImageMock,
+  startShareMock,
+  getShareMock,
+  cancelShareMock,
+  prepareShareMock,
+  copyPreparedMock,
+} = vi.hoisted(() => ({
   copyImageMock: vi.fn(),
   copyShareImageMock: vi.fn(),
+  startShareMock: vi.fn(),
+  getShareMock: vi.fn(),
+  cancelShareMock: vi.fn(),
+  prepareShareMock: vi.fn(),
+  copyPreparedMock: vi.fn(),
 }));
 vi.mock('openseadragon', () => ({ default: () => ({ addHandler() {}, destroy() {}, open() {} }) }));
 vi.mock('../../lib/image-clipboard', () => ({
   copyImageToClipboard: copyImageMock,
   copyShareImageToClipboard: copyShareImageMock,
+  prepareShareClipboardImage: prepareShareMock,
+  copyPreparedShareImageToClipboard: copyPreparedMock,
 }));
+vi.mock('../../lib/eagle-api', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    startEagleShareRender: startShareMock,
+    getEagleShareRender: getShareMock,
+    cancelEagleShareRender: cancelShareMock,
+  };
+});
 
 describe('EagleAssetLightbox', () => {
-  it('copies the 4K share rendition and keeps native image context menus', () => {
-    copyShareImageMock.mockResolvedValue(undefined);
+  it('copies the 4K share rendition and keeps native image context menus', async () => {
+    prepareShareMock.mockReturnValue({
+      jpeg: Promise.resolve({ buffer: new ArrayBuffer(0), contentType: 'image/jpeg' }),
+      png: Promise.resolve(new Blob(['png'], { type: 'image/png' })),
+    });
+    copyPreparedMock.mockResolvedValue(undefined);
+    startShareMock.mockImplementation(async (assetId: string) => ({
+      id: `rendition-${assetId}`,
+      status: 'READY',
+      stage: 'READY',
+      elapsedMs: 0,
+      contentUrl: `/api/eagle/assets/${assetId}/renditions/rendition/content`,
+      renditionId: 'rendition',
+      width: 4_096,
+      height: 4_096,
+      byteSize: 4_194_304,
+      cached: true,
+    }));
     const view = render(<EagleAssetLightbox asset={imageAsset} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '复制到剪贴板' }));
-    expect(copyShareImageMock).toHaveBeenLastCalledWith('/api/eagle/assets/image-1/share-image');
+    await vi.waitFor(() =>
+      expect(startShareMock).toHaveBeenLastCalledWith(
+        'image-1',
+        'MATERIAL',
+        expect.any(AbortSignal),
+      ),
+    );
     expect(fireEvent.contextMenu(screen.getByTestId('eagle-image-viewer'))).toBe(true);
     view.rerender(
       <EagleAssetLightbox asset={{ ...imageAsset, id: 'image-2' }} onClose={vi.fn()} />,
     );
     fireEvent.click(screen.getByRole('button', { name: '复制到剪贴板' }));
-    expect(copyShareImageMock).toHaveBeenLastCalledWith('/api/eagle/assets/image-2/share-image');
+    await vi.waitFor(() =>
+      expect(startShareMock).toHaveBeenLastCalledWith(
+        'image-2',
+        'MATERIAL',
+        expect.any(AbortSignal),
+      ),
+    );
     view.rerender(<EagleAssetLightbox asset={videoAsset} onClose={vi.fn()} />);
     expect(screen.queryByRole('button', { name: '复制到剪贴板' })).not.toBeInTheDocument();
   });

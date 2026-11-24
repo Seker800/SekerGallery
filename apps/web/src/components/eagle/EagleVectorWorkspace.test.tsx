@@ -360,16 +360,17 @@ describe('EagleVectorWorkspace', () => {
       const client = new QueryClient();
       const keys = createEagleQueryKeys('owner', 'MATERIAL');
       const watched = [
-        keys.assets,
-        keys.assetDetails,
+        keys.assetList('ACTIVE', {}),
         keys.manualTags,
         keys.manualTagGroups,
         keys.smartFolders,
         [...keys.root, 'vector-summary'],
+        keys.assetDetail('asset-1', 'ACTIVE'),
       ];
-      watched.forEach((key) => client.setQueryData(key, []));
+      const untouched = [keys.assetDetails];
+      [...watched, ...untouched].forEach((key) => client.setQueryData(key, []));
       const onAssetRelationsChanged = vi.fn((ids: readonly string[]) =>
-        refreshEagleAssetRelations(client, keys, ids),
+        refreshEagleAssetRelations(client, keys, ids, { refreshLists: true }),
       );
       vi.mocked(api.reviewEagleVectorSuggestions).mockResolvedValue({
         items: [
@@ -400,7 +401,10 @@ describe('EagleVectorWorkspace', () => {
       );
       expect(onAssetPrivacyChanged).toHaveBeenCalledTimes(privacyChanged ? 1 : 0);
       expect(onAssetRelationsChanged).toHaveBeenCalledWith(['asset-1']);
-      watched.forEach((key) => expect(client.getQueryState(key)?.isInvalidated).toBe(true));
+      watched.forEach((key) =>
+        expect(client.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(true),
+      );
+      untouched.forEach((key) => expect(client.getQueryState(key)?.isInvalidated).toBe(false));
       client.clear();
       await waitFor(() => expect(screen.getByRole('button', { name: '拒绝' })).toBeEnabled());
       fireEvent.click(screen.getByRole('button', { name: '拒绝' }));

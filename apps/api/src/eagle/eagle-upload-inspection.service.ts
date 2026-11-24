@@ -1,5 +1,5 @@
 import { inspectionFailure } from './media-inspection-error';
-import { mediaInspectionBudget } from './media-inspection-budget';
+import { mediaInspectionBudget, type MediaInspectionGates } from './media-inspection-budget';
 import {
   CAMERA_MEDIA_FORMATS,
   CAMERA_MAX_IMAGE_BYTES,
@@ -30,18 +30,24 @@ export class EagleUploadInspectionService {
 
   inspect(objectKey: string, mimeType: string, ownerId: string) {
     assertOwnedObjectKey(ownerId, objectKey);
-    return mediaInspectionBudget.run(ownerId, () => this.inspectWithinBudget(objectKey, mimeType));
+    return mediaInspectionBudget.run(ownerId, (gates) =>
+      this.inspectWithinBudget(objectKey, mimeType, gates),
+    );
   }
 
-  private async inspectWithinBudget(objectKey: string, mimeType: string) {
+  private async inspectWithinBudget(
+    objectKey: string,
+    mimeType: string,
+    gates: MediaInspectionGates,
+  ) {
     const object = await this.storage.getObject(objectKey);
     if (!object.Body) throw new NotFoundException('上传后的对象不存在。');
     if (mimeType === 'image/heic' || mimeType === 'image/heif')
-      return inspectHeifImage(object.Body as unknown as Readable);
+      return inspectHeifImage(object.Body as unknown as Readable, gates);
     if (isCameraVideoMime(mimeType) || isCameraRawMime(mimeType)) {
-      return inspectCameraFile(object.Body as unknown as Readable, mimeType);
+      return inspectCameraFile(object.Body as unknown as Readable, mimeType, gates);
     }
-    return inspectStandardImage(object.Body as unknown as Readable, mimeType);
+    return inspectStandardImage(object.Body as unknown as Readable, mimeType, gates);
   }
 }
 
@@ -50,22 +56,31 @@ export class EagleUploadInspectionService {
  * header for dimensions. Buffering the whole object in the API process made a
  * large upload burst exhaust the container memory limit.
  */
-async function inspectStandardImage(stream: Readable, mimeType: string) {
+async function inspectStandardImage(
+  stream: Readable,
+  mimeType: string,
+  gates: MediaInspectionGates,
+) {
   const directory = await mkdtemp(join(tmpdir(), 'sekereagle-image-inspect-'));
   const inputPath = join(directory, 'input');
   try {
-    const hash = createHash('sha256');
-    const hashingStream = new Transform({
-      transform(chunk: Buffer, _encoding, callback) {
-        hash.update(chunk);
-        callback(null, chunk);
-      },
+    const sha256 = await gates.transfer(async () => {
+      const hash = createHash('sha256');
+      const hashingStream = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          hash.update(chunk);
+          callback(null, chunk);
+        },
+      });
+      await pipeline(stream, hashingStream, createWriteStream(inputPath, { flags: 'wx' }));
+      return hash.digest('hex');
     });
-    await pipeline(stream, hashingStream, createWriteStream(inputPath, { flags: 'wx' }));
-    const metadata = await sharp(inputPath, {
-      failOn: 'warning',
-      limitInputPixels: MAX_EAGLE_IMAGE_INPUT_PIXELS,
-    }).metadata();
+    const metadata = await gates.decode(() =>
+      sharp(inputPath, {
+        failOn: 'warning',
+        limitInputPixels: MAX_EAGLE_IMAGE_INPUT_PIXELS,
+      }).metadata(),
+    );
     const detectedMimeType: string | undefined =
       metadata.mediaType ??
       (
@@ -87,7 +102,7 @@ async function inspectStandardImage(stream: Readable, mimeType: string) {
       throw new BadRequestException('图片内容与声明格式不匹配。');
     }
     return {
-      sha256: hash.digest('hex'),
+      sha256,
       format: metadata.format,
       width: metadata.autoOrient.width ?? metadata.width,
       height: metadata.autoOrient.height ?? metadata.height,
@@ -100,30 +115,34 @@ async function inspectStandardImage(stream: Readable, mimeType: string) {
   }
 }
 
-async function inspectCameraFile(stream: Readable, mimeType: string) {
+async function inspectCameraFile(stream: Readable, mimeType: string, gates: MediaInspectionGates) {
   const directory = await mkdtemp(join(tmpdir(), 'sekereagle-camera-inspect-'));
   const inputPath = join(directory, 'input');
   const raw = isCameraRawMime(mimeType);
   try {
-    const hash = createHash('sha256');
-    let byteSize = 0;
-    const hashingStream = new Transform({
-      transform(chunk: Buffer, _encoding, callback) {
-        byteSize += chunk.byteLength;
-        if (byteSize > (raw ? CAMERA_MAX_IMAGE_BYTES : CAMERA_MAX_VIDEO_BYTES))
-          return callback(new BadRequestException('媒体内容超出安全大小限制。'));
-        hash.update(chunk);
-        callback(null, chunk);
-      },
+    const sha256 = await gates.transfer(async () => {
+      const hash = createHash('sha256');
+      let byteSize = 0;
+      const hashingStream = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          byteSize += chunk.byteLength;
+          if (byteSize > (raw ? CAMERA_MAX_IMAGE_BYTES : CAMERA_MAX_VIDEO_BYTES))
+            return callback(new BadRequestException('媒体内容超出安全大小限制。'));
+          hash.update(chunk);
+          callback(null, chunk);
+        },
+      });
+      await pipeline(stream, hashingStream, createWriteStream(inputPath, { flags: 'wx' }));
+      return hash.digest('hex');
     });
-    await pipeline(stream, hashingStream, createWriteStream(inputPath, { flags: 'wx' }));
-    const metadata = raw
-      ? { ...(await readCameraRaw(inputPath)), durationMs: null }
-      : await probeCameraVideo(inputPath, mimeType);
+    const metadata = await gates.decode(async () => {
+      if (!raw) return probeCameraVideo(inputPath, mimeType);
+      return { ...(await readCameraRaw(inputPath)), durationMs: null };
+    });
     const format = CAMERA_MEDIA_FORMATS.find(
       (entry) => entry.mimeType === mimeType,
     )!.extension.slice(1);
-    return { sha256: hash.digest('hex'), format, ...metadata };
+    return { sha256, format, ...metadata };
   } catch (error) {
     throw inspectionFailure(error, raw ? 'raw' : 'video');
   } finally {
@@ -131,25 +150,28 @@ async function inspectCameraFile(stream: Readable, mimeType: string) {
   }
 }
 
-async function inspectHeifImage(stream: Readable) {
+async function inspectHeifImage(stream: Readable, gates: MediaInspectionGates) {
   const directory = await mkdtemp(join(tmpdir(), 'sekereagle-heif-inspect-'));
   const inputPath = join(directory, 'original.heic');
-  const hash = createHash('sha256');
-  let byteSize = 0;
-  const tap = new Transform({
-    transform(chunk: Buffer, _encoding, callback) {
-      byteSize += chunk.length;
-      if (byteSize > CAMERA_MAX_IMAGE_BYTES)
-        return callback(new BadRequestException('媒体内容超出安全大小限制。'));
-      hash.update(chunk);
-      callback(null, chunk);
-    },
-  });
   try {
-    await pipeline(stream, tap, createWriteStream(inputPath, { flags: 'wx' }));
-    const metadata = await probeHeifFile(inputPath);
+    const sha256 = await gates.transfer(async () => {
+      const hash = createHash('sha256');
+      let byteSize = 0;
+      const tap = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          byteSize += chunk.length;
+          if (byteSize > CAMERA_MAX_IMAGE_BYTES)
+            return callback(new BadRequestException('媒体内容超出安全大小限制。'));
+          hash.update(chunk);
+          callback(null, chunk);
+        },
+      });
+      await pipeline(stream, tap, createWriteStream(inputPath, { flags: 'wx' }));
+      return hash.digest('hex');
+    });
+    const metadata = await gates.decode(() => probeHeifFile(inputPath));
     return {
-      sha256: hash.digest('hex'),
+      sha256,
       format: 'heif',
       width: metadata.width,
       height: metadata.height,

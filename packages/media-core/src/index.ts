@@ -255,6 +255,7 @@ export async function readCameraRaw(
   outputPath?: string,
   thumbnailPath?: string,
   purpose: CameraRawPurpose = 'DEVELOP',
+  abortSignal?: AbortSignal,
 ): Promise<CameraRawDimensions> {
   const decodedLimit = cameraRawDecodedLimit(purpose);
   const script = join(__dirname, '../python/raw_image.py');
@@ -272,6 +273,7 @@ export async function readCameraRaw(
       timeout: outputPath ? 180_000 : 60_000,
       maxBuffer: 256 * 1024,
       env: mediaSubprocessEnvironment(),
+      signal: abortSignal,
     },
   );
   const result = JSON.parse(stdout) as CameraRawDimensions;

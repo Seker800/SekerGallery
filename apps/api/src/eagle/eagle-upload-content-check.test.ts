@@ -38,8 +38,10 @@ test('content preflight is bounded to owner, mode, size and non-deleted resource
         byteSize: 12n,
         deletedAt: null,
         purgeAfter: null,
+        isPrivate: false,
       },
       select: { isPrivate: true },
+      orderBy: { isPrivate: 'asc' },
     });
   }
 });
@@ -74,7 +76,7 @@ test('content preflight takes identity from authentication and never returns an 
     await controller.checkContent({ sub: 'owner', canViewPrivate: false } as never, input),
     { exists: true, privateMatch: false },
   );
-  assert.deepEqual(calls, [['owner', input]]);
+  assert.deepEqual(calls, [['owner', input, false]]);
 });
 
 test('preflight DTO rejects malformed hashes, unbounded sizes and owner injection', async () => {

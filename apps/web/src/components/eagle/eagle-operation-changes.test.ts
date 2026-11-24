@@ -136,6 +136,34 @@ it('ignores a late admission acknowledgment once terminal results have been appl
   expect(changes.entries[0]?.pending).toBe(false);
 });
 
+it('does not notify when a poll repeats the same summary', () => {
+  const changes = new EagleOperationChanges();
+  changes.begin('delete', 'TRASH', ['a']);
+  const summary = {
+    id: 'delete',
+    kind: 'TRASH' as const,
+    libraryMode: 'PHOTO' as const,
+    total: 1,
+    completed: 0,
+    queued: 1,
+    running: 0,
+    failed: 0,
+    cancelled: 0,
+    state: 'QUEUED' as const,
+    errors: [],
+  };
+  changes.observe(summary);
+  let notifications = 0;
+  const unsubscribe = changes.subscribe(() => {
+    notifications += 1;
+  });
+  changes.observe({ ...summary });
+  expect(notifications).toBe(0);
+  changes.observe({ ...summary, completed: 1, queued: 0, state: 'COMPLETED' });
+  expect(notifications).toBe(1);
+  unsubscribe();
+});
+
 it('expands visible live-photo companions without changing the idempotent request selection', () => {
   const changes = new EagleOperationChanges();
   changes.begin('delete', 'TRASH', ['still']);

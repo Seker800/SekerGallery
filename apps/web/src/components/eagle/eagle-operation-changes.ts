@@ -7,6 +7,31 @@ import type {
   AssetMembershipFact,
 } from '@sekereagle/library-core';
 
+function sameOperationSummary(
+  previous: AssetOperationSummary | undefined,
+  next: AssetOperationSummary,
+) {
+  if (!previous) return false;
+  const errors = (value: AssetOperationSummary) =>
+    value.errors
+      .map(({ code, count }) => `${code}:${count}`)
+      .sort()
+      .join('|');
+  return (
+    previous.id === next.id &&
+    previous.state === next.state &&
+    previous.total === next.total &&
+    previous.completed === next.completed &&
+    previous.failed === next.failed &&
+    previous.queued === next.queued &&
+    previous.running === next.running &&
+    previous.cancelled === next.cancelled &&
+    (previous.skipped ?? 0) === (next.skipped ?? 0) &&
+    Boolean(previous.privacyChanged) === Boolean(next.privacyChanged) &&
+    errors(previous) === errors(next)
+  );
+}
+
 export interface EagleOperationChange {
   id: string;
   kind: AssetOperationKind;
@@ -118,6 +143,8 @@ export class EagleOperationChanges {
     const current = this.operations.get(summary.id);
     if (current) {
       if (!current.pending && (summary.running || summary.queued)) return;
+      if (!current.uncertain && !current.message && sameOperationSummary(current.summary, summary))
+        return;
       current.summary = summary;
       current.uncertain = false;
       current.message = null;

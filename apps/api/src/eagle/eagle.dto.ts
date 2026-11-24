@@ -430,6 +430,19 @@ export class UpdateManualTagDto {
   rowVersion!: number;
 }
 
+export class MergeEagleManualTagsDto {
+  @ApiProperty({ type: [String], minItems: 1 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  sourceTagIds!: string[];
+
+  @ApiProperty()
+  @IsUUID('4')
+  targetTagId!: string;
+}
+
 export class CreateManualTagGroupDto {
   @IsString() @MinLength(1) @MaxLength(64) name!: string;
   @IsOptional() @Matches(COLOR_PATTERN) color?: string | null;

@@ -24,11 +24,15 @@ test('batch content checks return one boolean per submitted item with one query'
     'PHOTO',
   );
 
-  const result = await service.checkContentBatch(ownerId, [
-    { contentSha256: 'A'.repeat(64), size: 100 },
-    { contentSha256: 'b'.repeat(64), size: 200 },
-    { contentSha256: 'c'.repeat(64), size: 300 },
-  ]);
+  const result = await service.checkContentBatch(
+    ownerId,
+    [
+      { contentSha256: 'A'.repeat(64), size: 100 },
+      { contentSha256: 'b'.repeat(64), size: 200 },
+      { contentSha256: 'c'.repeat(64), size: 300 },
+    ],
+    true,
+  );
 
   assert.deepEqual(result, {
     exists: [true, false, true],
@@ -37,7 +41,7 @@ test('batch content checks return one boolean per submitted item with one query'
   assert.equal(queries, 1);
 });
 
-test('single content check reports private matches instead of pretending they do not exist', async () => {
+test('single content check hides private matches from a locked session', async () => {
   const service = new EagleUploadService(
     {
       eagleAsset: {
@@ -52,6 +56,10 @@ test('single content check reports private matches instead of pretending they do
 
   assert.deepEqual(
     await service.checkContent(ownerId, { contentSha256: 'A'.repeat(64), size: 100 }),
+    { exists: false, privateMatch: false },
+  );
+  assert.deepEqual(
+    await service.checkContent(ownerId, { contentSha256: 'A'.repeat(64), size: 100 }, true),
     { exists: true, privateMatch: true },
   );
 });

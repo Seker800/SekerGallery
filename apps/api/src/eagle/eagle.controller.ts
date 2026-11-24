@@ -96,6 +96,7 @@ import {
   EagleAssetIdsDto,
   ListEagleAssetsDto,
   ListEagleAssetUpdatesDto,
+  MergeEagleManualTagsDto,
   MoveSmartFolderDto,
   ReplaceAssetTagsDto,
   UpdateEagleAssetDto,
@@ -110,6 +111,8 @@ import { EagleProcessingService } from './eagle-processing.service';
 import { EaglePrivacyService } from './eagle-privacy.service';
 import { EagleMediaService } from './eagle-media.service';
 import { EagleMediaCapabilityService } from './eagle-media-capability.service';
+import { LibraryShareRenderService } from './library-share-render.service';
+import { LibraryShareRenderResultDto } from './library-share-render.dto';
 
 @ApiTags('eagle')
 @ApiCookieAuth()
@@ -125,6 +128,7 @@ export class EagleController {
     @Optional() private readonly operations?: EagleAssetOperationService,
     @Optional() private readonly duplicates?: EagleDuplicateService,
     @Optional() private readonly processing?: EagleProcessingService,
+    @Optional() private readonly shareRenders?: LibraryShareRenderService,
   ) {}
 
   @Post('assets/:assetId/processing-retry')
@@ -581,24 +585,39 @@ export class EagleController {
     return this.getRendition(principal, assetId, renditionId, ifNoneMatch, response, range);
   }
 
-  @Get('assets/:assetId/share-image')
-  async getShareImage(
+  @Post('assets/:assetId/share-renders')
+  @HttpCode(202)
+  @ApiAcceptedResponse({ type: LibraryShareRenderResultDto })
+  @UseGuards(BrowserOriginGuard)
+  createShareRender(
     @CurrentPrincipal() principal: AuthPrincipal,
     @Param('assetId', new ParseUUIDPipe({ version: '4' })) assetId: string,
-    @Res({ passthrough: true }) response: Response,
   ) {
-    const abortSignal = createMediaAbortSignal(response);
-    const rendered = await this.media.renderShareImage(
-      principal.sub,
-      assetId,
-      principal.canViewPrivate,
-      abortSignal,
-    );
-    response.setHeader('Content-Type', 'image/jpeg');
-    response.setHeader('X-Content-Type-Options', 'nosniff');
-    response.setHeader('Cache-Control', 'private, no-store');
-    response.setHeader('Content-Length', String(rendered.byteSize));
-    return new StreamableFile(rendered.buffer);
+    if (!this.shareRenders) throw new Error('Share render service is unavailable');
+    return this.shareRenders.request(principal.sub, assetId, principal.canViewPrivate);
+  }
+
+  @Get('assets/:assetId/share-renders/:renderId')
+  @ApiOkResponse({ type: LibraryShareRenderResultDto })
+  getShareRenderStatus(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param('assetId', new ParseUUIDPipe({ version: '4' })) assetId: string,
+    @Param('renderId', new ParseUUIDPipe({ version: '4' })) renderId: string,
+  ) {
+    if (!this.shareRenders) throw new Error('Share render service is unavailable');
+    return this.shareRenders.status(principal.sub, assetId, renderId, principal.canViewPrivate);
+  }
+
+  @Delete('assets/:assetId/share-renders/:renderId')
+  @ApiOkResponse({ type: LibraryShareRenderResultDto })
+  @UseGuards(BrowserOriginGuard)
+  cancelShareRender(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Param('assetId', new ParseUUIDPipe({ version: '4' })) assetId: string,
+    @Param('renderId', new ParseUUIDPipe({ version: '4' })) renderId: string,
+  ) {
+    if (!this.shareRenders) throw new Error('Share render service is unavailable');
+    return this.shareRenders.cancel(principal.sub, assetId, renderId, principal.canViewPrivate);
   }
 
   @Get('assets/:assetId/pyramid')
@@ -814,6 +833,17 @@ export class EagleController {
   @UseGuards(BrowserOriginGuard)
   createTag(@CurrentPrincipal() principal: AuthPrincipal, @Body() input: CreateManualTagDto) {
     return this.eagle.createManualTag(principal.sub, input);
+  }
+
+  @Post(['tags/merge', 'manual-tags/merge'])
+  @UseGuards(BrowserOriginGuard)
+  @HttpCode(202)
+  @ApiAcceptedResponse({ type: EagleOperationSummaryResponseDto })
+  mergeTags(@CurrentPrincipal() principal: AuthPrincipal, @Body() input: MergeEagleManualTagsDto) {
+    return this.operations!.enqueueCommand(principal, {
+      type: 'TAG_MERGE',
+      payload: libraryCommandPayload(input),
+    });
   }
 
   @Patch(['tags/:tagId', 'manual-tags/:tagId'])

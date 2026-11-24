@@ -2,6 +2,7 @@ import { isAcceptedOperation, type OperationResponse } from '../../lib/accepted-
 import { mergeEagleAssetFacts } from './eagle-asset-facts';
 import { getEagleWorkspaceCache } from './eagle-workspace-cache';
 import { refreshEagleAssetRelations } from './eagle-write-refresh';
+import { metadataListMembershipSensitive } from './eagle-list-dependencies';
 import { useEnqueueAssetOperation } from './useAssetOperations';
 import { useLibraryWorkspace } from '../../lib/library-workspace';
 import { useRef } from 'react';
@@ -17,7 +18,7 @@ import {
   type EagleSmartFolder,
 } from '../../lib/eagle-api';
 import type { MoveEagleSmartFolderInput } from './EagleSmartFolderTree';
-import type { createEagleQueryKeys } from './eagle-query-keys';
+import { isEagleAssetDetailKey, type createEagleQueryKeys } from './eagle-query-keys';
 import { moveSmartFolderInTree } from './eagle-smart-folder-order';
 
 type EagleQueryKeys = ReturnType<typeof createEagleQueryKeys>;
@@ -112,12 +113,22 @@ export function useEagleMutations(queryKeys: EagleQueryKeys, callbacks: EagleMut
     };
     return hasRatingRule(record.rules);
   };
+  const inCurrentScope = (key: readonly unknown[]) =>
+    key[0] === 'eagle' && key[1] === queryKeys.root[1] && key[2] === queryKeys.root[2];
   const ratingListPredicate = (query: { queryKey: readonly unknown[] }) =>
+    inCurrentScope(query.queryKey) &&
     query.queryKey.length === 6 &&
     query.queryKey[3] === 'assets' &&
     ratingMembershipSensitive(query.queryKey[5]);
   const ratingRefreshNeeded = () =>
     queryClient.getQueryCache().findAll({ queryKey: queryKeys.assets }).some(ratingListPredicate);
+  const metadataListPredicate = (query: { queryKey: readonly unknown[] }) =>
+    inCurrentScope(query.queryKey) &&
+    query.queryKey.length === 6 &&
+    query.queryKey[3] === 'assets' &&
+    metadataListMembershipSensitive(query.queryKey[5]);
+  const metadataRefreshNeeded = () =>
+    queryClient.getQueryCache().findAll({ queryKey: queryKeys.assets }).some(metadataListPredicate);
 
   const patchRating = (assets: EagleAssetVersion[], rating: number | null) => {
     const ids = assets.map((asset) => asset.assetId);
@@ -236,21 +247,84 @@ export function useEagleMutations(queryKeys: EagleQueryKeys, callbacks: EagleMut
       callbacks.onMetadataSaved(variables.assetId, variables.revision);
       const { asset, versions } = result;
       rememberVersions(versions);
-      if (asset)
+      if (asset) {
+        assetStore.applyPatches([
+          {
+            id: asset.id,
+            patch: { displayName: asset.displayName, rowVersion: asset.rowVersion },
+          },
+        ]);
         queryClient.setQueriesData<EagleAsset>(
           { queryKey: queryKeys.assetDetailPrefix(asset.id) },
           (current) => (current ? mergeEagleAssetFacts(current, asset).asset : current),
         );
-      await invalidate(queryKeys.assets, queryKeys.assetDetails);
+      } else {
+        const { displayName, description, sourceUrl } = variables.input;
+        assetStore.applyPatches(
+          versions.map(({ assetId, rowVersion }) => ({
+            id: assetId,
+            patch: { rowVersion },
+          })),
+        );
+        // The batch response carries versions but not the normalized name.
+        if (displayName !== undefined)
+          await queryClient.invalidateQueries({ queryKey: queryKeys.assets, type: 'active' });
+        if (description !== undefined || sourceUrl !== undefined) {
+          const affected = new Set(versions.map(({ assetId }) => assetId));
+          const ownerId = queryKeys.root[1] ?? '';
+          const mode = String(queryKeys.root[2]);
+          await queryClient.invalidateQueries({
+            predicate: (query) =>
+              isEagleAssetDetailKey(query.queryKey, ownerId, mode) &&
+              affected.has(String(query.queryKey[4])),
+          });
+        }
+      }
+      void invalidate(queryKeys.smartFolders);
+      if (metadataRefreshNeeded())
+        await queryClient.invalidateQueries({ predicate: metadataListPredicate });
     },
   });
+  const patchManualTags = (updates: readonly { assetId: string; tagIds: string[] }[]) => {
+    const catalog = new Map(
+      (queryClient.getQueryData<EagleManualTag[]>(queryKeys.manualTags) ?? []).map((tag) => [
+        tag.id,
+        tag,
+      ]),
+    );
+    const patches: Array<{
+      id: string;
+      patch: { manualTags: EagleManualTag[] };
+    }> = [];
+    let missing = false;
+    for (const { assetId, tagIds } of updates) {
+      const current = assetStore.get(assetId);
+      if (!current) {
+        missing = true;
+        continue;
+      }
+      const tags = tagIds.map((id) => catalog.get(id));
+      if (tags.some((tag) => !tag)) {
+        missing = true;
+        continue;
+      }
+      patches.push({ id: assetId, patch: { manualTags: tags as EagleManualTag[] } });
+    }
+    assetStore.applyPatches(patches);
+    return missing;
+  };
+  const refreshActiveListsIf = async (missing: boolean) => {
+    if (!missing) return;
+    await queryClient.invalidateQueries({ queryKey: queryKeys.assets, type: 'active' });
+  };
   const replaceTagsMutation = useMutation({
     mutationFn: ({ assetId, tagIds }: { assetId: string; tagIds: string[] }) =>
       replaceEagleAssetManualTags(assetId, tagIds),
-    onSuccess: async (result, { assetId }) => {
+    onSuccess: async (result, { assetId, tagIds }) => {
       if (isAcceptedOperation(result)) return;
       const { privacyChangedAssetCount } = result;
       if (privacyChangedAssetCount > 0) callbacks.onAssetPrivacyChanged();
+      await refreshActiveListsIf(patchManualTags([{ assetId, tagIds }]));
       await refreshEagleAssetRelations(queryClient, queryKeys, [assetId]);
     },
   });
@@ -344,11 +418,31 @@ export function useEagleMutations(queryKeys: EagleQueryKeys, callbacks: EagleMut
         removeTagIds,
         ...(clearAll ? { clearAll: true } : {}),
       }),
-    onSuccess: async (result, { assetIds }) => {
+    onSuccess: async (
+      result,
+      { assetIds, addTagIds = [], removeTagIds = [], clearAll = false },
+    ) => {
       callbacks.onBatchTagsApplied();
       if (isAcceptedOperation(result)) return;
       const { privacyChangedAssetCount } = result;
       if (privacyChangedAssetCount > 0) callbacks.onAssetPrivacyChanged();
+      const removed = new Set(removeTagIds);
+      const updates = assetIds.flatMap((assetId) => {
+        const current = assetStore.get(assetId);
+        if (!current) return [];
+        const tagIds = clearAll
+          ? []
+          : current.manualTags.map((tag) => tag.id).filter((id) => !removed.has(id));
+        const seen = new Set(tagIds);
+        for (const id of addTagIds)
+          if (!seen.has(id)) {
+            tagIds.push(id);
+            seen.add(id);
+          }
+        return [{ assetId, tagIds }];
+      });
+      const missing = patchManualTags(updates) || updates.length !== assetIds.length;
+      await refreshActiveListsIf(missing);
       await refreshEagleAssetRelations(queryClient, queryKeys, assetIds);
     },
   });

@@ -751,14 +751,62 @@ test('selection resolution reuses list filters and returns only ids and versions
   });
 });
 
+test('unfiltered selection asks the database for identity fields only', async () => {
+  const rows = [
+    {
+      id: 'asset-a',
+      rowVersion: 3,
+      libraryAddedAt: new Date('2026-01-03T00:00:00Z'),
+      chronologicalAt: new Date('2026-01-03T00:00:00Z'),
+      deletedAt: null,
+    },
+    {
+      id: 'asset-b',
+      rowVersion: 7,
+      libraryAddedAt: new Date('2026-01-02T00:00:00Z'),
+      chronologicalAt: new Date('2026-01-02T00:00:00Z'),
+      deletedAt: null,
+    },
+    {
+      id: 'asset-c',
+      rowVersion: 9,
+      libraryAddedAt: new Date('2026-01-01T00:00:00Z'),
+      chronologicalAt: new Date('2026-01-01T00:00:00Z'),
+      deletedAt: null,
+    },
+  ];
+  let args: { include?: unknown; select?: Record<string, unknown>; take?: number } = {};
+  const prisma = {
+    eagleAsset: {
+      findMany: async (input: typeof args) => {
+        args = input;
+        return rows;
+      },
+    },
+  };
+  const service = new EagleService(prisma as never, undefined, 'MATERIAL');
+  const result = await service.resolveSelection('owner-1', { limit: 2 } as never);
+  assert.equal(args.take, 1001);
+  assert.equal(args.include, undefined);
+  assert.deepEqual(Object.keys(args.select ?? {}).sort(), [
+    'chronologicalAt',
+    'deletedAt',
+    'id',
+    'libraryAddedAt',
+    'rowVersion',
+  ]);
+  assert.deepEqual(result.items, [
+    { assetId: 'asset-a', rowVersion: 3 },
+    { assetId: 'asset-b', rowVersion: 7 },
+    { assetId: 'asset-c', rowVersion: 9 },
+  ]);
+  assert.equal(result.nextCursor, null);
+});
+
 test('permanent purge validation only accepts visible trash rows', async () => {
   const service = new EagleService({} as never, undefined, 'MATERIAL');
   const tx = {
-    eagleAsset: {
-      count: async () => 0,
-      updateMany: async () => ({ count: 0 }),
-    },
-    $executeRaw: async () => 0,
+    $queryRaw: async () => [{ affectedAssetCount: 0 }],
   };
   await assert.rejects(
     service.markTrashForPurge(tx as never, 'owner-1', ['asset-a'], false),
@@ -766,28 +814,20 @@ test('permanent purge validation only accepts visible trash rows', async () => {
   );
 });
 
-test('permanent purge marks rows and schedules the worker job', async () => {
+test('permanent purge marks and schedules in one statement', async () => {
   const service = new EagleService({} as never, undefined, 'MATERIAL');
-  let update: Record<string, unknown> | undefined;
-  let rawSql: unknown;
+  let rawSql: { sql: string } | undefined;
   const tx = {
-    eagleAsset: {
-      count: async () => 1,
-      updateMany: async (input: { data: Record<string, unknown> }) => {
-        update = input.data;
-        return { count: 1 };
-      },
-    },
-    $executeRaw: async (query: unknown) => {
+    $queryRaw: async (query: { sql: string }) => {
       rawSql = query;
-      return 1;
+      return [{ affectedAssetCount: 1 }];
     },
   };
   const affected = await service.markTrashForPurge(tx as never, 'owner-1', ['asset-a'], false);
   assert.equal(affected, 1);
-  assert.equal(update?.purgeAfter instanceof Date, true);
-  assert.deepEqual(update?.rowVersion, { increment: 1 });
-  assert.ok(rawSql);
+  assert.match(rawSql!.sql, /WITH targets AS/);
+  assert.match(rawSql!.sql, /FOR UPDATE/);
+  assert.match(rawSql!.sql, /FROM targets target/);
 });
 
 test('selection request bodies keep array tag and format filters', () => {

@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { t } from '../../i18n';
-import { copyShareImageToClipboard } from '../../lib/image-clipboard';
-import { getEagleShareImageUrl } from '../../lib/eagle-api';
 import type { LibraryMode } from '../../lib/library-api-scope';
 import { downloadOriginalFiles, saveOriginalFile } from '../../lib/original-file-export';
 import type { EagleAssetListItem } from '../../lib/eagle-api';
 import type { EagleSelectionGesture } from './eagle-selection';
 import { getAssetDragIds, getDesktopAssetDragBridge, isFileDrag } from './eagle-asset-drag';
 import { DesktopAssetDragSession, type DesktopAssetDragStatus } from './eagle-asset-drag-session';
-import { getEaglePreviewContentUrl } from './eagle-media-sources';
+import { useLibraryShareCopy } from './useLibraryShareCopy';
 import type { getEagleWorkspaceCache, EagleLibraryView } from './eagle-workspace-cache';
 
 interface TransferContextMenu {
@@ -54,6 +52,7 @@ export function useEagleAssetTransferActions(options: {
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
   const [assetActionPending, setAssetActionPending] = useState<'copy' | 'save' | null>(null);
   const [assetActionError, setAssetActionError] = useState<string | null>(null);
+  const shareCopy = useLibraryShareCopy();
 
   useEffect(() => {
     setOriginalFileError(null);
@@ -154,29 +153,11 @@ export function useEagleAssetTransferActions(options: {
   };
 
   const copySelectedImage = () => {
-    const previewUrl = contextMenuAsset ? getEaglePreviewContentUrl(contextMenuAsset) : null;
-    if (!contextMenuAsset?.mimeType.startsWith('image/') || !previewUrl || assetActionPending) {
-      return;
-    }
-    setAssetActionPending('copy');
+    if (!contextMenuAsset?.mimeType.startsWith('image/')) return;
+    const asset = contextMenuAsset;
+    setAssetContextMenu(null);
     setAssetActionError(null);
-    void copyShareImageToClipboard(
-      getEagleShareImageUrl(contextMenuAsset.id, contextMenuAsset.libraryMode),
-    ).then(
-      () => {
-        setAssetActionPending(null);
-        setAssetContextMenu(null);
-      },
-      (error: unknown) => {
-        setAssetActionPending(null);
-        const detail = error instanceof Error ? `：${error.message}` : t('，请重试。');
-        setAssetActionError(
-          t('复制到剪贴板失败{{value1}}', {
-            value1: detail,
-          }),
-        );
-      },
-    );
+    void shareCopy.copy(asset);
   };
 
   const handleAssetDragStart = (event: DragEvent<HTMLButtonElement>, assetId: string) => {
@@ -267,6 +248,7 @@ export function useEagleAssetTransferActions(options: {
     assetActionPending,
     assetActionError,
     setAssetActionError,
+    shareCopy,
     saveSelectedOriginal,
     copySelectedImage,
     handleAssetDragStart,

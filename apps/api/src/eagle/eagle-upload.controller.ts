@@ -61,7 +61,7 @@ export class EagleUploadController {
     @CurrentPrincipal() principal: AuthPrincipal,
     @Body() input: CheckUploadContentDto,
   ): Promise<CheckUploadContentResultDto> {
-    return this.uploads.checkContent(principal.sub, input);
+    return this.uploads.checkContent(principal.sub, input, principal.canViewPrivate === true);
   }
 
   @Post('check-content-batch')
@@ -71,7 +71,11 @@ export class EagleUploadController {
     @CurrentPrincipal() principal: AuthPrincipal,
     @Body() input: CheckUploadContentBatchDto,
   ): Promise<CheckUploadContentBatchResultDto> {
-    return this.uploads.checkContentBatch(principal.sub, input.items);
+    return this.uploads.checkContentBatch(
+      principal.sub,
+      input.items,
+      principal.canViewPrivate === true,
+    );
   }
 
   @Post('status-batch')

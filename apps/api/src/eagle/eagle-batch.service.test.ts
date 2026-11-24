@@ -271,7 +271,12 @@ test('a tag used as a privacy rule cannot be deleted before the rule is removed 
   const transaction = {
     $queryRaw: async () => [],
     eagleManualTag: {
-      findFirst: async () => ({ id: 'tag-private', marksAssetsPrivate: true }),
+      findFirst: async () => ({
+        id: 'tag-private',
+        name: '私密',
+        systemKey: null,
+        marksAssetsPrivate: true,
+      }),
       delete: async () => {
         deleted = true;
       },
@@ -332,7 +337,12 @@ test('deleting a non-private tag does not recalculate unrelated library privacy'
   const tx = {
     $queryRaw: async () => [],
     eagleManualTag: {
-      findFirst: async () => ({ id: 'public-tag', marksAssetsPrivate: false }),
+      findFirst: async () => ({
+        id: 'public-tag',
+        name: '公开',
+        systemKey: null,
+        marksAssetsPrivate: false,
+      }),
       delete: async () => ({}),
     },
     eagleAssetManualTag: { deleteMany: async () => ({ count: 1 }) },

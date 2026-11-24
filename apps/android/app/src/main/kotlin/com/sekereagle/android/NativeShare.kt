@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
 import com.sekereagle.android.core.NativeDownloadPolicy
-import com.sekereagle.android.core.NativeGalleryPolicy
 import com.sekereagle.android.core.NativeSharePolicy
 import java.io.File
 import java.io.IOException
@@ -47,6 +46,7 @@ internal suspend fun shareNativeAsset(
                     asset,
                     directory,
                     cancellation,
+                    onStage,
                     onProgress,
                 )
             shareMime = "image/jpeg"
@@ -136,6 +136,7 @@ private suspend fun shareImageFile(
     asset: NativeAsset,
     directory: File,
     cancellation: NativeTransferCancellation,
+    onStage: (String) -> Unit,
     onProgress: (Long, Long) -> Unit,
 ): File {
     val name = "share-${asset.id}-${asset.revision}.jpg"
@@ -147,13 +148,14 @@ private suspend fun shareImageFile(
     val temporary = File(directory, ".${name}.part")
     if (temporary.exists()) temporary.delete()
     try {
-        val path =
-            NativeGalleryPolicy.base(mode.name) +
-                "/assets/" +
-                NativeGalleryPolicy.identifier(asset.id) +
-                "/share-image"
+        val contentPath = repo.startShareRender(mode, asset, cancellation, onStage)
         temporary.outputStream().use { output ->
-            repo.connection.downloadShareImage(path, output, cancellation, onProgress)
+            repo.connection.downloadShareRendition(
+                contentPath,
+                output,
+                cancellation,
+                onProgress,
+            )
         }
         cancellation.check()
         if (!temporary.renameTo(cached)) throw IOException("无法保存分享图，请检查存储空间")

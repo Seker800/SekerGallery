@@ -145,6 +145,11 @@ const fetchEagleReviewSummaryMock = vi.fn();
 const canCopyImageToClipboardMock = vi.fn();
 const copyImageToClipboardMock = vi.fn();
 const copyShareImageToClipboardMock = vi.fn();
+const startShareMock = vi.fn();
+const getShareMock = vi.fn();
+const cancelShareMock = vi.fn();
+const prepareShareClipboardMock = vi.fn();
+const copyPreparedShareImageMock = vi.fn();
 const saveOriginalFileMock = vi.fn();
 const downloadOriginalFilesMock = vi.fn();
 let intersectionCallback: IntersectionObserverCallback | null = null;
@@ -156,7 +161,9 @@ vi.mock('../../lib/eagle-api', () => {
     listEagleWatermarkPresets: async () => ({ presets: {} }),
     saveEagleWatermarkPreset: async () => ({ saved: true }),
     getEagleAssetContentUrl: (assetId: string) => `/api/eagle/assets/${assetId}/content`,
-    getEagleShareImageUrl: (assetId: string) => `/api/eagle/assets/${assetId}/share-image`,
+    startEagleShareRender: (...args: unknown[]) => startShareMock(...args),
+    getEagleShareRender: (...args: unknown[]) => getShareMock(...args),
+    cancelEagleShareRender: (...args: unknown[]) => cancelShareMock(...args),
     getEagleRenditionContentUrl: (assetId: string, renditionId: string) =>
       `/api/eagle/assets/${assetId}/renditions/${renditionId}/content`,
     getEaglePyramidDescriptor: (...args: unknown[]) => getEaglePyramidDescriptorMock(...args),
@@ -216,6 +223,8 @@ vi.mock('../../lib/image-clipboard', () => ({
   canCopyImageToClipboard: () => canCopyImageToClipboardMock(),
   copyImageToClipboard: (...args: unknown[]) => copyImageToClipboardMock(...args),
   copyShareImageToClipboard: (...args: unknown[]) => copyShareImageToClipboardMock(...args),
+  prepareShareClipboardImage: (...args: unknown[]) => prepareShareClipboardMock(...args),
+  copyPreparedShareImageToClipboard: (...args: unknown[]) => copyPreparedShareImageMock(...args),
 }));
 
 vi.mock('../../lib/original-file-export', () => ({
@@ -430,6 +439,35 @@ describe('SekerEaglePage', () => {
     });
     canCopyImageToClipboardMock.mockReturnValue(true);
     copyImageToClipboardMock.mockResolvedValue(undefined);
+    copyPreparedShareImageMock.mockResolvedValue(undefined);
+    prepareShareClipboardMock.mockReturnValue({
+      jpeg: Promise.resolve({ buffer: new ArrayBuffer(0), contentType: 'image/jpeg' }),
+      png: Promise.resolve(new Blob(['png'], { type: 'image/png' })),
+    });
+    startShareMock.mockResolvedValue({
+      id: 'rendition-1',
+      status: 'READY',
+      stage: 'READY',
+      elapsedMs: 0,
+      contentUrl: '/api/eagle/assets/asset-1/renditions/rendition-1/content',
+      renditionId: 'rendition-1',
+      width: 4_096,
+      height: 4_096,
+      byteSize: 4_194_304,
+      cached: true,
+    });
+    getShareMock.mockResolvedValue({
+      id: 'render-1',
+      status: 'READY',
+      stage: 'READY',
+      elapsedMs: 0,
+      contentUrl: '/api/eagle/assets/asset-1/renditions/rendition-1/content',
+      renditionId: 'rendition-1',
+      width: 4_096,
+      height: 4_096,
+      byteSize: 4_194_304,
+    });
+    cancelShareMock.mockResolvedValue({});
     saveOriginalFileMock.mockImplementation((target: { id: string }) => {
       const bridge = (
         globalThis as {
@@ -1359,13 +1397,6 @@ describe('SekerEaglePage', () => {
     const inspector = await screen.findByRole('complementary', { name: '素材详情' });
     expect(within(inspector).getByText('已选择 2 项')).toBeInTheDocument();
     const description = await within(inspector).findByRole('textbox', { name: '素材描述' });
-    listEagleAssetsMock.mockResolvedValue({
-      items: [
-        { ...asset, rowVersion: 3 },
-        { ...secondAsset, rowVersion: 6 },
-      ],
-      nextCursor: null,
-    });
     fireEvent.change(description, {
       target: { value: '共享描述' },
     });
@@ -1380,14 +1411,15 @@ describe('SekerEaglePage', () => {
         description: '共享描述',
       });
     });
-    await waitFor(() => expect(listEagleAssetsMock.mock.calls.length).toBeGreaterThanOrEqual(2));
+    // The write response owns the next row versions; a plain list does not refetch.
+    expect(listEagleAssetsMock).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(inspector).getByRole('button', { name: '5 星' }));
     await waitFor(() => {
       expect(batchUpdateEagleAssetsMock).toHaveBeenLastCalledWith({
         assets: [
-          { assetId: 'asset-1', rowVersion: 3 },
-          { assetId: 'asset-2', rowVersion: 6 },
+          { assetId: 'asset-1', rowVersion: 2 },
+          { assetId: 'asset-2', rowVersion: 5 },
         ],
         rating: 5,
       });
@@ -1647,7 +1679,7 @@ describe('SekerEaglePage', () => {
     expect(fireEvent.contextMenu(screen.getByTestId('eagle-image-viewer'))).toBe(true);
     expect(screen.queryByRole('menu', { name: '素材操作' })).not.toBeInTheDocument();
     expect(copyImageToClipboardMock).not.toHaveBeenCalled();
-    expect(copyShareImageToClipboardMock).not.toHaveBeenCalled();
+    expect(copyPreparedShareImageMock).not.toHaveBeenCalled();
   });
 
   it('uses the same manual favorite tag from the context menu and desktop viewer', async () => {
@@ -1701,7 +1733,7 @@ describe('SekerEaglePage', () => {
 
   it('requests browser image clipboard access before the click handler returns', async () => {
     let copyStarted = false;
-    copyShareImageToClipboardMock.mockImplementationOnce(() => {
+    copyPreparedShareImageMock.mockImplementationOnce(() => {
       copyStarted = true;
       return Promise.resolve();
     });
@@ -1724,7 +1756,8 @@ describe('SekerEaglePage', () => {
       within(menu).queryByRole('menuitem', { name: '打开可复制预览' }),
     ).not.toBeInTheDocument();
     expect(copyImageToClipboardMock).not.toHaveBeenCalled();
-    expect(copyShareImageToClipboardMock).not.toHaveBeenCalled();
+    expect(copyPreparedShareImageMock).not.toHaveBeenCalled();
+    expect(prepareShareClipboardMock).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: '复制 Owl Reference' })).not.toBeInTheDocument();
   });
 
@@ -1754,22 +1787,21 @@ describe('SekerEaglePage', () => {
   });
 
   it('keeps shared image-copy failures visible and retryable', async () => {
-    copyShareImageToClipboardMock
+    copyPreparedShareImageMock
       .mockRejectedValueOnce(new Error('clipboard denied'))
       .mockResolvedValueOnce(undefined);
     renderPage();
 
     fireEvent.contextMenu(await screen.findByRole('button', { name: /Owl Reference/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: '复制到剪贴板' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('复制到剪贴板失败');
-    const retry = screen.getByRole('menuitem', { name: '复制到剪贴板' });
+    expect(await screen.findByText('clipboard denied')).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: '复制' });
     expect(retry).toBeEnabled();
     fireEvent.click(retry);
 
-    await waitFor(() => expect(copyShareImageToClipboardMock).toHaveBeenCalledTimes(2));
-    await waitFor(() =>
-      expect(screen.queryByRole('menu', { name: '素材操作' })).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(copyPreparedShareImageMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/已复制.*分享图/)).toBeInTheDocument();
+    expect(screen.queryByRole('menu', { name: '素材操作' })).not.toBeInTheDocument();
   });
 
   it('removes selected manual tags from the asset context menu', async () => {

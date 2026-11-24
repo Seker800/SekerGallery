@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { hashKey, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { getEagleWorkspaceCache } from './eagle-workspace-cache';
 import { UploadDedupeChecker, type UploadDedupeResult } from '../../lib/upload-dedupe';
+import type { EagleUploadItem, LibraryUploadQueue } from '../../lib/library-upload-queue';
 export type { EagleUploadItem } from '../../lib/library-upload-queue';
 
 export interface EagleUploadSummary {
@@ -18,7 +19,7 @@ export interface EagleUploadSummary {
   paused: boolean;
 }
 
-function transferredBytes(items: ReturnType<typeof useUploads>) {
+function transferredBytes(items: readonly EagleUploadItem[]) {
   let bytes = 0;
   for (const item of items) {
     if (item.state === 'completed' || item.state === 'duplicate' || item.state === 'uploaded')
@@ -28,10 +29,7 @@ function transferredBytes(items: ReturnType<typeof useUploads>) {
   return bytes;
 }
 
-function useUploads(queue: ReturnType<typeof getEagleWorkspaceCache>['uploads']) {
-  return useSyncExternalStore(queue.subscribe, queue.snapshot);
-}
-
+/** Queue, importer and actions without subscribing the caller to progress events. */
 export function useEagleUploadController(assetsQueryKey: QueryKey) {
   const {
     api: { uploadEagleAsset, getEagleUploadStatuses, checkEagleUploadContentBatch },
@@ -42,10 +40,6 @@ export function useEagleUploadController(assetsQueryKey: QueryKey) {
   const cache = getEagleWorkspaceCache(client, ownerId, libraryMode);
   useEffect(() => cache.retain(false), [cache]);
   const queue = cache.uploads;
-  const allItems = useUploads(queue);
-  const itemsRef = useRef(allItems);
-  itemsRef.current = allItems;
-  const [speed, setSpeed] = useState({ bytes: 0, at: 0, speed: 0 });
   const dedupe = useMemo(
     () => new UploadDedupeChecker((items, signal) => checkEagleUploadContentBatch(items, signal)),
     [checkEagleUploadContentBatch],
@@ -69,54 +63,9 @@ export function useEagleUploadController(assetsQueryKey: QueryKey) {
     };
   }, [dedupe, queue]);
   const scope = hashKey(assetsQueryKey);
-  const uploads = allItems.filter((item) => item.scope === scope);
-  const completed = uploads.filter((item) => item.state === 'completed').length;
-  const duplicate = uploads.filter((item) => item.state === 'duplicate').length;
-  const failed = uploads.filter((item) => item.state === 'failed').length;
-  const waiting = uploads.filter(
-    (item) =>
-      item.state === 'queued' ||
-      item.state === 'checking' ||
-      item.state === 'uploading' ||
-      item.state === 'uploaded',
-  ).length;
-  const totalBytes = uploads.reduce((sum, item) => sum + item.size, 0);
-  const doneBytes = transferredBytes(uploads);
-  const pending = waiting > 0;
-
-  useEffect(() => {
-    if (!pending) {
-      setSpeed({ bytes: 0, at: 0, speed: 0 });
-      return;
-    }
-    setSpeed({ bytes: transferredBytes(itemsRef.current), at: performance.now(), speed: 0 });
-    const timer = setInterval(() => {
-      const bytes = transferredBytes(itemsRef.current);
-      setSpeed((previous) => {
-        const now = performance.now();
-        const instant = previous.at ? (bytes - previous.bytes) / ((now - previous.at) / 1000) : 0;
-        const smoothed = previous.speed ? previous.speed * 0.65 + instant * 0.35 : instant;
-        return { bytes, at: now, speed: Math.max(0, smoothed) };
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [pending]);
-
-  const remainingBytes = Math.max(0, totalBytes - doneBytes);
-  const summary: EagleUploadSummary = {
-    total: uploads.length,
-    uploaded: completed + uploads.filter((item) => item.state === 'uploaded').length,
-    completed,
-    duplicate,
-    failed,
-    waiting,
-    percent: totalBytes ? Math.min(100, Math.round((doneBytes / totalBytes) * 100)) : 0,
-    bytesPerSecond: pending ? speed.speed : 0,
-    remainingSeconds: pending && speed.speed > 0 ? Math.ceil(remainingBytes / speed.speed) : null,
-    paused: queue.paused,
-  };
-
   return {
+    queue,
+    scope,
     importFiles: (files: File[]) => {
       // Hash ahead of the transfer workers, so an upload slot never sits idle
       // while the browser computes a whole-file digest for the file it just took.
@@ -141,12 +90,85 @@ export function useEagleUploadController(assetsQueryKey: QueryKey) {
         (sessionIds, signal) => getEagleUploadStatuses(sessionIds, signal),
       );
     },
-    uploads,
-    summary,
     pauseUploads: queue.pauseAll,
     resumeUploads: queue.resumeAll,
     retryAllFailed: () => queue.retryAllFailed(scope),
     dismissUploads: () => queue.dismiss(scope),
     retryUpload: (id: number) => queue.enqueue([id]),
   };
+}
+
+/** Subscribes only the upload panel to queue progress. */
+export function useEagleUploadSnapshot(queue: LibraryUploadQueue, scope: string) {
+  // Subscribe to the scalar version; item objects update in place.
+  useSyncExternalStore(queue.subscribe, queue.getVersion, queue.getVersion);
+  const uploads = queue.items.filter((item) => item.scope === scope);
+  const itemsRef = useRef(uploads);
+  itemsRef.current = uploads;
+  const [speed, setSpeed] = useState({ bytes: 0, at: 0, speed: 0 });
+  const counts = useMemo(() => {
+    let completed = 0,
+      duplicate = 0,
+      failed = 0,
+      waiting = 0,
+      uploaded = 0,
+      totalBytes = 0;
+    for (const item of uploads) {
+      totalBytes += item.size;
+      switch (item.state) {
+        case 'completed':
+          completed += 1;
+          break;
+        case 'duplicate':
+          duplicate += 1;
+          break;
+        case 'failed':
+          failed += 1;
+          break;
+        case 'queued':
+        case 'checking':
+        case 'uploading':
+        case 'uploaded':
+          waiting += 1;
+          break;
+      }
+      if (item.state === 'uploaded') uploaded += 1;
+    }
+    return { completed, duplicate, failed, waiting, uploaded, totalBytes };
+  }, [uploads]);
+  const doneBytes = transferredBytes(uploads);
+  const pending = counts.waiting > 0;
+  useEffect(() => {
+    if (!pending) {
+      setSpeed({ bytes: 0, at: 0, speed: 0 });
+      return;
+    }
+    setSpeed({ bytes: transferredBytes(itemsRef.current), at: performance.now(), speed: 0 });
+    const timer = setInterval(() => {
+      const bytes = transferredBytes(itemsRef.current);
+      setSpeed((previous) => {
+        const now = performance.now();
+        const instant = previous.at ? (bytes - previous.bytes) / ((now - previous.at) / 1000) : 0;
+        const smoothed = previous.speed ? previous.speed * 0.65 + instant * 0.35 : instant;
+        return { bytes, at: now, speed: Math.max(0, smoothed) };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pending]);
+  const remainingBytes = Math.max(0, counts.totalBytes - doneBytes);
+  const summary: EagleUploadSummary = {
+    total: uploads.length,
+    uploaded: counts.completed + counts.uploaded,
+    completed: counts.completed,
+    duplicate: counts.duplicate,
+    failed: counts.failed,
+    waiting: counts.waiting,
+    percent: counts.totalBytes
+      ? Math.min(100, Math.round((doneBytes / counts.totalBytes) * 100))
+      : 0,
+    bytesPerSecond: pending ? speed.speed : 0,
+    remainingSeconds: pending && speed.speed > 0 ? Math.ceil(remainingBytes / speed.speed) : null,
+    paused: queue.paused,
+  };
+  return { uploads, summary };
 }

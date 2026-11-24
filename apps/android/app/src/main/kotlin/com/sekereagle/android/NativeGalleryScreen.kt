@@ -139,6 +139,31 @@ fun NativeGalleryApp(model: NativeGalleryViewModel, openNative: (String) -> Unit
     }
 }
 
+internal sealed interface NativeGridEntry {
+    val key: String
+
+    data class Header(val date: String, val anchorId: String) : NativeGridEntry {
+        override val key = "date:$anchorId"
+    }
+
+    data class Asset(val item: NativeAsset, val mode: String) : NativeGridEntry {
+        override val key = "$mode:${item.id}"
+    }
+}
+
+/** Pure entry list so the grid only registers one item per entry and keys stay stable per page. */
+internal fun buildNativeGridEntries(
+    items: List<NativeAsset>,
+    dayStarts: Set<String>,
+    mode: String,
+): List<NativeGridEntry> =
+    buildList(items.size + dayStarts.size) {
+        for (asset in items) {
+            if (asset.id in dayStarts) add(NativeGridEntry.Header(asset.groupDate, asset.id))
+            add(NativeGridEntry.Asset(asset, mode))
+        }
+    }
+
 @Composable
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 internal fun NativeLibraryPage(
@@ -163,6 +188,10 @@ internal fun NativeLibraryPage(
                 (if (state.trash) 1 else 0) +
                     (if (state.filters.active || state.query.isNotEmpty()) 1 else 0),
             )
+        }
+    val gridEntries =
+        remember(layout, state.items, state.mode) {
+            buildNativeGridEntries(state.items, layout.dayStarts, state.mode.name)
         }
     var renderedWindow by
         remember(
@@ -304,142 +333,50 @@ internal fun NativeLibraryPage(
                             }
                         }
                     }
-                state.items.forEach { asset ->
-                    if (asset.id in layout.dayStarts)
-                        item(key = "date:${asset.id}", span = { GridItemSpan(maxLineSpan) }) {
-                            Text(
-                                asset.groupDate,
-                                Modifier.fillMaxWidth()
-                                    .then(
-                                        if (state.selecting)
-                                            Modifier.clickable {
-                                                model.selectLoaded(
-                                                    state.items
-                                                        .filter { it.groupDate == asset.groupDate }
-                                                        .map { it.id }
-                                                        .toSet()
-                                                )
-                                            }
-                                        else Modifier
-                                    )
-                                    .padding(
-                                        start = 16.dp,
-                                        top =
-                                            if (state.filters.active || state.query.isNotEmpty())
-                                                6.dp
-                                            else 18.dp,
-                                        bottom =
-                                            if (state.filters.active || state.query.isNotEmpty())
-                                                6.dp
-                                            else 14.dp,
-                                    ),
-                                fontSize =
-                                    if (state.filters.active || state.query.isNotEmpty()) 14.sp
-                                    else 17.sp,
-                            )
+                // Register one lazy item per entry; rows are never eagerly composed or iterated
+                // over the whole loaded list during layout.
+                items(
+                    count = gridEntries.size,
+                    key = { gridEntries[it].key },
+                    span = { index ->
+                        when (gridEntries[index]) {
+                            is NativeGridEntry.Header -> GridItemSpan(maxLineSpan)
+                            is NativeGridEntry.Asset -> GridItemSpan(1)
                         }
-                    item(key = "${state.mode}:${asset.id}") {
-                        Box(
-                            Modifier.aspectRatio(1f)
-                                .background(Color(0xFF171719))
-                                .combinedClickable(
-                                    onClick = { model.openAsset(asset.id) },
-                                    onLongClick = {
-                                        haptics.performHapticFeedback(
-                                            androidx.compose.ui.hapticfeedback.HapticFeedbackType
-                                                .LongPress
-                                        )
-                                        model.startSelection(asset.id)
-                                    },
-                                )
-                                .testTag("asset:${asset.id}")
-                        ) {
-                            NativeImage(
-                                repo,
-                                asset.thumbnail,
-                                false,
-                                asset.name,
-                                Modifier.fillMaxSize(),
-                                ContentScale.Crop,
-                                cacheVersion = asset.cacheVersion,
+                    },
+                ) { index ->
+                    when (val entry = gridEntries[index]) {
+                        is NativeGridEntry.Header ->
+                            NativeGridDateHeader(
+                                date = entry.date,
+                                selecting = state.selecting,
+                                compact = state.filters.active || state.query.isNotEmpty(),
+                                onSelectGroup = {
+                                    model.selectLoaded(
+                                        state.items
+                                            .filter { it.groupDate == entry.date }
+                                            .map { it.id }
+                                            .toSet()
+                                    )
+                                },
+                            )
+                        is NativeGridEntry.Asset ->
+                            NativeGridAssetCell(
+                                asset = entry.item,
+                                repo = repo,
+                                selecting = state.selecting,
+                                selected = entry.item.id in state.selected,
+                                trash = state.trash,
                                 active = active,
+                                onOpen = { model.openAsset(entry.item.id) },
+                                onLongPress = {
+                                    haptics.performHapticFeedback(
+                                        androidx.compose.ui.hapticfeedback.HapticFeedbackType
+                                            .LongPress
+                                    )
+                                    model.startSelection(entry.item.id)
+                                },
                             )
-                            if (state.selecting) {
-                                Icon(
-                                    if (asset.id in state.selected) Icons.Outlined.CheckCircle
-                                    else Icons.Outlined.RadioButtonUnchecked,
-                                    if (asset.id in state.selected) "已选择" else "未选择",
-                                    Modifier.align(Alignment.TopEnd)
-                                        .padding(7.dp)
-                                        .size(24.dp)
-                                        .background(Color.Black.copy(alpha = 0.4f), CircleShape),
-                                    tint =
-                                        if (asset.id in state.selected)
-                                            MaterialTheme.colorScheme.primary
-                                        else Color.White,
-                                )
-                            }
-                            if (asset.video)
-                                Text(
-                                    "视频",
-                                    Modifier.align(Alignment.BottomStart)
-                                        .padding(6.dp)
-                                        .background(
-                                            Color.Black.copy(alpha = 0.45f),
-                                            RoundedCornerShape(6.dp),
-                                        )
-                                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                                    fontSize = 11.sp,
-                                )
-                            if (!state.selecting && !state.trash) {
-                                if (asset.favorite)
-                                    Icon(
-                                        Icons.Outlined.Favorite,
-                                        "已收藏",
-                                        Modifier.align(Alignment.TopEnd)
-                                            .padding(6.dp)
-                                            .size(20.dp)
-                                            .background(
-                                                Color.Black.copy(alpha = 0.4f),
-                                                CircleShape,
-                                            )
-                                            .padding(3.dp),
-                                        tint = Color(0xFFFF8AA5),
-                                    )
-                                asset.rating?.let { rating ->
-                                    Text(
-                                        "★$rating",
-                                        Modifier.align(Alignment.TopStart)
-                                            .padding(6.dp)
-                                            .background(
-                                                Color.Black.copy(alpha = 0.45f),
-                                                RoundedCornerShape(6.dp),
-                                            )
-                                            .padding(horizontal = 5.dp, vertical = 2.dp),
-                                        fontSize = 11.sp,
-                                    )
-                                }
-                                val version =
-                                    when {
-                                        asset.edited -> "已编辑"
-                                        asset.stackHasEditedMember -> "原片"
-                                        else -> null
-                                    }
-                                version?.let {
-                                    Text(
-                                        it,
-                                        Modifier.align(Alignment.BottomEnd)
-                                            .padding(6.dp)
-                                            .background(
-                                                Color.Black.copy(alpha = 0.55f),
-                                                RoundedCornerShape(6.dp),
-                                            )
-                                            .padding(horizontal = 5.dp, vertical = 2.dp),
-                                        fontSize = 10.sp,
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
                 if (
@@ -537,6 +474,130 @@ internal fun NativeLibraryPage(
                 }
             },
         )
+}
+
+@Composable
+private fun NativeGridDateHeader(
+    date: String,
+    selecting: Boolean,
+    compact: Boolean,
+    onSelectGroup: () -> Unit,
+) {
+    Text(
+        date,
+        Modifier.fillMaxWidth()
+            .then(if (selecting) Modifier.clickable(onClick = onSelectGroup) else Modifier)
+            .padding(
+                start = 16.dp,
+                top = if (compact) 6.dp else 18.dp,
+                bottom = if (compact) 6.dp else 14.dp,
+            ),
+        fontSize = if (compact) 14.sp else 17.sp,
+    )
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun NativeGridAssetCell(
+    asset: NativeAsset,
+    repo: NativeGalleryRepository,
+    selecting: Boolean,
+    selected: Boolean,
+    trash: Boolean,
+    active: Boolean,
+    onOpen: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    Box(
+        Modifier.aspectRatio(1f)
+            .background(Color(0xFF171719))
+            .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
+            .testTag("asset:${asset.id}")
+    ) {
+        NativeImage(
+            repo,
+            asset.thumbnail,
+            false,
+            asset.name,
+            Modifier.fillMaxSize(),
+            ContentScale.Crop,
+            cacheVersion = asset.cacheVersion,
+            active = active,
+        )
+        if (selecting) {
+            Icon(
+                if (selected) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                if (selected) "已选择" else "未选择",
+                Modifier.align(Alignment.TopEnd)
+                    .padding(7.dp)
+                    .size(24.dp)
+                    .background(Color.Black.copy(alpha = 0.4f), CircleShape),
+                tint =
+                    if (selected) MaterialTheme.colorScheme.primary
+                    else Color.White,
+            )
+        }
+        if (asset.video)
+            Text(
+                "视频",
+                Modifier.align(Alignment.BottomStart)
+                    .padding(6.dp)
+                    .background(
+                        Color.Black.copy(alpha = 0.45f),
+                        RoundedCornerShape(6.dp),
+                    )
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                fontSize = 11.sp,
+            )
+        if (!selecting && !trash) {
+            if (asset.favorite)
+                Icon(
+                    Icons.Outlined.Favorite,
+                    "已收藏",
+                    Modifier.align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(20.dp)
+                        .background(
+                            Color.Black.copy(alpha = 0.4f),
+                            CircleShape,
+                        )
+                        .padding(3.dp),
+                    tint = Color(0xFFFF8AA5),
+                )
+            asset.rating?.let { rating ->
+                Text(
+                    "★$rating",
+                    Modifier.align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .background(
+                            Color.Black.copy(alpha = 0.45f),
+                            RoundedCornerShape(6.dp),
+                        )
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                    fontSize = 11.sp,
+                )
+            }
+            val version =
+                when {
+                    asset.edited -> "已编辑"
+                    asset.stackHasEditedMember -> "原片"
+                    else -> null
+                }
+            version?.let {
+                Text(
+                    it,
+                    Modifier.align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .background(
+                            Color.Black.copy(alpha = 0.55f),
+                            RoundedCornerShape(6.dp),
+                        )
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                    fontSize = 10.sp,
+                )
+            }
+        }
+    }
 }
 
 @Composable

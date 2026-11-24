@@ -3,7 +3,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { expect, it, vi } from 'vitest';
 import { LibraryWorkspaceProvider } from '../../lib/library-workspace';
-import { useEagleUploadController } from './useEagleUploadController';
+import { useEagleUploadController, useEagleUploadSnapshot } from './useEagleUploadController';
+
+function useTestUploadController(key: Parameters<typeof useEagleUploadController>[0]) {
+  const controller = useEagleUploadController(key);
+  return {
+    ...controller,
+    ...useEagleUploadSnapshot(controller.queue, controller.scope),
+  };
+}
 const { material, photo, statuses, dedupeCheck } = vi.hoisted(() => ({
   material: vi.fn(),
   photo: vi.fn(),
@@ -41,7 +49,7 @@ it('pins every file of a drag batch to the mode at drop time, including queued f
       </LibraryWorkspaceProvider>
     </QueryClientProvider>
   );
-  const view = renderHook(() => useEagleUploadController(['eagle', 'owner', mode, 'assets']), {
+  const view = renderHook(() => useTestUploadController(['eagle', 'owner', mode, 'assets']), {
     wrapper,
   });
   const files = ['a', 'b', 'c', 'd', 'e'].map(
@@ -78,10 +86,9 @@ it('skips a file found by the pre-upload check without calling the upload API', 
       </LibraryWorkspaceProvider>
     </QueryClientProvider>
   );
-  const view = renderHook(
-    () => useEagleUploadController(['eagle', 'owner', 'MATERIAL', 'assets']),
-    { wrapper },
-  );
+  const view = renderHook(() => useTestUploadController(['eagle', 'owner', 'MATERIAL', 'assets']), {
+    wrapper,
+  });
   await act(async () => {
     await view.result.current.importFiles([new File(['same'], 'same.jpg')]);
   });
@@ -108,10 +115,9 @@ it('keeps independent file progress, all failures and a dismissible success summ
       else done({});
     });
   });
-  const view = renderHook(
-    () => useEagleUploadController(['eagle', 'owner', 'MATERIAL', 'assets']),
-    { wrapper },
-  );
+  const view = renderHook(() => useTestUploadController(['eagle', 'owner', 'MATERIAL', 'assets']), {
+    wrapper,
+  });
   let pending!: Promise<void>;
   await act(async () => {
     pending = view.result.current.importFiles([new File(['a'], 'a.jpg'), new File(['b'], 'b.jpg')]);
@@ -170,10 +176,9 @@ it('revoking the browser session aborts active uploads and never starts the queu
       </LibraryWorkspaceProvider>
     </QueryClientProvider>
   );
-  const view = renderHook(
-    () => useEagleUploadController(['eagle', 'owner', 'MATERIAL', 'assets']),
-    { wrapper },
-  );
+  const view = renderHook(() => useTestUploadController(['eagle', 'owner', 'MATERIAL', 'assets']), {
+    wrapper,
+  });
   let pending!: Promise<void>;
   await act(async () => {
     pending = view.result.current.importFiles(
@@ -217,10 +222,9 @@ it('starts hashing every imported file before an upload slot frees', async () =>
       </LibraryWorkspaceProvider>
     </QueryClientProvider>
   );
-  const view = renderHook(
-    () => useEagleUploadController(['eagle', 'owner', 'MATERIAL', 'assets']),
-    { wrapper },
-  );
+  const view = renderHook(() => useTestUploadController(['eagle', 'owner', 'MATERIAL', 'assets']), {
+    wrapper,
+  });
   let pending!: Promise<void>;
   await act(async () => {
     pending = view.result.current.importFiles(
@@ -259,7 +263,7 @@ it('remounting a mode subscribes to its original upload queue', async () => {
       </LibraryWorkspaceProvider>
     </QueryClientProvider>
   );
-  const hook = () => useEagleUploadController(['eagle', 'owner', 'MATERIAL', 'assets']);
+  const hook = () => useTestUploadController(['eagle', 'owner', 'MATERIAL', 'assets']);
   const first = renderHook(hook, { wrapper });
   let pending!: Promise<void>;
   await act(async () => {

@@ -150,6 +150,7 @@ final class MultipartTransport implements BackupEngine.Transport {
           cp.session = "";
           cp.partSize = 0;
           save.write(cp);
+          status = "INITIATED";
         }
         if (status.equals("FAILED")
             && (session.optInt("finalizationAttempts") >= 10
@@ -165,6 +166,7 @@ final class MultipartTransport implements BackupEngine.Transport {
       } catch (ApiClient.Failure e) {
         if (e.status != 404) throw e;
         cp.session = "";
+        status = "INITIATED";
       }
     }
     if (cp.session.isEmpty()) {
@@ -315,6 +317,7 @@ final class MultipartTransport implements BackupEngine.Transport {
       return source.read(offset, length, guard);
     } catch (OutOfMemoryError memory) {
       if (claimed) budget.releaseBytes(length);
+      claimed = false;
       budget.degradeForBatch();
       guard.check();
       Thread.sleep(2_000);

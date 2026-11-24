@@ -280,10 +280,27 @@ test('large operation admission has its own adjustable gateway deadline', async 
   assert.match(route[1], /^".*"$/u, 'nginx regex quantifier braces require a quoted expression');
   for (const mode of ['eagle', 'photos']) {
     assert.ok(pattern.test(`/api/${mode}/operations`));
-    assert.ok(pattern.test(`/api/${mode}/assets/batch/send`));
-    assert.ok(pattern.test(`/api/${mode}/duplicates/cleanup`));
-    assert.ok(pattern.test(`/api/${mode}/duplicates/scan`));
+    for (const route of [
+      'assets/selection',
+      'manual-tags/merge',
+      'tags/merge',
+      'assets/batch/send',
+      'assets/batch/manual-tags',
+      'assets/batch/trash',
+      'assets/batch/restore',
+      'assets/batch/purge',
+      'assets/batch/edit-renders',
+      'assets/batch/edit-render-context',
+      'duplicates/cleanup',
+      'duplicates/scan',
+    ])
+      assert.ok(pattern.test(`/api/${mode}/${route}`), `${route} must keep the long deadline`);
   }
+  assert.equal(pattern.test('/api/eagle/assets'), false);
+  assert.equal(
+    pattern.test('/api/eagle/uploads/12345678-1234-4234-8234-123456789abc/complete'),
+    false,
+  );
   assert.equal(pattern.test('/api/auth/me'), false);
   assert.match(route[2], /proxy_read_timeout 150s;/u);
   assert.match(

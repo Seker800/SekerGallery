@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { LibraryMode } from '@prisma/client';
+import { uploadInspectionTransferConcurrency } from './eagle/media-inspection-budget';
 import type { EagleUploadService } from './eagle/eagle-upload.service';
 import type { EagleImportsService } from './eagle/import/eagle-app-import.service';
 import type { PrismaService } from './prisma/prisma.service';
@@ -23,6 +24,7 @@ type ClaimedJob = {
  */
 export class UploadFinalizationExecutor {
   private readonly logger = new Logger(UploadFinalizationExecutor.name);
+  private readonly concurrency: number;
   private running = false;
   private closing = false;
 
@@ -30,9 +32,15 @@ export class UploadFinalizationExecutor {
     private readonly prisma: PrismaService,
     private readonly uploads: Record<LibraryMode, EagleUploadService>,
     private readonly imports: EagleImportsService,
-  ) {}
+    concurrency = uploadInspectionTransferConcurrency(),
+  ) {
+    // Parallel claims are bounded by the inspection budget's transfer slots; the
+    // shared decode gate inside each inspection still serializes header decoding.
+    this.concurrency =
+      Number.isSafeInteger(concurrency) && concurrency >= 1 ? Math.min(8, concurrency) : 1;
+  }
 
-  /** Stop after the in-flight job; the durable queue keeps the rest for the next process. */
+  /** Stop after the in-flight jobs; the durable queue keeps the rest for the next process. */
   stop(): void {
     this.closing = true;
   }
@@ -41,11 +49,20 @@ export class UploadFinalizationExecutor {
     if (this.running || this.closing) return;
     this.running = true;
     try {
-      while (!this.closing && (await this.runOnce())) {
-        // Drain the queued uploads one at a time; memory stays bounded.
-      }
+      await Promise.all(Array.from({ length: this.concurrency }, () => this.drain()));
     } finally {
       this.running = false;
+    }
+  }
+
+  private async drain(): Promise<void> {
+    try {
+      while (!this.closing && (await this.runOnce())) {
+        // Each drain owns one durable claim; the inspection budget bounds real resources.
+      }
+    } catch (error) {
+      // One failed claim must stop only its own drain, never orphan sibling drains.
+      this.logger.warn(`upload_finalization_drain_failed ${jobError(error) ?? 'UNKNOWN'}`);
     }
   }
 

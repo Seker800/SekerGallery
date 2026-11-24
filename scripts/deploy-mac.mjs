@@ -162,7 +162,9 @@ async function waitForServiceHealth(composeFiles, service) {
 export function deployCompose(composeFiles, execute = runDocker) {
   // Build before pausing writers; schema changes run only after every writer is stopped.
   execute(composeArgs(composeFiles, ['build']), { timeoutMs: 30 * 60_000 });
-  execute(composeArgs(composeFiles, ['stop', 'gateway', 'api', 'worker', 'operations']));
+  execute(
+    composeArgs(composeFiles, ['stop', 'gateway', 'api', 'worker', 'operations', 'share-renderer']),
+  );
   execute(
     composeArgs(composeFiles, [
       'up',
@@ -256,7 +258,9 @@ async function main() {
   for (const url of healthUrls) await waitForReady(url);
   await waitForReady(`http://127.0.0.1:${gatewayPort}/`);
   await Promise.all(
-    ['web', 'worker'].map((service) => waitForServiceHealth(composeFiles, service)),
+    ['web', 'worker', 'share-renderer'].map((service) =>
+      waitForServiceHealth(composeFiles, service),
+    ),
   );
 
   runDocker(composeArgs(composeFiles, ['ps']));

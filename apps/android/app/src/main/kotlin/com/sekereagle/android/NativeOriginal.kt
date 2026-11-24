@@ -175,13 +175,14 @@ internal suspend fun NativeGalleryRepository.detailImage(
             if (cached.length() > 0) return@withContext NativeDetailFile(cached, false)
             val temporary = File(directory, ".${name}.part")
             try {
-                val path =
-                    NativeGalleryPolicy.base(mode.name) +
-                        "/assets/" +
-                        NativeGalleryPolicy.identifier(asset.id) +
-                        "/share-image"
+                val contentPath = startShareRender(mode, asset, cancellation) {}
                 temporary.outputStream().use { output ->
-                    connection.downloadShareImage(path, output, cancellation, progress)
+                    connection.downloadShareRendition(
+                        contentPath,
+                        output,
+                        cancellation,
+                        progress,
+                    )
                 }
                 cancellation.check()
                 if (!temporary.renameTo(cached)) throw IOException("无法保存高清图")

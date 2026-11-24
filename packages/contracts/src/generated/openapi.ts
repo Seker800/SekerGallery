@@ -772,17 +772,33 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/eagle/assets/{assetId}/share-image': {
+  '/api/eagle/assets/{assetId}/share-renders': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    get: operations['EagleController_getShareImage'];
+    get?: never;
+    put?: never;
+    post: operations['EagleController_createShareRender'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/eagle/assets/{assetId}/share-renders/{renderId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['EagleController_getShareRenderStatus'];
     put?: never;
     post?: never;
-    delete?: never;
+    delete: operations['EagleController_cancelShareRender'];
     options?: never;
     head?: never;
     patch?: never;
@@ -1006,6 +1022,38 @@ export interface paths {
     get: operations['EagleController_listTags[1]'];
     put?: never;
     post: operations['EagleController_createTag[1]'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/eagle/tags/merge': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['EagleController_mergeTags[0]'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/eagle/manual-tags/merge': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['EagleController_mergeTags[1]'];
     delete?: never;
     options?: never;
     head?: never;
@@ -2580,17 +2628,33 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/photos/assets/{assetId}/share-image': {
+  '/api/photos/assets/{assetId}/share-renders': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    get: operations['PhotosController_getShareImage'];
+    get?: never;
+    put?: never;
+    post: operations['PhotosController_createShareRender'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/photos/assets/{assetId}/share-renders/{renderId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['PhotosController_getShareRenderStatus'];
     put?: never;
     post?: never;
-    delete?: never;
+    delete: operations['PhotosController_cancelShareRender'];
     options?: never;
     head?: never;
     patch?: never;
@@ -2814,6 +2878,38 @@ export interface paths {
     get: operations['PhotosController_listTags[1]'];
     put?: never;
     post: operations['PhotosController_createTag[1]'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/photos/tags/merge': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['PhotosController_mergeTags[0]'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/photos/manual-tags/merge': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['PhotosController_mergeTags[1]'];
     delete?: never;
     options?: never;
     head?: never;
@@ -4860,6 +4956,22 @@ export interface components {
       annotation: components['schemas']['EagleAnnotationResponseDto'] | null;
       colorAnalysis: components['schemas']['EagleColorAnalysisResponseDto'] | null;
     };
+    LibraryShareRenderResultDto: {
+      id: string;
+      /** @enum {string} */
+      status: 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED' | 'CANCELLED';
+      /** @enum {string} */
+      stage: 'QUEUED' | 'READING' | 'DECODING' | 'ENCODING' | 'READY' | 'FAILED' | 'CANCELLED';
+      elapsedMs: number;
+      renditionId?: string;
+      contentUrl?: string;
+      width?: number;
+      height?: number;
+      byteSize?: number;
+      errorCode?: string;
+      rendererOnline?: boolean;
+      cached?: boolean;
+    };
     BatchUpdateEagleAssetsDto: {
       predecessorOperationIds?: string[];
     };
@@ -4886,6 +4998,10 @@ export interface components {
     CreateManualTagDto: {
       name: string;
       color?: Record<string, never> | null;
+    };
+    MergeEagleManualTagsDto: {
+      sourceTagIds: string[];
+      targetTagId: string;
     };
     UpdateManualTagDto: {
       rowVersion: number;
@@ -6351,7 +6467,7 @@ export interface operations {
       };
     };
   };
-  EagleController_getShareImage: {
+  EagleController_createShareRender: {
     parameters: {
       query?: never;
       header?: never;
@@ -6362,11 +6478,57 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LibraryShareRenderResultDto'];
+        };
+      };
+    };
+  };
+  EagleController_getShareRenderStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        assetId: string;
+        renderId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
       200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['LibraryShareRenderResultDto'];
+        };
+      };
+    };
+  };
+  EagleController_cancelShareRender: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        assetId: string;
+        renderId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LibraryShareRenderResultDto'];
+        };
       };
     };
   };
@@ -6780,6 +6942,52 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  'EagleController_mergeTags[0]': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['MergeEagleManualTagsDto'];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EagleOperationSummaryResponseDto'];
+        };
+      };
+    };
+  };
+  'EagleController_mergeTags[1]': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['MergeEagleManualTagsDto'];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EagleOperationSummaryResponseDto'];
+        };
       };
     };
   };
@@ -9233,7 +9441,7 @@ export interface operations {
       };
     };
   };
-  PhotosController_getShareImage: {
+  PhotosController_createShareRender: {
     parameters: {
       query?: never;
       header?: never;
@@ -9244,11 +9452,57 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LibraryShareRenderResultDto'];
+        };
+      };
+    };
+  };
+  PhotosController_getShareRenderStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        assetId: string;
+        renderId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
       200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['LibraryShareRenderResultDto'];
+        };
+      };
+    };
+  };
+  PhotosController_cancelShareRender: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        assetId: string;
+        renderId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LibraryShareRenderResultDto'];
+        };
       };
     };
   };
@@ -9662,6 +9916,52 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  'PhotosController_mergeTags[0]': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['MergeEagleManualTagsDto'];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EagleOperationSummaryResponseDto'];
+        };
+      };
+    };
+  };
+  'PhotosController_mergeTags[1]': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['MergeEagleManualTagsDto'];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EagleOperationSummaryResponseDto'];
+        };
       };
     };
   };

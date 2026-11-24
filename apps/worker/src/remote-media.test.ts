@@ -300,6 +300,50 @@ test('a video artifact at the forbidden 1 GiB boundary is rejected before any fi
   assert.deepEqual(await readdir(directory), []);
 });
 
+test('media request bodies stream through a temporary file and are removed on limit or rejection', async (t) => {
+  const { mkdtemp, readdir } = await import('node:fs/promises');
+  const root = await mkdtemp(join(tmpdir(), 'remote-media-tmp-root-'));
+  const previous = process.env.TMPDIR;
+  process.env.TMPDIR = root;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = previous;
+    await rm(root, { recursive: true, force: true });
+  });
+  const server = createRemoteMediaServer('test-media-token', 1, true, undefined, [
+    'image',
+    'faces',
+  ]);
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('address');
+  const base = `http://127.0.0.1:${address.port}`;
+  const headers = { authorization: 'Bearer test-media-token' };
+  const oversized = await fetch(base + '/v1/media/faces', {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'image/jpeg' },
+    body: Buffer.alloc(20 * 1024 * 1024 + 1),
+  });
+  assert.equal(oversized.status, 413);
+  assert.deepEqual(await readdir(root), []);
+  const rejected = await fetch(base + '/v1/media/image', {
+    method: 'POST',
+    headers: {
+      ...headers,
+      'content-type': 'application/octet-stream',
+      'x-image-work': Buffer.from(JSON.stringify({ mode: 'PHOTO' })).toString('base64url'),
+    },
+    body: 'not an image',
+  });
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(await readdir(root), []);
+});
+
 test('verified media capacity can exceed four while real HTTP requests remain bounded', async (t) => {
   const { request } = await import('node:http');
   const { setTimeout: delay } = await import('node:timers/promises');

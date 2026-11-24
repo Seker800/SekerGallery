@@ -1,9 +1,16 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, type LibraryMode } from '@prisma/client';
 import type {
   BatchChangeEagleManualTagsDto,
   CreateManualTagDto,
   CreateManualTagGroupDto,
+  MergeEagleManualTagsDto,
   UpdateManualTagDto,
   UpdateManualTagGroupDto,
 } from './eagle.dto';
@@ -36,7 +43,14 @@ function systemKeyForName(normalizedName: string): string | null {
   return SYSTEM_TAG_KEYS.get(normalizedName) ?? null;
 }
 
+// Older workers can create reserved tag names without the stable key; the name
+// fallback keeps those tags protected until every runtime carries the new field.
+function effectiveSystemKey(tag: { name: string; systemKey: string | null }): string | null {
+  return tag.systemKey ?? systemKeyForName(normalizeKey(tag.name));
+}
+
 const BATCH_TAG_WRITE_ASSET_CHUNK_SIZE = 100;
+const MERGE_WRITE_CHUNK_SIZE = 500;
 
 @Injectable()
 export class LibraryManualTagService {
@@ -188,6 +202,7 @@ export class LibraryManualTagService {
     });
     return tags.map(({ groupMemberships, _count, ...tag }) => ({
       ...tag,
+      systemKey: effectiveSystemKey(tag),
       groupIds: groupMemberships.map(({ groupId }) => groupId),
       assetCount: _count.assetLinks,
       ...createEagleTagPhonetics(tag.name),
@@ -229,6 +244,165 @@ export class LibraryManualTagService {
     }
   }
 
+  private mergeIds(input: MergeEagleManualTagsDto) {
+    const targetTagId = input.targetTagId;
+    const sourceTagIds = [...new Set(input.sourceTagIds)].filter((id) => id !== targetTagId);
+    if (!sourceTagIds.length) throw new BadRequestException('请选择至少两个标签。');
+    return { targetTagId, sourceTagIds, ids: [targetTagId, ...sourceTagIds] };
+  }
+
+  /** Validation shared by admission and the transaction body; no writes. */
+  private async readMergeTargets(
+    ownerId: string,
+    input: MergeEagleManualTagsDto,
+    includePrivate: boolean,
+    db: PrismaService | Prisma.TransactionClient,
+    withLinks: boolean,
+  ) {
+    const { targetTagId, sourceTagIds, ids } = this.mergeIds(input);
+    const tags = await db.eagleManualTag.findMany({
+      where: { ownerId, id: { in: ids }, libraryMode: this.libraryMode },
+      select: {
+        id: true,
+        name: true,
+        normalizedName: true,
+        systemKey: true,
+        marksAssetsPrivate: true,
+      },
+    });
+    if (tags.length !== ids.length) throw new NotFoundException('一个或多个标签不存在。');
+    const target = tags.find((tag) => tag.id === targetTagId)!;
+    const sources = tags.filter((tag) => tag.id !== targetTagId);
+    if (tags.some((tag) => effectiveSystemKey(tag)))
+      throw new ConflictException('系统标签不能合并。');
+    if (sources.some((tag) => tag.marksAssetsPrivate))
+      throw new ConflictException('私密标签不能合并，请先调整私密设置。');
+    if (target.marksAssetsPrivate && !includePrivate)
+      throw new ConflictException('请开启私密可见后再合并到私密标签。');
+    const dependency = await db.eagleSmartFolderManualTagDependency.findFirst({
+      where: { ownerId, libraryMode: this.libraryMode, manualTagId: { in: sourceTagIds } },
+      select: { smartFolderId: true },
+    });
+    if (dependency) throw new ConflictException('标签正在被智能文件夹使用，无法合并。');
+    if (!includePrivate) {
+      const privateLinks = await db.eagleAssetManualTag.count({
+        where: {
+          ownerId,
+          libraryMode: this.libraryMode,
+          tagId: { in: sourceTagIds },
+          asset: { isPrivate: true },
+        },
+      });
+      if (privateLinks)
+        throw new ConflictException('所选标签包含私密素材，请开启私密可见后再合并。');
+    }
+    const links = withLinks
+      ? await db.eagleAssetManualTag.findMany({
+          where: { ownerId, libraryMode: this.libraryMode, tagId: { in: sourceTagIds } },
+          select: { assetId: true },
+          distinct: ['assetId'],
+        })
+      : [];
+    return {
+      targetTagId,
+      sourceTagIds,
+      target,
+      assetIds: links.map(({ assetId }) => assetId),
+    };
+  }
+
+  async assertMergeable(ownerId: string, input: MergeEagleManualTagsDto, includePrivate = false) {
+    await this.readMergeTargets(ownerId, input, includePrivate, this.prisma, false);
+  }
+
+  /**
+   * Merge source tags into one target in a single transaction. Validation runs
+   * before any write, so a smart-folder dependency cannot leave a half-merged set.
+   */
+  async mergeManualTags(
+    ownerId: string,
+    input: MergeEagleManualTagsDto,
+    includePrivate = false,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
+  ): Promise<{
+    targetTagId: string;
+    mergedTagIds: string[];
+    assetCount: number;
+    privacyChangedAssetCount: number;
+  }> {
+    try {
+      return await runLibraryTransaction(
+        db,
+        async (transaction) => {
+          await lockOwnerPrivacyProjection(transaction, ownerId, this.libraryMode);
+          const { targetTagId, sourceTagIds, target, assetIds } = await this.readMergeTargets(
+            ownerId,
+            input,
+            includePrivate,
+            transaction,
+            true,
+          );
+          await transaction.eagleManualTag.updateMany({
+            where: { ownerId, id: targetTagId, libraryMode: this.libraryMode },
+            data: { lastUsedAt: new Date(), rowVersion: { increment: 1 } },
+          });
+          // AI promotions follow the surviving tag instead of blocking the merge.
+          await transaction.eagleAssetAiTag.updateMany({
+            where: {
+              ownerId,
+              libraryMode: this.libraryMode,
+              promotedManualTagId: { in: sourceTagIds },
+            },
+            data: { promotedManualTagId: targetTagId },
+          });
+          for (let offset = 0; offset < assetIds.length; offset += MERGE_WRITE_CHUNK_SIZE) {
+            const chunk = assetIds.slice(offset, offset + MERGE_WRITE_CHUNK_SIZE);
+            await transaction.eagleAssetManualTag.createMany({
+              data: chunk.map((assetId) => ({
+                ownerId,
+                assetId,
+                tagId: targetTagId,
+                libraryMode: this.libraryMode,
+              })),
+              skipDuplicates: true,
+            });
+          }
+          await transaction.eagleAssetManualTag.deleteMany({
+            where: { ownerId, libraryMode: this.libraryMode, tagId: { in: sourceTagIds } },
+          });
+          await transaction.eagleManualTag.deleteMany({
+            where: { ownerId, libraryMode: this.libraryMode, id: { in: sourceTagIds } },
+          });
+          // Every affected asset keeps the surviving target link, so none becomes
+          // unclassified; only a private target changes the privacy projection.
+          let privacyChangedAssetCount = 0;
+          if (target.marksAssetsPrivate) {
+            for (let offset = 0; offset < assetIds.length; offset += MERGE_WRITE_CHUNK_SIZE) {
+              const chunk = assetIds.slice(offset, offset + MERGE_WRITE_CHUNK_SIZE);
+              privacyChangedAssetCount += await syncAssetPrivacy(
+                transaction,
+                ownerId,
+                chunk,
+                this.libraryMode,
+              );
+            }
+          }
+          return {
+            targetTagId,
+            mergedTagIds: sourceTagIds,
+            assetCount: assetIds.length,
+            privacyChangedAssetCount,
+          };
+        },
+        { timeout: 120_000, maxWait: 10_000 },
+      );
+    } catch (error) {
+      if (isForeignKeyError(error))
+        throw new ConflictException('标签正在被其他设置使用，无法合并。');
+      throw error;
+    }
+  }
+
   async updateManualTag(
     ownerId: string,
     tagId: string,
@@ -243,10 +417,11 @@ export class LibraryManualTagService {
     const name =
       input.name === undefined ? current.name : normalizeName(input.name, 64, '标签名称');
     const normalizedName = normalizeKey(name);
-    if (current.systemKey && normalizedName !== current.normalizedName) {
+    const currentSystemKey = effectiveSystemKey(current);
+    if (currentSystemKey && normalizedName !== current.normalizedName) {
       throw new ConflictException('系统标签不能改名。');
     }
-    if (!current.systemKey && systemKeyForName(normalizedName)) {
+    if (!currentSystemKey && systemKeyForName(normalizedName)) {
       throw new ConflictException('系统标签名已保留，请换一个名称。');
     }
     if (
@@ -318,6 +493,7 @@ export class LibraryManualTagService {
     const { groupMemberships, _count, ...fields } = tag;
     return {
       ...fields,
+      systemKey: effectiveSystemKey(tag),
       groupIds: groupMemberships.map(({ groupId }) => groupId),
       assetCount: _count.assetLinks,
       ...createEagleTagPhonetics(tag.name),
@@ -334,10 +510,10 @@ export class LibraryManualTagService {
         await lockOwnerPrivacyProjection(transaction, ownerId, this.libraryMode);
         const tag = await transaction.eagleManualTag.findFirst({
           where: { ownerId, id: tagId, libraryMode: this.libraryMode },
-          select: { id: true, systemKey: true, marksAssetsPrivate: true },
+          select: { id: true, name: true, systemKey: true, marksAssetsPrivate: true },
         });
         if (!tag) throw new NotFoundException('标签不存在。');
-        if (tag.systemKey) {
+        if (effectiveSystemKey(tag)) {
           throw new ConflictException('系统标签不能删除。');
         }
         if (tag.marksAssetsPrivate) {

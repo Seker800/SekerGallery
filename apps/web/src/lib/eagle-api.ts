@@ -29,6 +29,21 @@ export type PhotoLocation = components['schemas']['EaglePhotoLocationResponseDto
 export type EagleAssetListItem = components['schemas']['EagleAssetListResponseDto'];
 export type EagleAsset = components['schemas']['EagleAssetResponseDto'];
 
+export interface LibraryShareRenderResult {
+  id: string;
+  status: 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED' | 'CANCELLED';
+  stage: 'QUEUED' | 'READING' | 'DECODING' | 'ENCODING' | 'READY' | 'FAILED' | 'CANCELLED';
+  elapsedMs: number;
+  renditionId?: string;
+  contentUrl?: string;
+  width?: number;
+  height?: number;
+  byteSize?: number;
+  errorCode?: string;
+  rendererOnline?: boolean;
+  cached?: boolean;
+}
+
 type EagleAssetUpdateContract = components['schemas']['EagleAssetUpdateResponseDto'];
 export interface EagleAssetUpdate extends EagleAssetUpdateContract {
   livePhotoComponent?: boolean;
@@ -389,6 +404,14 @@ export function createEagleApi(libraryMode: LibraryMode = 'MATERIAL') {
   }
   async function deleteEagleManualTag(id: string) {
     return api<OperationResponse<{ deletedId: string }>>(`/eagle/tags/${id}`, { method: 'DELETE' });
+  }
+
+  async function mergeEagleManualTags(input: { sourceTagIds: string[]; targetTagId: string }) {
+    return api<AssetOperationSummary>(
+      '/eagle/tags/merge',
+      { method: 'POST', body: JSON.stringify(input) },
+      EAGLE_OPERATION_REQUEST_TIMEOUT_MS,
+    );
   }
 
   async function listEagleManualTagGroups() {
@@ -868,8 +891,41 @@ export function createEagleApi(libraryMode: LibraryMode = 'MATERIAL') {
     return libraryApiPath(`/api/eagle/assets/${encodeURIComponent(id)}/original`, mode);
   }
 
-  function getEagleShareImageUrl(id: string, mode: LibraryMode = libraryMode) {
-    return libraryApiPath(`/api/eagle/assets/${encodeURIComponent(id)}/share-image`, mode);
+  function startEagleShareRender(assetId: string, mode: LibraryMode, signal?: AbortSignal) {
+    return requestJson<LibraryShareRenderResult>(
+      libraryApiPath(`/api/eagle/assets/${encodeURIComponent(assetId)}/share-renders`, mode),
+      { method: 'POST', signal },
+    );
+  }
+
+  function getEagleShareRender(
+    assetId: string,
+    renderId: string,
+    mode: LibraryMode,
+    signal?: AbortSignal,
+  ) {
+    return requestJson<LibraryShareRenderResult>(
+      libraryApiPath(
+        `/api/eagle/assets/${encodeURIComponent(assetId)}/share-renders/${encodeURIComponent(renderId)}`,
+        mode,
+      ),
+      { signal },
+    );
+  }
+
+  function cancelEagleShareRender(
+    assetId: string,
+    renderId: string,
+    mode: LibraryMode,
+    signal?: AbortSignal,
+  ) {
+    return requestJson<LibraryShareRenderResult>(
+      libraryApiPath(
+        `/api/eagle/assets/${encodeURIComponent(assetId)}/share-renders/${encodeURIComponent(renderId)}`,
+        mode,
+      ),
+      { method: 'DELETE', signal },
+    );
   }
 
   function getEaglePyramidDescriptor(assetId: string, signal?: AbortSignal) {
@@ -953,6 +1009,7 @@ export function createEagleApi(libraryMode: LibraryMode = 'MATERIAL') {
     createEagleManualTag,
     updateEagleManualTag,
     deleteEagleManualTag,
+    mergeEagleManualTags,
     listEagleManualTagGroups,
     createEagleManualTagGroup,
     updateEagleManualTagGroup,
@@ -978,7 +1035,9 @@ export function createEagleApi(libraryMode: LibraryMode = 'MATERIAL') {
     checkEagleUploadContentBatch,
     retryEagleAssetProcessing,
     getEagleAssetContentUrl,
-    getEagleShareImageUrl,
+    startEagleShareRender,
+    getEagleShareRender,
+    cancelEagleShareRender,
     getEaglePyramidDescriptor,
     getEagleRenditionContentUrl,
   };
@@ -1004,6 +1063,7 @@ export const {
   createEagleManualTag,
   updateEagleManualTag,
   deleteEagleManualTag,
+  mergeEagleManualTags,
   listEagleManualTagGroups,
   createEagleManualTagGroup,
   updateEagleManualTagGroup,
@@ -1029,7 +1089,9 @@ export const {
   checkEagleUploadContentBatch,
   retryEagleAssetProcessing,
   getEagleAssetContentUrl,
-  getEagleShareImageUrl,
+  startEagleShareRender,
+  getEagleShareRender,
+  cancelEagleShareRender,
   getEaglePyramidDescriptor,
   getEagleRenditionContentUrl,
 } = createEagleApi();

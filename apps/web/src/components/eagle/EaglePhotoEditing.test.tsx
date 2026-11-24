@@ -139,7 +139,12 @@ describe('shared library photo editing', () => {
       retry: true,
     });
     expect(session.name).toBe('Original');
-    expect(refresh).toHaveBeenCalledWith({ queryKey: ['eagle', 'owner', 'MATERIAL', 'assets'] });
+    expect(refresh).not.toHaveBeenCalledWith({
+      queryKey: ['eagle', 'owner', 'MATERIAL', 'assets'],
+    });
+    expect(refresh).toHaveBeenCalledWith({
+      queryKey: ['eagle', 'owner', 'MATERIAL', 'assets', 'library-count'],
+    });
     expect(refresh).toHaveBeenCalledWith({
       queryKey: ['eagle', 'owner', 'MATERIAL', 'manual-tags'],
     });

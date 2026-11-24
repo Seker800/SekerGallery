@@ -3,6 +3,7 @@ import { readBatchEditRenderContext } from './eagle-batch-edit';
 import { runLibraryTransaction } from './eagle-library-command';
 import { isDatabaseBusy } from '@sekereagle/library-persistence';
 import { OPERATION_EMPTY_TRASH_BATCH_SIZE } from './eagle-operation-settings';
+import { purgeBatchSql } from './eagle-trash-purge';
 import {
   publicPhotoMetadataSelect,
   publicPhotoLocationSelect,
@@ -67,6 +68,7 @@ import type {
   CreateManualTagGroupDto,
   CreateSmartFolderDto,
   ListEagleAssetsDto,
+  MergeEagleManualTagsDto,
   MoveSmartFolderDto,
   UpdateManualTagDto,
   UpdateManualTagGroupDto,
@@ -98,6 +100,12 @@ import {
 } from './library-values';
 
 type AssetListOptions = { trash?: boolean; includePrivate?: boolean };
+
+type AssetSelectionPage = {
+  items: Array<{ id: string; rowVersion: number }>;
+  previousCursor: string | null;
+  nextCursor: string | null;
+};
 
 @Injectable()
 export class EagleService {
@@ -188,10 +196,97 @@ export class EagleService {
     query: ListEagleAssetsDto,
     options: AssetListOptions = {},
   ) {
-    const page = await this.listAssets(ownerId, { ...query, limit: 1000 }, options);
+    const pageQuery = { ...query, limit: 1000 };
+    const page = this.selectionUsesIndex(query)
+      ? await this.readSelectionPage(ownerId, pageQuery, options)
+      : await this.listAssets(ownerId, pageQuery, options);
     return {
       items: page.items.map((item) => ({ assetId: item.id, rowVersion: item.rowVersion })),
       nextCursor: page.nextCursor,
+    };
+  }
+
+  /**
+   * The common selection path only needs identity fields. Complex filters keep
+   * the full list path so ranking, smart-folder and color semantics stay single-sourced.
+   */
+  private selectionUsesIndex(query: ListEagleAssetsDto) {
+    return (
+      !query.search &&
+      !query.rules &&
+      !query.smartFolderId &&
+      !query.smartFolderOrder &&
+      !query.color &&
+      !query.personId &&
+      !query.cameraModel &&
+      !query.lensModel &&
+      !query.gps &&
+      query.before === undefined &&
+      query.offset === undefined
+    );
+  }
+
+  private async readSelectionPage(
+    ownerId: string,
+    query: ListEagleAssetsDto,
+    options: AssetListOptions,
+  ): Promise<AssetSelectionPage> {
+    const { trash = false, includePrivate = false } = options;
+    const orderSort: EagleAssetOrder | undefined = trash ? 'DELETED_AT' : query.sort;
+    const cursor = query.cursor
+      ? decodeEagleAssetCursor(query.cursor, { ownerId, libraryMode: this.libraryMode }, orderSort)
+      : null;
+    const dateField = assetDateField(this.libraryMode, orderSort);
+    const newer = cursor?.direction === 'NEWER';
+    const comparison = newer ? 'gt' : 'lt';
+    const baseWhere = buildAssetWhere(ownerId, query, trash, includePrivate, this.libraryMode);
+    const where: AssetSearchWhere = cursor
+      ? {
+          AND: [
+            baseWhere,
+            {
+              OR: [
+                { [dateField]: { [comparison]: cursor.libraryAddedAt } },
+                { [dateField]: cursor.libraryAddedAt, id: { [comparison]: cursor.id } },
+              ],
+            },
+          ],
+        }
+      : baseWhere;
+    const rows = await findSearchAssets(this.prisma, {
+      where: inLibrary(this.libraryMode, where),
+      select: {
+        id: true,
+        rowVersion: true,
+        libraryAddedAt: true,
+        chronologicalAt: true,
+        deletedAt: true,
+      },
+      orderBy: [{ [dateField]: newer ? 'asc' : 'desc' }, { id: newer ? 'asc' : 'desc' }],
+      take: query.limit + 1,
+    });
+    const hasMore = rows.length > query.limit;
+    const page = rows.slice(0, query.limit);
+    if (newer) page.reverse();
+    return {
+      items: page.map(({ id, rowVersion }) => ({ id, rowVersion })),
+      previousCursor:
+        page.length && (newer ? hasMore : Boolean(cursor))
+          ? encodeEagleAssetCursor(
+              { id: page[0]!.id, libraryAddedAt: page[0]![dateField]! },
+              { ownerId, libraryMode: this.libraryMode },
+              orderSort,
+              'NEWER',
+            )
+          : null,
+      nextCursor:
+        (hasMore || newer) && page.length
+          ? encodeEagleAssetCursor(
+              { id: page.at(-1)!.id, libraryAddedAt: page.at(-1)![dateField]! },
+              { ownerId, libraryMode: this.libraryMode },
+              orderSort,
+            )
+          : null,
     };
   }
 
@@ -1030,7 +1125,7 @@ export class EagleService {
           mediaErrorCode: true,
           updatedAt: true,
           renditions: {
-            where: { status: 'READY' },
+            where: { status: 'READY', kind: { not: 'SHARE_JPEG' } },
             orderBy: [
               { revision: 'desc' as const },
               { kind: 'asc' as const },
@@ -1141,6 +1236,23 @@ export class EagleService {
     return this.manualTagService.batchChangeManualTags(ownerId, input, includePrivate, db);
   }
 
+  async assertMergeManualTags(
+    ownerId: string,
+    input: MergeEagleManualTagsDto,
+    includePrivate = false,
+  ) {
+    return this.manualTagService.assertMergeable(ownerId, input, includePrivate);
+  }
+
+  async mergeManualTags(
+    ownerId: string,
+    input: MergeEagleManualTagsDto,
+    includePrivate = false,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
+  ) {
+    return this.manualTagService.mergeManualTags(ownerId, input, includePrivate, db);
+  }
+
   /**
    * Mark explicit trash items for physical purge. Runs inside the metadata
    * command transaction; the worker owns object and row deletion.
@@ -1153,49 +1265,21 @@ export class EagleService {
   ) {
     const ids = [...new Set(assetIds)];
     if (!ids.length) return 0;
-    const visible = includePrivate ? {} : { isPrivate: false };
-    const eligible = await db.eagleAsset.count({
-      where: {
+    const [result] = await db.$queryRaw<Array<{ affectedAssetCount: number }>>(
+      purgeBatchSql({
         ownerId,
         libraryMode: this.libraryMode,
-        id: { in: ids },
-        deletedAt: { not: null },
-        ...visible,
-      },
-    });
-    if (eligible !== ids.length) throw new ConflictException('只能永久删除回收站中的素材。');
-    const purgeAfter = new Date();
-    await db.eagleAsset.updateMany({
-      where: {
-        ownerId,
-        libraryMode: this.libraryMode,
-        id: { in: ids },
-        deletedAt: { not: null },
-        purgeAfter: null,
-        ...visible,
-      },
-      data: { purgeAfter, rowVersion: { increment: 1 }, updatedAt: purgeAfter },
-    });
-    await db.$executeRaw(Prisma.sql`
-      INSERT INTO "EagleMediaJob"
-        (id,"ownerId","libraryMode","assetId",kind,lane,"assetRevision","processorVersion",
-         status,attempts,"recoveryCount","leaseVersion","availableAt","updatedAt")
-      SELECT gen_random_uuid()::text,${ownerId},${this.libraryMode}::"LibraryMode",asset.id,
-        'PURGE_ASSET'::"EagleMediaJobKind",'MAINTENANCE'::"EagleProcessingLane",
-        asset."mediaRevision",'v1','PENDING'::"EagleMediaJobStatus",0,0,1,
-        ${purgeAfter},CURRENT_TIMESTAMP
-      FROM "EagleAsset" asset
-      WHERE asset."ownerId"=${ownerId}
-        AND asset."libraryMode"=${this.libraryMode}::"LibraryMode"
-        AND asset.id = ANY(${ids}::text[])
-      ON CONFLICT ("assetId",kind,"assetRevision","processorVersion") DO UPDATE
-      SET status='PENDING',attempts=0,"recoveryCount"=0,"leaseVersion"=job."leaseVersion"+1,
-        "availableAt"=EXCLUDED."availableAt","lockedAt"=NULL,"startedAt"=NULL,
-        "completedAt"=NULL,"lastError"=NULL,"updatedAt"=CURRENT_TIMESTAMP
-      WHERE job."ownerId"=EXCLUDED."ownerId" AND job."libraryMode"=EXCLUDED."libraryMode"
-        AND job.status IN ('PENDING','FAILED','COMPLETED')
-    `);
-    return ids.length;
+        includePrivate,
+        purgeAfter: new Date(),
+        limit: ids.length,
+        assetIds: ids,
+      }),
+    );
+    // Locking and enqueueing share one statement; a row restored concurrently is
+    // excluded from the target set, so the whole explicit purge rolls back.
+    if (result!.affectedAssetCount !== ids.length)
+      throw new ConflictException('只能永久删除回收站中的素材。');
+    return result!.affectedAssetCount;
   }
 
   async emptyTrashBatch(
@@ -1213,53 +1297,17 @@ export class EagleService {
         async (transaction) => {
           await transaction.$executeRaw`SELECT set_config('statement_timeout', ${`${timeout - 250}ms`}, true)`;
           if (assertPublication) await assertPublication(transaction);
-          const purgeAfter = new Date();
-          // Keep this bounded purge selection in PostgreSQL: no selection-sized ID/parameter list.
-          const [result] = await transaction.$queryRaw<
-            Array<{ affectedAssetCount: number }>
-          >(Prisma.sql`
-        WITH selected AS (
-          SELECT id FROM "EagleAsset"
-          WHERE "ownerId"=${ownerId} AND "libraryMode"=${this.libraryMode}::"LibraryMode"
-            AND "deletedAt" IS NOT NULL AND "purgeAfter" IS NULL
-            ${cutoff ? Prisma.sql`AND "deletedAt"<=${cutoff}` : Prisma.empty}
-            AND (${includePrivate} OR NOT "isPrivate")
-          ORDER BY id LIMIT ${OPERATION_EMPTY_TRASH_BATCH_SIZE} FOR UPDATE
-        ), marked AS (
-          UPDATE "EagleAsset"
-          SET "purgeAfter"=${purgeAfter}, "rowVersion"="rowVersion"+1, "updatedAt"=CURRENT_TIMESTAMP
-          WHERE id IN (SELECT id FROM selected)
-          RETURNING id,"mediaRevision"
-        ), scheduled AS (
-          INSERT INTO "EagleMediaJob" AS job
-            (id,"ownerId","libraryMode","assetId",kind,lane,"assetRevision","processorVersion",
-             status,attempts,"recoveryCount","leaseVersion","availableAt","updatedAt")
-          SELECT gen_random_uuid()::text,${ownerId},${this.libraryMode}::"LibraryMode",id,
-            'PURGE_ASSET'::"EagleMediaJobKind",'MAINTENANCE'::"EagleProcessingLane","mediaRevision",'v1',
-            'PENDING'::"EagleMediaJobStatus",0,0,1,${purgeAfter},CURRENT_TIMESTAMP FROM marked
-          ON CONFLICT ("assetId",kind,"assetRevision","processorVersion") DO UPDATE
-          SET status='PENDING',attempts=0,"recoveryCount"=0,"leaseVersion"=job."leaseVersion"+1,
-            "availableAt"=EXCLUDED."availableAt","lockedAt"=NULL,"startedAt"=NULL,
-            "completedAt"=NULL,"lastError"=NULL,"updatedAt"=CURRENT_TIMESTAMP
-          WHERE job."ownerId"=EXCLUDED."ownerId" AND job."libraryMode"=EXCLUDED."libraryMode"
-            AND job.status IN ('PENDING','FAILED','COMPLETED')
-          RETURNING id
-        ), requeued_legacy AS (
-          -- Previous clear-trash commands also requeued older media/processor
-          -- identities. Keep that contract without updating the current upsert
-          -- identity twice in the same statement or taking a PROCESSING lease.
-          UPDATE "EagleMediaJob" AS job
-          SET status='PENDING',attempts=0,"recoveryCount"=0,"leaseVersion"=job."leaseVersion"+1,
-            "availableAt"=${purgeAfter},"lockedAt"=NULL,"startedAt"=NULL,
-            "completedAt"=NULL,"lastError"=NULL,"updatedAt"=CURRENT_TIMESTAMP
-          FROM marked
-          WHERE job."assetId"=marked.id AND job."ownerId"=${ownerId}
-            AND job."libraryMode"=${this.libraryMode}::"LibraryMode" AND job.kind='PURGE_ASSET'
-            AND job.status IN ('PENDING','FAILED','COMPLETED')
-            AND (job."assetRevision"<>marked."mediaRevision" OR job."processorVersion"<>'v1')
-          RETURNING job.id
-        ) SELECT count(*)::int AS "affectedAssetCount" FROM marked
-      `);
+          // Bounded purge selection stays in PostgreSQL: no selection-sized ID/parameter list.
+          const [result] = await transaction.$queryRaw<Array<{ affectedAssetCount: number }>>(
+            purgeBatchSql({
+              ownerId,
+              libraryMode: this.libraryMode,
+              includePrivate,
+              purgeAfter: new Date(),
+              limit: OPERATION_EMPTY_TRASH_BATCH_SIZE,
+              cutoff,
+            }),
+          );
           if (assertPublication) await assertPublication(transaction);
           return result!.affectedAssetCount;
         },

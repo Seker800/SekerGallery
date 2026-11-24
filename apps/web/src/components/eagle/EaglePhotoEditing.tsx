@@ -14,6 +14,7 @@ import { useLibraryWorkspace } from '../../lib/library-workspace';
 import { t } from '../../i18n';
 import { getEagleEditContentUrl, getEaglePreviewContentUrl } from './eagle-media-sources';
 import { createEagleQueryKeys } from './eagle-query-keys';
+import { refreshAfterNewAsset } from './eagle-write-refresh';
 import { formatPhotoMetadata } from '../media/photo-editor/photo-editor-metadata';
 import type { PhotoMetadata } from '../media/photo-editor/photo-watermark-model';
 import type { SavedPhoto } from '../media/photo-editor/photo-editor-save';
@@ -183,9 +184,7 @@ export function useEaglePhotoEditing({ ownerId, scopeKey }: { ownerId: string; s
           ...(recipe ? { editRecipe: recipe } : {}),
         });
         // A refresh error must not turn a completed upload into a duplicate save.
-        for (const queryKey of [keys.assets, keys.manualTags]) {
-          void client.invalidateQueries({ queryKey }).catch(() => undefined);
-        }
+        void refreshAfterNewAsset(client, keys).catch(() => undefined);
         return { id: result.asset.id, name: file.name };
       },
       ...(serverRender

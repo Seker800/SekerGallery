@@ -232,6 +232,10 @@ try {
     env,
     stdio: 'inherit',
   });
+  run(process.execPath, ['--test', 'scripts/testing/share-render.test.mjs'], {
+    env,
+    stdio: 'inherit',
+  });
   // Keep the synthetic scale fixture out of concurrent privacy transactions.
   run(process.execPath, ['--test', 'scripts/testing/workspace-changes.test.mjs'], {
     env,

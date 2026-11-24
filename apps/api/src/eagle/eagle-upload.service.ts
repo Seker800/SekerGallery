@@ -89,6 +89,7 @@ export class EagleUploadService {
     ownerId: string,
     sha256: string,
     byteSize?: number,
+    includePrivate = false,
   ): Prisma.EagleAssetWhereInput {
     return {
       ownerId,
@@ -97,6 +98,7 @@ export class EagleUploadService {
       ...(byteSize === undefined ? {} : { byteSize: BigInt(byteSize) }),
       deletedAt: null,
       purgeAfter: null,
+      ...(includePrivate ? {} : { isPrivate: false }),
     };
   }
 
@@ -148,6 +150,7 @@ export class EagleUploadService {
               owner: { connect: { id: ownerId } },
               expectedContentSha256: input.contentSha256?.toLowerCase(),
               duplicatePolicy: input.duplicatePolicy ?? 'SKIP',
+              includePrivate,
               copySourceAssetId: input.copySourceAssetId,
               copySourceRowVersion: input.copySourceRowVersion,
               ...(editRecipe
@@ -178,18 +181,29 @@ export class EagleUploadService {
     }
   }
 
-  async checkContent(ownerId: string, input: { contentSha256: string; size: number }) {
+  async checkContent(
+    ownerId: string,
+    input: { contentSha256: string; size: number },
+    includePrivate = false,
+  ) {
     const found = await this.prisma.eagleAsset.findFirst({
       where: {
-        ...this.duplicateAssetWhere(ownerId, input.contentSha256, input.size),
+        ...this.duplicateAssetWhere(ownerId, input.contentSha256, input.size, includePrivate),
         libraryMode: this.libraryMode,
       },
       select: { isPrivate: true },
+      // Prefer a public duplicate when the same bytes exist in both scopes.
+      orderBy: { isPrivate: 'asc' },
     });
-    return { exists: found !== null, privateMatch: found?.isPrivate ?? false };
+    const visible = found && (includePrivate || !found.isPrivate) ? found : null;
+    return { exists: visible !== null, privateMatch: visible?.isPrivate ?? false };
   }
 
-  async checkContentBatch(ownerId: string, items: Array<{ contentSha256: string; size: number }>) {
+  async checkContentBatch(
+    ownerId: string,
+    items: Array<{ contentSha256: string; size: number }>,
+    includePrivate = false,
+  ) {
     if (!items.length) return { exists: [] as boolean[], privateMatches: [] as boolean[] };
     const normalized = items.map((item) => ({
       sha256: item.contentSha256.toLowerCase(),
@@ -206,11 +220,13 @@ export class EagleUploadService {
           AND a."libraryMode"=${this.libraryMode}::"LibraryMode"
           AND a."deletedAt" IS NULL
           AND a."purgeAfter" IS NULL
+          ${includePrivate ? Prisma.empty : Prisma.sql`AND a."isPrivate"=false`}
           AND (a.sha256, a."byteSize") IN (${Prisma.join(values)})
       `,
     );
     const matches = new Map<string, { visible: boolean; private: boolean }>();
     for (const row of rows) {
+      if (!includePrivate && row.isPrivate) continue;
       const key = `${row.sha256}:${row.byteSize.toString()}`;
       const entry = matches.get(key) ?? { visible: false, private: false };
       entry.visible ||= !row.isPrivate;
@@ -278,6 +294,7 @@ export class EagleUploadService {
       throw new BadRequestException('分片编号无效。');
     }
     const session = await this.requireInitiated(ownerId, uploadSessionId);
+    this.assertPartInSession(session, [partNumber]);
     return {
       partNumber,
       partSizeBytes: session.partSize ?? chooseUploadPartSize(Number(session.size)),
@@ -302,6 +319,7 @@ export class EagleUploadService {
       throw new BadRequestException('分片编号无效。');
     }
     const session = await this.requireInitiated(ownerId, uploadSessionId);
+    this.assertPartInSession(session, unique);
     const parts = await Promise.all(
       unique.map(async (partNumber) => ({
         partNumber,
@@ -730,6 +748,9 @@ export class EagleUploadService {
                         session.uploaderId,
                         inspection.sha256,
                         Number(session.size),
+                        // A locked session never dedupes against private rows, so it
+                        // cannot learn about them or silently lose its upload.
+                        session.eagleState?.includePrivate === true,
                       ),
                       libraryMode: this.libraryMode,
                     },
@@ -962,6 +983,16 @@ export class EagleUploadService {
       });
     });
     return { uploadSessionId: session.id, status: 'ABORTED' };
+  }
+
+  private assertPartInSession(
+    session: { size: bigint | number; partSize: number | null },
+    partNumbers: readonly number[],
+  ) {
+    const partSize = session.partSize ?? chooseUploadPartSize(Number(session.size));
+    const partCount = Math.max(1, Math.ceil(Number(session.size) / partSize));
+    if (partNumbers.some((partNumber) => partNumber > partCount))
+      throw new BadRequestException('分片编号超出此上传会话。');
   }
 
   private async requireInitiated(ownerId: string, uploadSessionId: string) {

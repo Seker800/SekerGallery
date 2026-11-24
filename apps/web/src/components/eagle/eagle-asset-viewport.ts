@@ -67,7 +67,11 @@ export function useEagleAssetViewport(scope = 'default', positions?: Map<string,
     scrollFrameRef.current = -1;
     const frame = requestAnimationFrame(() => {
       scrollFrameRef.current = null;
-      setScrollTop(pendingScrollTopRef.current);
+      // The grid renders with a 300px overscan; sub-pixel churn does not need a
+      // new full page render on every frame.
+      setScrollTop((current) =>
+        Math.abs(pendingScrollTopRef.current - current) < 8 ? current : pendingScrollTopRef.current,
+      );
     });
     if (scrollFrameRef.current !== null) scrollFrameRef.current = frame;
   }, []);

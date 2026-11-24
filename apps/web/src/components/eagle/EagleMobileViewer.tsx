@@ -12,6 +12,8 @@ import type { EagleAssetListItem } from '../../lib/eagle-api';
 import { useLibraryWorkspace } from '../../lib/library-workspace';
 import { saveOriginalFile } from '../../lib/original-file-export';
 import type { EagleMobileViewerPresentation } from './EagleViewerShell';
+import { LibraryShareCopyStatus } from './LibraryShareCopyStatus';
+import { useLibraryShareCopy } from './useLibraryShareCopy';
 import styles from './EagleMobileViewer.module.css';
 import { EagleFavoriteButton } from './EagleFavoriteButton';
 export { toggleViewerFavorite } from './EagleFavoriteButton';
@@ -58,18 +60,6 @@ export function mobileViewerPresentation(
     ),
   };
 }
-function shareFileName(originalName: string): string {
-  const name = originalName.replace(/\\/g, '/').split('/').pop() ?? 'share.jpg';
-  const dot = name.lastIndexOf('.');
-  const stem = (dot > 0 ? name.slice(0, dot) : name)
-    .split('')
-    .filter((character) => character.charCodeAt(0) >= 32)
-    .join('')
-    .replace(/[:*?"<>|]/g, '')
-    .trim();
-  return `${stem || 'share'}.jpg`;
-}
-
 function MobileViewerActions({
   asset,
   onClose,
@@ -88,6 +78,7 @@ function MobileViewerActions({
   const [pending, setPending] = useState(false),
     [error, setError] = useState(''),
     [fallbackReason, setFallbackReason] = useState<'' | 'unsupported' | 'large'>('');
+  const shareCopy = useLibraryShareCopy();
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -111,6 +102,18 @@ function MobileViewerActions({
     run(async () => {
       await saveOriginalFile({ ...asset, libraryMode });
     });
+  const shareReadyFile = async (file: File) => {
+    if (!navigator.canShare?.({ files: [file] })) {
+      setFallbackReason('unsupported');
+      return;
+    }
+    try {
+      await navigator.share({ files: [file], title: asset.displayName });
+    } catch (reason) {
+      if (reason instanceof DOMException && reason.name === 'AbortError') return;
+      throw reason;
+    }
+  };
   const share = () =>
     run(async () => {
       setFallbackReason('');
@@ -124,30 +127,20 @@ function MobileViewerActions({
         asset.mimeType !== 'image/gif' &&
         asset.mimeType !== 'image/webp';
       if (shareImage) {
-        let file: File | undefined;
-        try {
-          const response = await fetch(api.getEagleShareImageUrl(asset.id, asset.libraryMode), {
-            credentials: 'same-origin',
-          });
-          if (!response.ok) throw new Error(t('无法生成分享图，请重试。'));
-          const blob = await response.blob();
-          if (blob.type !== 'image/jpeg') throw new Error(t('分享图格式不正确，请重试。'));
-          file = new File([blob], shareFileName(asset.originalName), { type: 'image/jpeg' });
-        } catch (reason) {
-          // A server-side render failure falls back to the original only when it is small enough.
-          if (asset.byteSize > 32 * 1024 * 1024) throw reason;
+        if (
+          shareCopy.state.file &&
+          shareCopy.state.assetId === asset.id &&
+          shareCopy.state.assetRevision === asset.mediaRevision
+        ) {
+          await shareReadyFile(shareCopy.state.file);
+          return;
         }
-        if (file) {
-          if (!navigator.canShare?.({ files: [file] })) {
-            setFallbackReason('unsupported');
-            return;
-          }
-          try {
-            await navigator.share({ files: [file], title: asset.displayName });
-          } catch (reason) {
-            if (reason instanceof DOMException && reason.name === 'AbortError') return;
-            throw reason;
-          }
+        const result = await shareCopy.prepareShareFile(asset);
+        if (result.status === 'ready' || result.status === 'cancelled' || result.status === 'busy')
+          return;
+        // A server-side render failure falls back to the original only when it is small enough.
+        if (asset.byteSize > 32 * 1024 * 1024) {
+          setFallbackReason('large');
           return;
         }
       }
@@ -191,6 +184,24 @@ function MobileViewerActions({
     });
   return (
     <div className={styles.root}>
+      <LibraryShareCopyStatus
+        state={shareCopy.state}
+        fourK={shareCopy.state.fourK}
+        surface="mobile"
+        onCancel={() => void shareCopy.cancel()}
+        onRetry={() => void shareCopy.prepareShareFile(asset)}
+        onCopyReady={() => undefined}
+        onShareReady={() => {
+          const file = shareCopy.state.file;
+          if (
+            file &&
+            shareCopy.state.assetId === asset.id &&
+            shareCopy.state.assetRevision === asset.mediaRevision
+          )
+            void run(() => shareReadyFile(file));
+        }}
+        onDismiss={shareCopy.dismiss}
+      />
       <div className={styles.bar} role="toolbar" aria-label={t('图片操作')}>
         <button type="button" disabled={pending} onClick={() => void share()}>
           <IconShare2 />

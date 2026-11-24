@@ -6,7 +6,11 @@ import type { EagleService } from './eagle.service';
 import type { EaglePrivacyService, EaglePrivacySettings } from './eagle-privacy.service';
 import type { EagleVectorService } from './eagle-vector.service';
 import type { EagleProcessingService } from './eagle-processing.service';
-import type { BatchUpdateEagleAssetsDto, UpdateManualTagDto } from './eagle.dto';
+import type {
+  BatchUpdateEagleAssetsDto,
+  MergeEagleManualTagsDto,
+  UpdateManualTagDto,
+} from './eagle.dto';
 
 const strings = (value: Prisma.InputJsonValue | null | undefined) => value as string[];
 const chunks = <T>(items: T[], size = 100): T[][] => {
@@ -77,6 +81,7 @@ export function registerSharedLibraryCommands(
   });
   registry.register('ASSET_PURGE', {
     protocol: 'METADATA',
+    resourceState: 'TRASH',
     partition: assetPartitions,
     apply: async (tx, context, _payload, assetIds) => {
       await eagle.markTrashForPurge(tx, context.ownerId, assetIds, context.includePrivate);
@@ -134,6 +139,24 @@ export function registerSharedLibraryCommands(
       eagle.assertCommandTags(context.ownerId, [payload.tagId as string]),
     apply: async (tx, context, payload) => {
       await eagle.deleteManualTag(context.ownerId, payload.tagId as string, tx);
+    },
+  });
+  registry.register('TAG_MERGE', {
+    protocol: 'METADATA',
+    admit: (context, payload) =>
+      eagle.assertMergeManualTags(
+        context.ownerId,
+        payload as unknown as MergeEagleManualTagsDto,
+        context.includePrivate,
+      ),
+    apply: async (tx, context, payload) => {
+      const result = await eagle.mergeManualTags(
+        context.ownerId,
+        payload as unknown as MergeEagleManualTagsDto,
+        context.includePrivate,
+        tx,
+      );
+      return { privacyChanged: result.privacyChangedAssetCount > 0 };
     },
   });
   registry.register('TAG_GROUP_DELETE', {

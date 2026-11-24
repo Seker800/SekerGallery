@@ -1,39 +1,86 @@
-# 大图复制
+# 大图复制与分享版
 
-状态：现行；核验日期：2026-11-17；对应提交：本地候选（未提交）。
+状态：现行；核验日期：2026-11-24；对应提交：本地候选（未提交）。
 
-素材和照片共用同一个复制入口。普通查看器、照片组预览、查重比较和右键菜单都请求服务端生成的 4K 分享版，不再直接复制 1600px 浏览预览；向量工作台的大图查看器只持有预览地址、没有完整素材对象，仍保留旧的预览复制，不在本功能范围内。
+素材和照片共用同一个复制/分享入口。普通查看器、照片组预览、查重比较和右键菜单都请求服务端生成的分享版，不再直接复制 1600px 浏览预览；向量工作台的大图查看器只持有预览地址、没有完整素材对象，仍保留旧的预览复制，不在本功能范围内。
 
-## 分享版规格
+## 交互流程
 
-- 长边最多 4096px（不超过原图，不放大小图），输出 JPEG，质量从 90 起。
-- 体积上限 15MB，只是安全网：超限先按 85→60 逐档降质量，仍超再按 0.85 逐轮缩尺寸；最终结果如实返回，不向用户提供格式或质量选项。
-- 重新编码会去掉 EXIF（包括 GPS 位置）；方向按 EXIF 烘焙正，带透明通道的图先垫白底，避免转 JPEG 出现黑底。
-- 服务端按原图解码：HEIC／HEIF 走 `heif-dec`，相机 RAW 走 LibRaw（`readCameraRaw`），其余交给 sharp。原图先流式落到临时文件，不使用请求内存缓冲整份原图；临时目录在请求结束（含失败）后删除。
-- 每个 API 进程同时只做一份分享渲染，避免多张 6100 万像素原图同时解码。生成结果不写入素材库、不新增对象存储文件、不产生数据库写入；重复复制会重新渲染。
+1. 用户点击复制或分享后，客户端创建或复用一个分享渲染任务，立即返回；等待超过约 1 秒才显示状态条，普通 JPEG 或缓存命中不闪状态条。
+2. 渲染在 NAS 上的独立 `share-renderer` 进程执行，API 只受理和读取状态，不解码整份原图。
+3. 状态条显示真实阶段：排队中 → 正在读取原图 → 解码 HEIC/RAW（仅这两种格式出现）→ 压缩 4K → 完成；外部解码没有百分比，不画假进度条。状态条同时显示已用秒数和取消。
+4. 完成后写剪贴板或打开系统分享。失败说明原因并可重试；分享失败保留“改发原图”；图已生成但写剪贴板失败可“重试复制”。
+5. 同一素材、同一媒体版本、同一规格只渲染一次；结果是永久的分享版衍生图，第二次复制直接命中。
 
-环境变量与上限：
+网页浏览器只在点击手势内创建 `ClipboardItem` promise，等结果返回后兑现；如果浏览器不接受长时间等待，界面改为“分享图已准备好，点击复制”，第二次点击在已预取和转换好的图片上完成。网页系统分享同样在准备好后由用户点击“分享”；桌面和安卓准备好后自动完成。
 
-| 变量                            | 默认 | 保护的真实资源                     | 到顶表现                             |
-| ------------------------------- | ---- | ---------------------------------- | ------------------------------------ |
-| `EAGLE_SHARE_IMAGE_MAX_EDGE`    | 4096 | 剪贴板与分享文件的像素规模         | 输出停在设定长边，不放大             |
-| `EAGLE_SHARE_IMAGE_MAX_BYTES`   | 15MB | 避免超大原图直接进入剪贴板而不可用 | 先降质量、再缩尺寸，界面显示真实结果 |
-| `EAGLE_SHARE_IMAGE_MIN_QUALITY` | 60   | 防止为凑体积把画质压到不可用       | 质到下限后改为缩尺寸                 |
+## 接口
 
-## 剪贴板落地
+素材和照片共用（`PhotosController extends EagleController`）：
 
-浏览器剪贴板只接受 PNG，所以网页端在拿到服务端 JPEG 后于本地转成 PNG，再写入剪贴板；转换发生在点击手势内创建的 `ClipboardItem` promise 中，不需要用户再次点击。桌面客户端通过剪贴板桥直接接收 JPEG（`writeClipboardImageData`），不经 PNG 二次膨胀；旧版桌面缺少该能力时自动回退到网页的 PNG 路径。
+| 接口                                                                       | 作用                                                        |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `POST /api/{eagle\|photos}/assets/:assetId/share-renders`                  | 创建或复用任务；命中永久分享版时直接返回 READY              |
+| `GET /api/{eagle\|photos}/assets/:assetId/share-renders/:renderId`         | 状态、阶段、已用时间、结果地址、稳定错误码                  |
+| `DELETE /api/{eagle\|photos}/assets/:assetId/share-renders/:renderId`      | 取消；PENDING 直接终止，PROCESSING 通知渲染进程终止外部解码 |
+| `GET /api/{eagle\|photos}/assets/:assetId/renditions/:renditionId/content` | 下载永久分享版 JPEG（复用现有 rendition 内容接口）          |
 
-按钮在生成期间禁用；原图长边不小于 4096 时显示“正在准备 4K… / 已复制 4K”，更小的图如实显示“正在准备… / 已复制”，不冒充 4K。失败保留窗口并显示原因，可重试。照片组切换成员后，复制源与反馈一并切换，旧请求完成不会更新新照片的提示。视频不显示复制按钮。
+旧 `GET .../share-image` 同步接口已退役；客户端、OpenAPI 和安卓路径同步切换，不做旧客户端兼容。
 
-## 大图来源标记
+## 永久分享版
 
-大图查看器左上角常驻一个状态标记，按真实图层状态切换：预览图 → 正在加载原图（真实切片或下载进度）→ 原图；加载失败时显示“原图加载失败 · 仍显示预览图”，再次放大可重试。标记只在原图确实大于浏览预览时出现，加载完成后不消失。
+复用 `EagleAssetRendition`，新增 `SHARE_JPEG` 类型：
+
+- `kind = SHARE_JPEG`，`revision = asset.mediaRevision`，`variant = share-v1:edge=…:bytes=…:min=…`。
+- 只有用户点复制/分享或打开安卓高清详情时才按需生成，不会给全库预生成；安卓详情与复制/分享共用同一 revision/spec 的永久结果。
+- 长边最多 4096px（不放大小图）；输出 JPEG，质量从 90 起；体积上限 15MB，超限先按 85→60 降质量，再按 0.85 缩尺寸；最终结果如实返回。
+- 重新编码去掉 EXIF（含 GPS）；方向按 EXIF 烘焙正；透明通道先垫白底。
+- 不是新素材：不进素材库、不进回收站、不在列表出现；普通资产 DTO、预览和缩略图选择必须显式过滤 `SHARE_JPEG`。
+- 素材删除/清空时现有 `asset-purge` 会删除所有 renditions 的对象；原图替换时上传替换会删除当前 revision 的所有 renditions 并登记对象删除。新类型自动包含。
+- **永久保存，不设 TTL、不自动淘汰**。磁盘占用约等于“复制过的不同图片数 × 单张大小”；后续只提供占用统计和手动清理入口，不自动删除。规格变化会产生新的 `variant`，旧 variant 保留到素材删除或手动清理。
+
+## 任务队列与渲染进程
+
+- 新表 `LibraryShareRender`：`PENDING / PROCESSING / READY / FAILED / CANCELLED` 和阶段 `QUEUED / READING / DECODING / ENCODING / READY / FAILED / CANCELLED`；含 `leaseVersion / leaseUntil / attempts / cancelledAt / resultRenditionId / errorCode`。
+- 唯一键 `(ownerId, libraryMode, assetId, assetRevision, spec)`；同一张图同时点两次只生成一个任务。
+- 新进程 `share-renderer`：与 API 同一镜像、独立启动（`node apps/api/dist/library-share-renderer.js`），跑在 NAS，并发 1；只领取分享图任务，不处理图库媒体任务。
+- 领取使用 `FOR UPDATE SKIP LOCKED` + lease CAS；过期 PROCESSING 可恢复；每 30 秒续租；失败最多 2 次，客户端再次复制会按 CAS 重置任务。
+- 渲染函数复用 `library-share-image`，增加真实阶段回调和 `AbortSignal`；HEIC/RAW 子进程收到取消信号会终止。
+- 成功后先把对象写入 outbox，再 S3 PUT，最后在同一事务里 upsert `SHARE_JPEG` rendition、队列行 READY 并删除 outbox；事务失败时由现有对象删除 outbox 清理孤儿。
+- 队列行是临时的：READY/FAILED/CANCELLED 超过 1 小时清理；永久结果在 rendition。
+- 专用 `LibraryShareRendererState` 记录渲染进程心跳；API 状态的 `rendererOnline` 只用于说明“等待渲染服务”，不混入媒体 worker 心跳。
+
+## 网关
+
+- 结果下载路径 `/api/{eagle|photos}/assets/<uuid>/renditions/<uuid>/content` 使用 `proxy_read_timeout 120s` 作为慢网络安全网。
+- 任务创建、状态和取消保持默认 15 秒；渲染本身不在请求线程里等待。
+- 发布顺序：先停 API／operations／share-renderer，再执行迁移并切同版镜像；产生 `SHARE_JPEG` 数据后不要回退旧 API／operations 镜像（旧 Prisma 客户端不识别该枚举）。Mac business worker 的 renditions 查询按 kind 白名单，不会投影该行。
+
+## 环境变量
+
+| 变量                                | 默认                                   | 保护的真实资源 / 到顶表现                                          |
+| ----------------------------------- | -------------------------------------- | ------------------------------------------------------------------ |
+| `EAGLE_SHARE_IMAGE_MAX_EDGE`        | 4096                                   | 剪贴板与分享文件的像素规模；输出停在设定长边，不放大               |
+| `EAGLE_SHARE_IMAGE_MAX_BYTES`       | 15MB                                   | 避免超大原图直接进入剪贴板；先降质量、再缩尺寸，界面显示真实结果   |
+| `EAGLE_SHARE_IMAGE_MIN_QUALITY`     | 60                                     | 防止为凑体积把画质压到不可用；质到下限后改为缩尺寸                 |
+| `EAGLE_SHARE_RENDERER_READY_FILE`   | `/tmp/sekereagle-share-renderer-ready` | 独立进程就绪文件；只用于 Compose 健康检查                          |
+| `EAGLE_SHARE_RENDER_DB_CONNECTIONS` | 4                                      | 渲染进程数据库连接上限；只保护独立进程，不影响 API                 |
+| `EAGLE_SHARE_RENDER_S3_MAX_SOCKETS` | 8                                      | 渲染进程对象存储连接上限；只保护独立进程                           |
+| `EAGLE_SHARE_RENDERER_MEMORY_LIMIT` | 1536m（Compose）                       | 单张 6100 万像素解码的容器内存上限；并发固定为 1                   |
+| `EAGLE_SHARE_RENDER_RETENTION_MS`   | 3600000                                | 临时任务行保留期；到顶只清理队列行，永久分享版仍在，可调大保留历史 |
 
 ## 验证
 
-服务端：`apps/api` 单测覆盖 owner 作用域、跨 owner／非图片 404 与 400、体积上限降质缩尺寸；本机用 64MP HEIC 与 NEF RAW 样本渲染出 4096 长边，耗时约 1.3–1.6 秒（本机样本，不代表 NAS 生产 p95）。
+- 服务端单测：owner 作用域、非图片、阶段、规格解析、字节上限。
+- 真实隔离 PostgreSQL（`scripts/testing/share-render.test.mjs`，随 `test:library-integration` 运行）：渲染一次并生成永久 `SHARE_JPEG`、缓存命中直接 READY、取消 PROCESSING、素材版本变化失败、原图对象不被改写。
+- 架构门禁：`architecture:check`、`test:architecture`；新表登记在 media 能力，`SHARE_JPEG` 属于 rendition，新增进程写入 process-map。
+- 2026-11-24 本机真实端（网页，本地 Compose API／Web／share-renderer／Postgres／MinIO）：登录后打开 9000×6000、47MB 测试图；首次复制生成 5.5MB `SHARE_JPEG`，系统剪贴板出现 PNG（31.5MB）及 JPEG 等表示；第二次复制直接命中缓存（`LibraryShareRender` 1 行、`SHARE_JPEG` 1 条，无新渲染）；右键菜单复制显示浮动阶段“正在压缩 4K 已用 4 秒”，完成后生成同一永久分享版；取消 PROCESSING 后队列为 CANCELLED、没有结果 renditions。网关 `nginx -t` 通过，120 秒内容路径在配置中。测试资产没有金字塔，查看器对 `/pyramid` 的 404 是夹具缺失，不是分享图错误。
+- 尚未完成：桌面真实窗口、安卓固定测试图库、NAS 真实 HEIC/RAW 计时/内存峰值、`test:api-image` 成品镜像和完整 `test:library-integration`。这些是发布前置条件，不能用单测替代。
 
-网页：使用临时 PostgreSQL／MinIO 的真实 HTTP 工作台，在 Chrome 中上传 6000×4000 JPEG 后打开大图——左上角先显示“预览图 · 放大加载原图”，滚轮放大后变为“正在加载原图… 100%”，完成后常驻“原图”；点击“复制图片”得到“已复制 4K”，剪贴板读回为 4096×2731、约 8.5MB 的 PNG。工作台既有冒烟（上传、编辑器副本、相机格式、跨模式发送）同时通过。
+## 边界
 
-桌面：剪贴板桥的 PNG／JPEG 校验、JPEG 直写与旧版 PNG 回退由单测覆盖；真实桌面窗口的粘贴结果未验证（需要已登录的本机桌面连接，本轮未启动）。
+- 单张图复制/分享，不加入多图批量复制或批量分享。
+- 分享图由 NAS 的独立渲染进程制作，不使用 Mac 业务 worker。
+- 不把分享任务放进任务中心；它不是图库处理工作。
+- 不改视频分享；GIF/WebP 手机分享仍保留原始动画；向量工作台预览复制不在本次范围。
+- 多用户 owner 隔离、跨 owner 404、私密/删除后再校验全部保留；分享版内容接口复用现有 rendition 校验。

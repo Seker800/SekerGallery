@@ -17,7 +17,7 @@
 ## 流程与状态机
 
 1. **本地指纹**：浏览器 ≤8MiB 用 WebCrypto 一次计算，更大的文件按 4MiB 分块流式；安卓按 256KB 流式。查重仅为优化，指纹失败时放行上传，服务端发布事务仍是权威去重。
-2. **批量查重**：`POST /api/{photos|eagle}/uploads/check-content-batch`，请求 `{items:[{contentSha256,size}]}`，返回 `{exists, privateMatches}`。查重覆盖当前账号、当前模式内全部未删除内容（含私密）；只有私密命中时 `privateMatches=true`，用于提示“已存在（私密）”，不影响是否算重复。客户端按最多 50 个或 80ms 合并（网页 `UploadDedupeChecker`、安卓 `ContentCheckBatcher`）；调用失败按“不存在”放行，服务端发布事务仍是权威去重。
+2. **批量查重**：`POST /api/{photos|eagle}/uploads/check-content-batch`，请求 `{items:[{contentSha256,size}]}`，返回 `{exists, privateMatches}`。未解锁私密的会话只查公开内容，不返回私密命中；解锁会话才覆盖私密并可能返回 `privateMatches=true`（提示“已存在（私密）”）。发布事务沿用发起上传时的私密授权快照做同一作用域的权威去重：未解锁会话不会与私密素材去重，会创建独立的公开副本，既不会泄露私密存在性，也不会让用户整包上传后被静默丢弃。客户端按最多 50 个或 80ms 合并（网页 `UploadDedupeChecker`、安卓 `ContentCheckBatcher`）；调用失败按“不存在”放行。
 3. **创建会话**：`POST /api/{photos|eagle}/uploads`，带 `originalName`、`mimeType`、`size`、`contentSha256`、`duplicatePolicy:"SKIP"`，返回 `{id, partSize}`。分片大小由服务端决定：≤16MiB 的文件单分片；更大的文件每片 16MiB；下限 5MiB。
 4. **一次性签名**：`POST /api/{photos|eagle}/uploads/:id/parts`，请求 `{partNumbers:[...]}`，返回 `{parts:[{partNumber,uploadUrl}]}`。一个文件一次请求；签名过期（HTTP 403）时只对失败分片调用 `POST .../parts/:partNumber` 补签一次。安卓遇到旧服务端（批量签名返回 404/405）时自动退回逐片签名，滚动升级期间上传不中断。
 5. **上传分片**：单文件最多 3 个分片在途；全进程最多 4 个文件在途。分片 PUT 直接发往签名地址，不经过 API 凭据。

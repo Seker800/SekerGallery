@@ -39,12 +39,31 @@ enum EagleRenditionKind {
   THUMBNAIL
   PREVIEW
   POSTER
+  SHARE_JPEG
 }
 
 enum EagleRenditionStatus {
   PENDING
   READY
   FAILED
+}
+
+enum LibraryShareRenderStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+  CANCELLED
+}
+
+enum LibraryShareRenderStage {
+  QUEUED
+  READING
+  DECODING
+  ENCODING
+  READY
+  FAILED
+  CANCELLED
 }
 
 enum EagleAiAnalysisStatus {
@@ -388,6 +407,7 @@ model EagleUploadSessionState {
   uploadSessionId       String        @id
   ownerId               String
   duplicatePolicy       String        @default("SKIP")
+  includePrivate        Boolean       @default(false)
   assetId               String?
   replacementAssetId    String?
   copySourceAssetId     String?
@@ -466,6 +486,7 @@ model EagleAsset {
   updatedAt                      DateTime                       @updatedAt
   owner                          User                           @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   renditions                     EagleAssetRendition[]
+  shareRenders                   LibraryShareRender[]
   manualTagLinks                 EagleAssetManualTag[]
   manualTagIngestions            EagleAssetManualTagIngestion[]
   aiTagLinks                     EagleAssetAiTag[]
@@ -780,9 +801,50 @@ model EagleAssetRendition {
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
   asset       EagleAsset           @relation(fields: [ownerId, libraryMode, assetId], references: [ownerId, libraryMode, id], onDelete: Cascade)
+  shareRenderResults LibraryShareRender[]
 
   @@unique([assetId, kind, revision, variant])
   @@index([ownerId, libraryMode, assetId])
+}
+
+/// Interactive share-image work only. The permanent artifact lives in EagleAssetRendition(SHARE_JPEG).
+model LibraryShareRender {
+  id                String                    @id @default(uuid())
+  ownerId           String
+  libraryMode       LibraryMode               @default(MATERIAL)
+  assetId           String
+  assetRevision     Int
+  spec              String
+  status            LibraryShareRenderStatus  @default(PENDING)
+  stage             LibraryShareRenderStage   @default(QUEUED)
+  attempts          Int                       @default(0)
+  leaseVersion      Int                       @default(0)
+  leaseUntil        DateTime?
+  availableAt       DateTime                  @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  resultRenditionId String?
+  errorCode         String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  asset             EagleAsset                @relation(fields: [ownerId, libraryMode, assetId], references: [ownerId, libraryMode, id], onDelete: Cascade)
+  resultRendition   EagleAssetRendition?      @relation(fields: [resultRenditionId], references: [id], onDelete: SetNull)
+
+  @@unique([ownerId, libraryMode, assetId, assetRevision, spec])
+  @@index([status, availableAt])
+  @@index([status, leaseUntil])
+  @@index([ownerId, libraryMode, assetId])
+  @@index([ownerId, libraryMode, createdAt])
+}
+
+/// Dedicated renderer liveness; kept out of the media-worker heartbeat so it cannot affect task-center availability.
+model LibraryShareRendererState {
+  id             String   @id
+  heartbeatAt    DateTime
+  activeJobCount Int      @default(0)
+  version        String
+  updatedAt      DateTime @updatedAt
 }
 
 model EagleImagePyramid {

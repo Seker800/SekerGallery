@@ -52,10 +52,20 @@ const mocks = vi.hoisted(() => ({
   },
   enqueue: vi.fn(),
   save: vi.fn(),
+  startShare: vi.fn(),
 }));
 vi.mock('../../lib/library-workspace', () => ({
   useLibraryWorkspace: () => ({ api: mocks.api, ownerId: 'owner', libraryMode: 'PHOTO' }),
 }));
+vi.mock('../../lib/eagle-api', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    startEagleShareRender: mocks.startShare,
+    getEagleShareRender: vi.fn(),
+    cancelEagleShareRender: vi.fn(),
+  };
+});
 vi.mock('../../lib/asset-operations-api', () => ({
   createAssetOperationsApi: () => ({ enqueue: mocks.enqueue }),
 }));
@@ -64,6 +74,18 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.enqueue.mockResolvedValue({ id: 'queued' });
   mocks.save.mockResolvedValue({ saved: true });
+  mocks.startShare.mockResolvedValue({
+    id: 'rendition-1',
+    status: 'READY',
+    stage: 'READY',
+    elapsedMs: 0,
+    contentUrl: '/api/photos/assets/one/renditions/rendition-1/content',
+    renditionId: 'rendition-1',
+    width: 20,
+    height: 20,
+    byteSize: 4,
+    cached: true,
+  });
 });
 afterEach(() => vi.unstubAllGlobals());
 const photo = {
@@ -71,6 +93,7 @@ const photo = {
   originalName: 'photo.png',
   displayName: 'Photo',
   mimeType: 'image/png',
+  libraryMode: 'PHOTO',
   format: 'png',
   byteSize: 4,
   width: 20,
@@ -93,6 +116,10 @@ function show(asset = photo, readOnly = false) {
     </QueryClientProvider>,
   );
   return { close, edit };
+}
+async function clickReadyShare() {
+  await screen.findByText('分享图已准备好，点击分享');
+  fireEvent.click(screen.getAllByRole('button', { name: '分享' })[0]!);
 }
 it('keeps read-only copies safe and confirms recoverable deletion', async () => {
   const { close, edit } = show();
@@ -140,10 +167,12 @@ it('shares the bounded 4K rendering for a still image', async () => {
   vi.stubGlobal('fetch', fetch);
   show();
   fireEvent.click(screen.getByRole('button', { name: '分享' }));
+  await clickReadyShare();
   await waitFor(() => expect(share).toHaveBeenCalledOnce());
-  expect(fetch).toHaveBeenCalledWith('/api/photos/assets/one/share-image', {
-    credentials: 'same-origin',
-  });
+  expect(fetch).toHaveBeenCalledWith(
+    '/api/photos/assets/one/renditions/rendition-1/content',
+    expect.objectContaining({ credentials: 'include' }),
+  );
   expect(share.mock.calls[0][0].files[0].name).toBe('photo.jpg');
   expect(share.mock.calls[0][0].files[0].type).toBe('image/jpeg');
 });
@@ -223,16 +252,18 @@ it('offers download when the system rejects the file type, and lets the user dis
   );
   show();
   fireEvent.click(screen.getByRole('button', { name: '分享' }));
-  expect(await screen.findByRole('status')).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: '关闭' }));
-  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  await clickReadyShare();
+  expect(await screen.findByText('当前环境不支持系统分享，可先下载原文件。')).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('button', { name: '关闭' }).at(-1)!);
+  expect(screen.queryByText('当前环境不支持系统分享，可先下载原文件。')).not.toBeInTheDocument();
   expect(share).not.toHaveBeenCalled();
 });
 it.each(['AbortError', 'NotAllowedError'])(
   'handles system share cancellation or failure: %s',
   async (name) => {
+    const share = vi.fn().mockRejectedValue(new DOMException('share rejected', name));
     vi.stubGlobal('navigator', {
-      share: vi.fn().mockRejectedValue(new DOMException('share rejected', name)),
+      share,
       canShare: () => true,
     });
     vi.stubGlobal(
@@ -243,7 +274,8 @@ it.each(['AbortError', 'NotAllowedError'])(
     );
     show();
     fireEvent.click(screen.getByRole('button', { name: '分享' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: '分享' })).not.toBeDisabled());
+    await clickReadyShare();
+    await waitFor(() => expect(share).toHaveBeenCalledOnce());
     if (name === 'AbortError') expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     else expect(screen.getByRole('alert')).toHaveTextContent('操作失败');
   },

@@ -2,6 +2,7 @@ package com.sekereagle.android.core;
 
 /** Chooses a system-share source without downloading an original when a smaller rendition exists. */
 public final class NativeSharePolicy {
+  /** System share copies the whole file; larger originals fall back to the in-app download. */
   public static final long MAX_SHARE_ORIGINAL_BYTES = 512L * 1024 * 1024;
 
   public enum Source {

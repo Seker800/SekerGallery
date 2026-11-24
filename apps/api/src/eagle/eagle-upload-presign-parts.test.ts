@@ -22,7 +22,13 @@ test('batch presign reads the session once and signs every requested part', asyn
         uploadSession: {
           findFirst: async (input: unknown) => {
             queries.push(input);
-            return { id: sessionId, objectKey: 'owner/object.jpg', multipartUploadId: 'upload-1' };
+            return {
+              id: sessionId,
+              objectKey: 'owner/object.jpg',
+              multipartUploadId: 'upload-1',
+              size: BigInt(40 * 1024 * 1024),
+              partSize: 16 * 1024 * 1024,
+            };
           },
         },
       } as never,
@@ -83,6 +89,48 @@ test('invalid part numbers are rejected before any storage signing', async () =>
     );
   }
   assert.deepEqual(signed, []);
+});
+
+test('part numbers beyond the session size are rejected before any signing', async () => {
+  const signed: number[] = [];
+  const service = new EagleUploadService(
+    {
+      uploadSession: {
+        findFirst: async () => ({
+          id: sessionId,
+          objectKey: 'owner/object.jpg',
+          multipartUploadId: 'upload-1',
+          size: BigInt(20 * 1024 * 1024),
+          partSize: 16 * 1024 * 1024,
+        }),
+      },
+    } as never,
+    {
+      presignUploadPart: async (_key: string, _uploadId: string, partNumber: number) => {
+        signed.push(partNumber);
+        return `url-${partNumber}`;
+      },
+    } as never,
+    {} as never,
+    {} as never,
+    'MATERIAL',
+  );
+  await assert.rejects(
+    service.presignParts('owner', sessionId, [1, 3]),
+    (error: unknown) => error instanceof BadRequestException,
+  );
+  await assert.rejects(
+    service.presignPart('owner', sessionId, 3),
+    (error: unknown) => error instanceof BadRequestException,
+  );
+  assert.deepEqual(signed, []);
+  assert.deepEqual(await service.presignParts('owner', sessionId, [1, 2]), {
+    partSizeBytes: 16 * 1024 * 1024,
+    parts: [
+      { partNumber: 1, uploadUrl: 'url-1', expiresInSeconds: 900 },
+      { partNumber: 2, uploadUrl: 'url-2', expiresInSeconds: 900 },
+    ],
+  });
 });
 
 test('foreign or unknown sessions are absent without disclosing existence', async () => {

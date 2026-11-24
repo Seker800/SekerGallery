@@ -201,6 +201,10 @@ class NativeUploads(
         paused.set(true)
     }
 
+    fun resume() {
+        paused.set(false)
+    }
+
     private fun run(entries: List<NativeUploadEntry>, initial: NativeUploadState) {
         val connection = session ?: return
         val target = identity

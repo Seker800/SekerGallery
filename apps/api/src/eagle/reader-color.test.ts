@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { LibraryMemoryIndex } from './reader-index';
-import { residentColorPage, createMemoryColorScorer } from './reader-color';
+import { residentColorPage, createMemoryColorScorer, resetColorRankingCache } from './reader-color';
 import { COLOR_PALETTE_VERSION, paletteColorScore } from '@sekereagle/library-core';
 
 const palette = [{ hex: '#69696a', weight: 1 }];
@@ -57,6 +57,52 @@ test('resident color ranking retains ordinary OR members, date tie breaks and bo
     ['b'],
   );
 });
+test('ranks the resident palette once per revision and reuses it across pages', () => {
+  resetColorRankingCache();
+  const rows = ['a', 'b', 'c', 'd'].map((id, at) => ({
+    id,
+    ownerId: 'owner',
+    libraryMode: 'PHOTO',
+    mediaRevision: 0,
+    libraryAddedAt: new Date(at),
+    chronologicalAt: new Date(at),
+    colorAnalyses: [
+      {
+        isCurrent: true,
+        status: 'COMPLETED',
+        assetRevision: 0,
+        processorVersion: COLOR_PALETTE_VERSION,
+        swatches: palette,
+      },
+    ],
+  }));
+  const index = new LibraryMemoryIndex('owner', 'PHOTO');
+  index.replace('1', rows);
+  const original = index.forEach.bind(index);
+  let scans = 0;
+  index.forEach = ((...args: Parameters<typeof original>) => {
+    scans += 1;
+    return original(...args);
+  }) as typeof index.forEach;
+  const options = {
+    where: {},
+    color: '#777777',
+    date: 'chronologicalAt' as const,
+    limit: 1,
+    offset: 0,
+  };
+  const first = residentColorPage(index, options);
+  assert.equal(scans, 1);
+  const second = residentColorPage(index, { ...options, after: first[0] });
+  assert.equal(scans, 1);
+  assert.equal(first.length, 2);
+  assert.ok(second.length > 0);
+  index.replace('2', rows);
+  residentColorPage(index, options);
+  assert.equal(scans, 2);
+  resetColorRankingCache();
+});
+
 test('bounded color memoization retains the existing algorithm even with caching disabled', () => {
   for (const bytes of [0, 1, 8192]) {
     const score = createMemoryColorScorer(bytes);

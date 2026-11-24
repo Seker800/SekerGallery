@@ -1,7 +1,8 @@
 import { t } from '../i18n';
 import { fetchWithBrowserSession } from './api-client';
 import { getDesktopClipboardBridge, resolveClipboardImageUrl } from './media-resolver';
-const MAX_CLIPBOARD_PIXELS = 16000000;
+// A 4K share image is bounded by 4096x4096, not by the 1600x10000 preview shape.
+const MAX_CLIPBOARD_PIXELS = 4_096 * 4_096;
 interface ImageClipboardDependencies {
   convertToPng?: (source: Blob) => Promise<Blob>;
   createClipboardItem?: (items: Record<string, Blob | PromiseLike<string | Blob>>) => ClipboardItem;
@@ -48,12 +49,29 @@ export async function copyImageToClipboard(
   const pngPromise = loadClipboardPng(sourceUrl, dependencies);
   await writeClipboard([createClipboardItem({ 'image/png': pngPromise })]);
 }
-/** The desktop builds a 4K share JPEG server-side and hands its path to the native clipboard;
- *  browsers can only publish PNG, so the same JPEG is converted before the clipboard write. */
-export async function copyShareImageToClipboard(shareUrl: string): Promise<void> {
+export interface ShareClipboardImage {
+  jpeg: Promise<ShareJpeg>;
+  png: Promise<Blob>;
+}
+
+/** Start fetching the permanent share rendition; the PNG is what browsers can publish. */
+export function prepareShareClipboardImage(contentUrl: Promise<string>): ShareClipboardImage {
+  const jpeg = contentUrl.then(fetchShareJpeg);
+  const png = jpeg.then(convertJpegToPng);
+  // A caller may fail before consuming both promises (unsupported clipboard, early cancel).
+  jpeg.catch(() => undefined);
+  png.catch(() => undefined);
+  return { jpeg, png };
+}
+
+/**
+ * The desktop hands the JPEG to the native clipboard; browsers publish the prepared PNG.
+ * Call inside the click when the image may still be rendering: ClipboardItem accepts a promise.
+ */
+export async function copyPreparedShareImageToClipboard(image: ShareClipboardImage): Promise<void> {
   const desktop = getDesktopClipboardBridge();
   if (desktop) {
-    const jpeg = await fetchShareJpeg(shareUrl);
+    const jpeg = await image.jpeg;
     if (desktop.writeClipboardImageData) {
       await desktop.writeClipboardImageData({
         contentType: jpeg.contentType,
@@ -62,7 +80,7 @@ export async function copyShareImageToClipboard(shareUrl: string): Promise<void>
       return;
     }
     // Desktop builds before the JPEG bridge still accept PNG through the original IPC.
-    const png = await convertJpegToPng(jpeg);
+    const png = await image.png;
     await desktop.writeClipboardImage(new Uint8Array(await png.arrayBuffer()));
     return;
   }
@@ -83,12 +101,14 @@ export async function copyShareImageToClipboard(shareUrl: string): Promise<void>
     );
   }
   // Start the clipboard write inside the click gesture; the promise resolves after the render.
-  await writeClipboard([
-    createClipboardItem({ 'image/png': fetchShareJpeg(shareUrl).then(convertJpegToPng) }),
-  ]);
+  await writeClipboard([createClipboardItem({ 'image/png': image.png })]);
 }
 
-interface ShareJpeg {
+export async function copyShareImageToClipboard(shareUrl: string): Promise<void> {
+  await copyPreparedShareImageToClipboard(prepareShareClipboardImage(Promise.resolve(shareUrl)));
+}
+
+export interface ShareJpeg {
   buffer: ArrayBuffer;
   contentType: 'image/jpeg';
 }

@@ -361,6 +361,39 @@ try {
   );
   run(['stop', '--time', '90', operations]);
   assert.equal(run(['inspect', '--format', '{{.State.ExitCode}}', operations]), '0');
+  const shareRenderer = `${prefix}-share-renderer`;
+  containers.push(shareRenderer);
+  run([
+    'run',
+    '--detach',
+    '--pull',
+    'never',
+    '--name',
+    shareRenderer,
+    '--network',
+    prefix,
+    ...executorEnv,
+    image,
+    'node',
+    'apps/api/dist/library-share-renderer.js',
+  ]);
+  await waitFor(
+    () =>
+      spawnSync(
+        'docker',
+        [
+          'exec',
+          shareRenderer,
+          'node',
+          '-e',
+          "process.kill(Number(require('node:fs').readFileSync('/tmp/sekereagle-share-renderer-ready','utf8')),0)",
+        ],
+        { stdio: 'ignore', timeout: 3000 },
+      ).status === 0,
+    'independent share renderer in final image',
+  );
+  run(['stop', '--time', '90', shareRenderer]);
+  assert.equal(run(['inspect', '--format', '{{.State.ExitCode}}', shareRenderer]), '0');
   if (process.argv.includes('--storage-check')) {
     // Run the real-storage fixture without an API scheduler racing its explicit ticks.
     run(['stop', api]);

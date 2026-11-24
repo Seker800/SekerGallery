@@ -5,9 +5,10 @@ import { awaitWorkspaceRefreshBaseline } from '../../lib/workspace-refresh';
 import { isAcceptedOperation, observeAcceptedOperation } from '../../lib/accepted-operation';
 import { createAssetOperationsApi } from '../../lib/asset-operations-api';
 import { EagleOperationNotices } from './EagleOperationNotices';
+import { LibraryShareCopyStatus } from './LibraryShareCopyStatus';
 import { EagleDuplicates } from './EagleDuplicates';
 import { refreshEagleAssetRelations } from './eagle-write-refresh';
-import { EagleUploadQueue } from './EagleUploadQueue';
+import { EagleUploadQueuePanel } from './EagleUploadQueuePanel';
 import { AsyncViewBoundary } from '../AsyncViewBoundary';
 import { useAssetOperationProgress } from './useAssetOperations';
 import { EagleFavoriteButton } from './EagleFavoriteButton';
@@ -286,6 +287,7 @@ export function SekerEaglePage({
       listEagleAssets,
       resolveEagleAssetSelection,
       purgeEagleTrashAssets,
+      mergeEagleManualTags,
       listEagleTrash,
       fetchEagleReviewSummary,
       retryEagleAssetProcessing,
@@ -454,16 +456,8 @@ export function SekerEaglePage({
     setAssetContextMenu(null);
     photoEditing.open(asset);
   };
-  const {
-    importFiles,
-    uploads,
-    summary: uploadSummary,
-    pauseUploads,
-    resumeUploads,
-    retryAllFailed,
-    dismissUploads,
-    retryUpload,
-  } = useEagleUploadController(queryKeys.assets);
+  const uploadController = useEagleUploadController(queryKeys.assets);
+  const { importFiles } = uploadController;
   const assetLocator = useEagleAssetLocation({
     getLocation: (assetId, signal) =>
       getEagleAssetLocation(assetId, libraryMode === 'PHOTO' ? photoSort : undefined, signal),
@@ -876,7 +870,9 @@ export function SekerEaglePage({
   };
   const waitForTagMerge = async (operationId: string) => {
     const operationsApi = createAssetOperationsApi(libraryMode);
-    for (let attempt = 0; attempt < 120; attempt += 1) {
+    // TAG_MERGE may run up to its 120s server transaction; outlast it so a retry
+    // cannot enqueue a second merge concurrently.
+    for (let attempt = 0; attempt < 360; attempt += 1) {
       const operations = await operationsApi.list(true);
       const operation = operations.find((item) => item.id === operationId);
       if (operation?.state === 'COMPLETED') return;
@@ -890,31 +886,15 @@ export function SekerEaglePage({
     sources: EagleManualTag[],
     target: EagleManualTag,
   ): Promise<void> => {
-    const ids = new Set<string>();
-    let cursor: string | undefined;
-    do {
-      const page = await resolveEagleAssetSelection(
-        {
-          manualTagIds: sources.map((tag) => tag.id),
-          tagMatch: 'ANY',
-          cursor,
-          limit: undefined,
-        },
-        {},
-      );
-      for (const item of page.items) ids.add(item.assetId);
-      cursor = page.nextCursor ?? undefined;
-    } while (cursor);
-    if (ids.size > 0) {
-      const result = await batchTagMutation.mutateAsync({
-        assetIds: [...ids],
-        addTagIds: [target.id],
-        removeTagIds: sources.map((tag) => tag.id),
-      });
-      if (isAcceptedOperation(result)) await waitForTagMerge(result.id);
+    const result = await mergeEagleManualTags({
+      sourceTagIds: sources.map((tag) => tag.id),
+      targetTagId: target.id,
+    });
+    if (isAcceptedOperation(result)) {
+      await waitForTagMerge(result.id);
     }
-    await deleteTagsMutation.mutateAsync(sources);
     await queryClient.invalidateQueries({ queryKey: queryKeys.manualTags });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.assets });
   };
   const selectedAssetVersions: EagleAssetVersion[] = useMemo(
     () =>
@@ -1096,12 +1076,22 @@ export function SekerEaglePage({
   const manualTagGroups = manualTagGroupsQuery.data ?? [];
   const smartFolders = smartFoldersQuery.data ?? [];
   const previewAssets = imagePreview.context ?? assets;
-  const previewAsset = previewAssets.find((asset) => asset.id === previewAssetId) ?? null;
-  const previewImageAsset = imagePreview.previewImage?.assetId
-    ? (previewAssets.find((asset) => asset.id === imagePreview.previewImage?.assetId) ?? null)
+  const previewAssetsById = useMemo(
+    () => new Map(previewAssets.map((asset) => [asset.id, asset])),
+    [previewAssets],
+  );
+  const previewAsset = previewAssetId ? (previewAssetsById.get(previewAssetId) ?? null) : null;
+  const previewImageAssetId = imagePreview.previewImage?.assetId;
+  const previewImageAsset = previewImageAssetId
+    ? (previewAssetsById.get(previewImageAssetId) ?? null)
     : null;
-  const previewCanHavePyramid = Boolean(
-    previewImageAsset && needsEagleImagePyramid(previewImageAsset.width, previewImageAsset.height),
+  const previewCanHavePyramid = useMemo(
+    () =>
+      Boolean(
+        previewImageAsset &&
+        needsEagleImagePyramid(previewImageAsset.width, previewImageAsset.height),
+      ),
+    [previewImageAsset],
   );
   const previewPyramidQuery = useQuery({
     queryKey: queryKeys.pyramid(imagePreview.previewImage?.assetId ?? 'none'),
@@ -1115,20 +1105,26 @@ export function SekerEaglePage({
     refetchInterval: (query) => (query.state.data ? false : 15_000),
   });
   const isInspectorOpen = isAssetView && isInspectorVisible;
-  const activeSmartFolder =
-    smartFolders.find((folder) => folder.id === activeSmartFolderId) ?? null;
-  const semanticSignature = smartFolders
-    .filter(
-      (folder) =>
-        activeSmartFolderId !== null &&
-        folder.semanticState &&
-        (folder.id === activeSmartFolderId || folder.parentId === activeSmartFolderId),
-    )
-    .map(
-      (folder) =>
-        `${folder.semanticState?.id}:${folder.semanticState?.status}:${folder.semanticState?.updatedAt}`,
-    )
-    .join('|');
+  const activeSmartFolder = useMemo(
+    () => smartFolders.find((folder) => folder.id === activeSmartFolderId) ?? null,
+    [smartFolders, activeSmartFolderId],
+  );
+  const semanticSignature = useMemo(
+    () =>
+      smartFolders
+        .filter(
+          (folder) =>
+            activeSmartFolderId !== null &&
+            folder.semanticState &&
+            (folder.id === activeSmartFolderId || folder.parentId === activeSmartFolderId),
+        )
+        .map(
+          (folder) =>
+            `${folder.semanticState?.id}:${folder.semanticState?.status}:${folder.semanticState?.updatedAt}`,
+        )
+        .join('|'),
+    [smartFolders, activeSmartFolderId],
+  );
   const semanticRefreshRef = useRef(new Map<string, string>());
   useEffect(() => {
     const key = `${storeScope}:${activeSmartFolderId}`;
@@ -1278,6 +1274,7 @@ export function SekerEaglePage({
     assetActionPending,
     assetActionError,
     setAssetActionError,
+    shareCopy,
     saveSelectedOriginal,
     copySelectedImage,
     handleAssetDragStart,
@@ -2278,7 +2275,9 @@ export function SekerEaglePage({
                   queryClient.invalidateQueries({ queryKey: queryKeys.vectorSummary })
                 }
                 onAssetRelationsChanged={(ids) =>
-                  refreshEagleAssetRelations(queryClient, queryKeys, ids)
+                  refreshEagleAssetRelations(queryClient, queryKeys, ids, {
+                    refreshLists: true,
+                  })
                 }
               />
             </AsyncViewBoundary>
@@ -2428,14 +2427,9 @@ export function SekerEaglePage({
                   </button>
                 </div>
               )}
-              <EagleUploadQueue
-                items={uploads}
-                summary={uploadSummary}
-                onPause={pauseUploads}
-                onResume={resumeUploads}
-                onRetryAll={retryAllFailed}
-                onRetry={retryUpload}
-                onDismiss={dismissUploads}
+              <EagleUploadQueuePanel
+                queue={uploadController.queue}
+                scope={uploadController.scope}
               />
               {assetDragStatus && (
                 <div className={styles.statusBar} role="status">
@@ -3169,11 +3163,7 @@ export function SekerEaglePage({
               onClick={copySelectedImage}
             >
               <IconCopy size={15} />
-              {assetActionPending === 'copy'
-                ? Math.max(contextMenuAsset?.width ?? 0, contextMenuAsset?.height ?? 0) >= 4_096
-                  ? t('正在生成 4K 分享图…')
-                  : t('正在生成分享图…')
-                : t('复制到剪贴板')}
+              {t('复制到剪贴板')}
             </button>
           ) : null}
           {selectedAssetIds.length > 1 && libraryView !== 'TRASH' ? (
@@ -3255,6 +3245,21 @@ export function SekerEaglePage({
           )}
           {assetActionError ? <div role="alert">{assetActionError}</div> : null}
         </EagleAssetActionMenu>
+      )}
+
+      {shareCopy.state.phase !== 'idle' && shareCopy.state.assetId === selectedAssetId && (
+        <LibraryShareCopyStatus
+          state={shareCopy.state}
+          fourK={shareCopy.state.fourK}
+          surface="floating"
+          onCancel={() => void shareCopy.cancel()}
+          onRetry={() => void shareCopy.copy(assetsById.get(selectedAssetId ?? '') ?? undefined)}
+          onCopyReady={() =>
+            void shareCopy.copy(assetsById.get(selectedAssetId ?? '') ?? undefined)
+          }
+          onShareReady={() => undefined}
+          onDismiss={shareCopy.dismiss}
+        />
       )}
 
       {failedAssetAction && (

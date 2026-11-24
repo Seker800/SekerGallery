@@ -160,6 +160,40 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
             new Object[] {scope, key, fingerprint, result});
   }
 
+  /** A PENDING row must carry the media identity so the next run can reconcile it. */
+  void scanPending(
+      String scope,
+      String key,
+      String fingerprint,
+      String uri,
+      String name,
+      String mode,
+      long size,
+      long modified,
+      boolean document) {
+    getWritableDatabase()
+        .execSQL(
+            "INSERT INTO scan_progress(scope,key,fingerprint,result,uri,name,mode,size,modified,"
+                + "document,attempts,last_error,updated_at) VALUES"
+                + " (?,?,?,'PENDING',?,?,?,?,?,?,0,'',?) ON CONFLICT(scope,key) DO UPDATE SET"
+                + " fingerprint=excluded.fingerprint, result='PENDING', uri=excluded.uri,"
+                + " name=excluded.name, mode=excluded.mode, size=excluded.size,"
+                + " modified=excluded.modified, document=excluded.document,"
+                + " attempts=0, last_error='', updated_at=excluded.updated_at",
+            new Object[] {
+              scope,
+              key,
+              fingerprint,
+              uri,
+              name,
+              mode,
+              size,
+              modified,
+              document ? 1 : 0,
+              System.currentTimeMillis()
+            });
+  }
+
   /** Keeps the media identity of a failed file so it can be retried without a full media scan. */
   void scanFailure(
       String scope,

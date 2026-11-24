@@ -11,6 +11,7 @@ import { EagleImageSearchService } from './eagle-image-search.service';
 import { EagleEmbeddingClient } from './eagle-embedding-client';
 import { EagleBrowserCaptureService } from './eagle-browser-capture.service';
 import { EagleMediaService } from './eagle-media.service';
+import { LibraryShareRenderService } from './library-share-render.service';
 import { EagleMaintenanceService } from './eagle-maintenance.service';
 import { EagleMediaCapabilityService } from './eagle-media-capability.service';
 import { EagleProcessingService } from './eagle-processing.service';
@@ -97,8 +98,14 @@ export const EAGLE_LIBRARY_CAPABILITIES = [
   {
     id: 'media',
     modes: ['MATERIAL', 'PHOTO'],
-    providers: [EagleMediaService, EagleMediaCapabilityService],
-    tables: ['EagleAssetRendition', 'EagleImagePyramid', 'EagleObjectDeletion'],
+    providers: [EagleMediaService, EagleMediaCapabilityService, LibraryShareRenderService],
+    tables: [
+      'EagleAssetRendition',
+      'EagleImagePyramid',
+      'EagleObjectDeletion',
+      'LibraryShareRender',
+      'LibraryShareRendererState',
+    ],
     dependsOn: [],
   },
   {

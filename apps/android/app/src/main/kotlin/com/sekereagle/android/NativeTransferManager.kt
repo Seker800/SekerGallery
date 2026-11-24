@@ -353,6 +353,10 @@ class NativeTransferManager private constructor(context: Context) {
 
     internal fun resumeAll(scope: String) = command {
         if (settings.active() != scope) return@command
+        val active =
+            mutable.value.batches.firstOrNull {
+                it.id == mutable.value.activeId && it.scope == scope && it.paused
+            }
         val resumable =
             mutable.value.batches.filter {
                 it.scope == scope &&
@@ -360,7 +364,11 @@ class NativeTransferManager private constructor(context: Context) {
                     !it.waiting &&
                     it.unfinished.isNotEmpty()
             }
-        if (resumable.isEmpty()) return@command
+        if (active == null && resumable.isEmpty()) return@command
+        if (active != null) {
+            worker?.resume()
+            update(active.id) { it.copy(paused = false, message = "正在上传") }
+        }
         mutable.value =
             mutable.value.copy(
                 batches =
@@ -378,7 +386,7 @@ class NativeTransferManager private constructor(context: Context) {
                 mutable.value.copy(
                     batches =
                         mutable.value.batches.map {
-                            if (it.id in resumable.map { batch -> batch.id })
+                            if (it.id == active?.id || it.id in resumable.map { batch -> batch.id })
                                 it.copy(waiting = false, paused = true, message = "请回到应用后重试")
                             else it
                         }
@@ -475,13 +483,22 @@ class NativeTransferManager private constructor(context: Context) {
 
     internal fun resume(id: String) = command {
         val batch = mutable.value.batches.firstOrNull { it.id == id } ?: return@command
-        if (
-            mutable.value.activeId == id ||
-                batch.scope != settings.active() ||
-                batch.origin != settings.origin() ||
-                batch.unfinished.isEmpty()
-        )
+        if (batch.scope != settings.active() || batch.origin != settings.origin()) return@command
+        if (mutable.value.activeId == id) {
+            if (!batch.paused || batch.unfinished.isEmpty()) return@command
+            worker?.resume()
+            update(id) { it.copy(paused = false, message = "正在上传") }
+            persist()
+            try {
+                startService(batch.scope)
+            } catch (_: RuntimeException) {
+                worker?.pause()
+                update(id) { it.copy(paused = true, message = "请回到应用后重试") }
+                persist()
+            }
             return@command
+        }
+        if (batch.unfinished.isEmpty()) return@command
         update(id) { it.copy(waiting = true, paused = false, message = "等待上传") }
         persist()
         try {
@@ -493,7 +510,11 @@ class NativeTransferManager private constructor(context: Context) {
     }
 
     internal fun remove(id: String) = command {
-        if (mutable.value.activeId == id) return@command
+        if (mutable.value.activeId == id) {
+            val active = mutable.value.batches.firstOrNull { it.id == id } ?: return@command
+            if (!active.paused) return@command
+            worker?.cancel()
+        }
         val batch = mutable.value.batches.firstOrNull { it.id == id } ?: return@command
         mutable.value =
             mutable.value.copy(batches = mutable.value.batches.filterNot { it.id == id })

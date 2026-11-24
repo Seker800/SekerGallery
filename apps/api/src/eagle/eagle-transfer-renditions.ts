@@ -20,10 +20,10 @@ export function planTransferRenditions(
 ): TransferRendition[] {
   return rows
     .filter(
-      (r) =>
+      (r): r is EagleAssetRendition & { kind: TransferRendition['kind'] } =>
         r.revision === revision &&
         r.status === 'READY' &&
-        ['THUMBNAIL', 'PREVIEW', 'POSTER'].includes(r.kind) &&
+        (r.kind === 'THUMBNAIL' || r.kind === 'PREVIEW' || r.kind === 'POSTER') &&
         ['image/webp', 'image/jpeg', 'image/png', 'video/mp4'].includes(r.mimeType),
     )
     .map((r) => {

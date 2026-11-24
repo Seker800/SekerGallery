@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { expect, it, vi, afterEach } from 'vitest';
 import { LibraryWorkspaceProvider } from '../../lib/library-workspace';
-import type { EagleAsset } from '../../lib/eagle-api';
+import type { EagleAsset, EagleManualTag } from '../../lib/eagle-api';
 import { createEagleQueryKeys } from './eagle-query-keys';
 import { getEagleWorkspaceCache } from './eagle-workspace-cache';
 import { useEagleMutations } from './useEagleMutations';
@@ -450,6 +450,83 @@ it('deletes a smart folder through the API and reports the removed folder', asyn
   expect(fetchMock.mock.calls[0][0]).toBe('/api/eagle/smart-folders/folder-1');
   expect(fetchMock.mock.calls[0][1]?.method).toBe('DELETE');
   expect(onSmartFolderDeleted).toHaveBeenCalledWith(folder);
+  view.unmount();
+  client.clear();
+});
+
+it('patches a metadata edit in place and only refreshes search-dependent lists', async () => {
+  const client = new QueryClient();
+  const keys = createEagleQueryKeys('A');
+  const store = getEagleWorkspaceCache(client, 'A', 'MATERIAL').store;
+  store.upsertMany([makeEagleAsset({ id: 'a', displayName: 'old', rowVersion: 1 })]);
+  const plain = keys.assetList('ACTIVE', {});
+  const search = keys.assetList('ACTIVE', { search: 'sunset' });
+  client.setQueryData(plain, {});
+  client.setQueryData(search, {});
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => json({ ...asset('a', 2), displayName: 'new' })),
+  );
+  const view = renderHook(() => useEagleMutations(keys, callbacks), {
+    wrapper: makeWrapper(client),
+  });
+  await act(async () => {
+    await view.result.current.metadataMutation.mutateAsync({
+      assetId: 'a',
+      assets: [{ assetId: 'a', rowVersion: 1 }],
+      input: { displayName: 'new' },
+      revision: 1,
+    });
+  });
+  expect(store.get('a')?.displayName).toBe('new');
+  expect(store.get('a')?.rowVersion).toBe(2);
+  expect(client.getQueryState(plain)?.isInvalidated).toBe(false);
+  expect(client.getQueryState(search)?.isInvalidated).toBe(true);
+  view.unmount();
+  client.clear();
+});
+
+it('patches tag chips and only refreshes tag-dependent lists', async () => {
+  const client = new QueryClient();
+  const keys = createEagleQueryKeys('A');
+  const store = getEagleWorkspaceCache(client, 'A', 'MATERIAL').store;
+  store.upsertMany([makeEagleAsset({ id: 'a' })]);
+  const tag: EagleManualTag = {
+    id: 't1',
+    name: '收藏',
+    color: null,
+    systemKey: null,
+    marksAssetsPrivate: false,
+    groupId: null,
+    groupIds: [],
+    isStarred: false,
+    lastUsedAt: null,
+    rowVersion: 1,
+    assetCount: 1,
+    pinyin: '',
+    pinyinInitials: '',
+  };
+  client.setQueryData(keys.manualTags, [tag]);
+  const plain = keys.assetList('ACTIVE', {});
+  const tagged = keys.assetList('ACTIVE', { manualTagIds: [tag.id] });
+  client.setQueryData(plain, {});
+  client.setQueryData(tagged, {});
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => json({ affectedAssetCount: 1, privacyChangedAssetCount: 0 })),
+  );
+  const view = renderHook(() => useEagleMutations(keys, callbacks), {
+    wrapper: makeWrapper(client),
+  });
+  await act(async () => {
+    await view.result.current.replaceTagsMutation.mutateAsync({
+      assetId: 'a',
+      tagIds: [tag.id],
+    });
+  });
+  expect(store.get('a')?.manualTags.map(({ id }) => id)).toEqual([tag.id]);
+  expect(client.getQueryState(plain)?.isInvalidated).toBe(false);
+  expect(client.getQueryState(tagged)?.isInvalidated).toBe(true);
   view.unmount();
   client.clear();
 });

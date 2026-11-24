@@ -3,10 +3,10 @@ import type { MediaOperation } from './compute-node-config';
 import { freemem, totalmem, loadavg } from 'node:os';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { createReadStream } from 'node:fs';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ARTIFACT_CONTENT_TYPE, encodeArtifacts, receiveArtifacts } from './compute-artifacts';
@@ -92,6 +92,27 @@ async function body(stream: AsyncIterable<Uint8Array>, limit: number) {
     chunks.push(Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
+}
+/**
+ * Media request bodies can be camera originals up to 500 MiB. Stream them to a
+ * private temporary file instead of growing a Buffer, aborting at the limit so
+ * the excess is never persisted; the caller owns directory cleanup.
+ */
+async function receiveRequestBody(
+  stream: AsyncIterable<Uint8Array>,
+  path: string,
+  limit: number,
+): Promise<number> {
+  let size = 0;
+  const limiter = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      size += chunk.byteLength;
+      if (size > limit) return callback(new Error('MEDIA_PAYLOAD_TOO_LARGE'));
+      callback(null, chunk);
+    },
+  });
+  await pipeline(Readable.from(stream), limiter, createWriteStream(path, { flags: 'wx' }));
+  return size;
 }
 function authorized(header: string | undefined, token: string) {
   const a = Buffer.from(header ?? ''),
@@ -247,27 +268,43 @@ export function createRemoteMediaServer(
         }
         return;
       }
-      const bytes = await body(req, isImage ? CAMERA_MAX_IMAGE_BYTES : 20 * 1024 * 1024);
-      clearTimeout(timeout);
-      if (isImage) {
-        const header = req.headers['x-image-work'];
-        if (typeof header !== 'string' || header.length > 2048)
-          return send(400, { error: 'IMAGE_WORK' });
-        const work = JSON.parse(Buffer.from(header, 'base64url').toString('utf8')) as ImageWork;
-        const result = await processImageWork(Readable.from([bytes]), validateImageWork(work));
-        const output = encodeImageWork(result, work);
-        if (output.length > IMAGE_WORK_MAX_RESPONSE_BYTES)
-          throw new Error('MEDIA_PAYLOAD_TOO_LARGE');
-        if (!res.destroyed) {
-          res.writeHead(200, {
-            'content-type': IMAGE_WORK_CONTENT_TYPE,
-            'cache-control': 'no-store',
+      const directory = await mkdtemp(join(tmpdir(), 'sekereagle-media-input-'));
+      try {
+        await receiveRequestBody(
+          req,
+          join(directory, 'input'),
+          isImage ? CAMERA_MAX_IMAGE_BYTES : 20 * 1024 * 1024,
+        );
+        clearTimeout(timeout);
+        if (isImage) {
+          const header = req.headers['x-image-work'];
+          if (typeof header !== 'string' || header.length > 2048)
+            return send(400, { error: 'IMAGE_WORK' });
+          const work = JSON.parse(Buffer.from(header, 'base64url').toString('utf8')) as ImageWork;
+          const result = await processImageWork(
+            createReadStream(join(directory, 'input')),
+            validateImageWork(work),
+          );
+          const output = encodeImageWork(result, work);
+          if (output.length > IMAGE_WORK_MAX_RESPONSE_BYTES)
+            throw new Error('MEDIA_PAYLOAD_TOO_LARGE');
+          if (!res.destroyed) {
+            res.writeHead(200, {
+              'content-type': IMAGE_WORK_CONTENT_TYPE,
+              'cache-control': 'no-store',
+            });
+            res.end(output);
+          }
+        } else {
+          if (!faces) return send(422, { error: 'FACES_UNAVAILABLE' });
+          send(200, {
+            version: FACE_MODEL_VERSION,
+            faces: await inferPhotoFaces(await readFile(join(directory, 'input'))),
           });
-          res.end(output);
         }
-      } else {
-        if (!faces) return send(422, { error: 'FACES_UNAVAILABLE' });
-        send(200, { version: FACE_MODEL_VERSION, faces: await inferPhotoFaces(bytes) });
+      } finally {
+        // A cleanup failure must not replace the real request outcome.
+        await rm(directory, { recursive: true, force: true }).catch(() => undefined);
       }
     } catch (e) {
       if (res.headersSent || res.destroyed) {

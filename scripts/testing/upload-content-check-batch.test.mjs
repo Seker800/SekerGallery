@@ -60,11 +60,15 @@ test('batch content checks match owner, mode and size and report private-only ma
       { contentSha256: 'd'.repeat(64), size: 100 },
     ];
 
-    assert.deepEqual(await photos.checkContentBatch(owner, items), {
+    assert.deepEqual(await photos.checkContentBatch(owner, items, true), {
       exists: [true, true, true, false, false],
       privateMatches: [false, false, true, false, false],
     });
-    assert.deepEqual(await photos.checkContentBatch(randomUUID(), items), {
+    assert.deepEqual(await photos.checkContentBatch(owner, items), {
+      exists: [true, true, false, false, false],
+      privateMatches: [false, false, false, false, false],
+    });
+    assert.deepEqual(await photos.checkContentBatch(randomUUID(), items, true), {
       exists: [false, false, false, false, false],
       privateMatches: [false, false, false, false, false],
     });

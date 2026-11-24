@@ -24,6 +24,8 @@ export interface LibraryCommandSnapshot {
   resources?: Array<{ id: string; mediaRevision: number }>;
 }
 type CommandBase = {
+  /** Which asset lifecycle the execution snapshot guard reads; defaults to live assets. */
+  resourceState?: 'LIVE' | 'TRASH';
   /** Capture immutable admission facts without taking domain publication locks. */
   prepare?: (
     context: LibraryCommandContext,

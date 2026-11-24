@@ -254,6 +254,14 @@ test('date-only rules use the query timezone and include the whole calendar day'
         lte: new Date('2026-06-02T15:59:59.999Z'),
       },
     ],
+    [
+      'BETWEEN',
+      ['2026-06-02', '2016-01-01'],
+      {
+        gte: new Date('2015-12-31T16:00:00.000Z'),
+        lte: new Date('2026-06-02T15:59:59.999Z'),
+      },
+    ],
     ['AFTER', '2026-06-02', { gte: new Date('2026-06-01T16:00:00.000Z') }],
     ['BEFORE', '2026-06-02', { lte: new Date('2026-06-02T15:59:59.999Z') }],
   ] as const) {

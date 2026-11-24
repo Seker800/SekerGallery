@@ -136,11 +136,18 @@ export function serializeAssetList(asset: AssetListRecord): EagleAssetListRespon
     updatedAt: record.updatedAt,
     deletedAt: record.deletedAt,
   };
+  const browsingRenditions = asset.renditions.filter(
+    (
+      rendition,
+    ): rendition is (typeof asset.renditions)[number] & {
+      kind: 'THUMBNAIL' | 'PREVIEW' | 'POSTER';
+    } => rendition.kind !== 'SHARE_JPEG',
+  );
   return {
     ...safe,
     byteSize: Number(asset.byteSize),
     originalUrl: `/api/${asset.libraryMode === 'PHOTO' ? 'photos' : 'eagle'}/assets/${asset.id}/original`,
-    renditions: asset.renditions.map((rendition) => ({
+    renditions: browsingRenditions.map((rendition) => ({
       ...rendition,
       byteSize: Number(rendition.byteSize),
       url: `/api/${asset.libraryMode === 'PHOTO' ? 'photos' : 'eagle'}/assets/${asset.id}/renditions/${rendition.id}`,

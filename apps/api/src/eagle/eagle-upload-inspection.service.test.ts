@@ -138,6 +138,27 @@ test('ordinary image inspection writes a temporary file and removes it after rea
     );
     assert.equal(result.width, 12);
     assert.deepEqual(await readdir(dir), []);
+    // A decode-stage rejection must delete the temporary copy too.
+    await assert.rejects(
+      service.inspect(`users/${OWNER}/assets/id/original.png`, 'image/jpeg', OWNER),
+      /格式不匹配/,
+    );
+    assert.deepEqual(await readdir(dir), []);
+    // A transfer-stage stream failure must not leave a partial file behind.
+    const broken = new EagleUploadInspectionService({
+      getObject: async () => ({
+        Body: Readable.from(
+          (async function* () {
+            yield png;
+            throw new Error('synthetic transfer failure');
+          })(),
+        ),
+      }),
+    } as never);
+    await assert.rejects(
+      broken.inspect(`users/${OWNER}/assets/id/original.png`, 'image/png', OWNER),
+    );
+    assert.deepEqual(await readdir(dir), []);
   } finally {
     if (previous === undefined) delete process.env.TMPDIR;
     else process.env.TMPDIR = previous;

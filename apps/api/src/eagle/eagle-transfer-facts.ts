@@ -428,7 +428,7 @@ export async function copyTransferFacts(
     FROM "EagleAssetEmbedding" e JOIN "EagleEmbeddingSpace" s ON s.id=e."spaceId"
     WHERE e."ownerId"=${ownerId} AND e."libraryMode"=${source.libraryMode}::"LibraryMode" AND e."assetId"=${source.id}
       AND e."assetRevision"=${source.mediaRevision} AND e.status IN ('PENDING','RUNNING','READY','FAILED') AND e.embedding IS NOT NULL
-      AND s."isCurrent" AND s.normalized AND s.revision=${EAGLE_EMBEDDING_REVISION} AND s.dimensions=${EAGLE_EMBEDDING_DIMENSIONS} AND s.model=${EAGLE_EMBEDDING_MODEL}
+      AND s."isCurrent" AND s.normalized AND s.revision=${process.env.MLX_EMBEDDING_REVISION ?? EAGLE_EMBEDDING_REVISION} AND s.dimensions=${EAGLE_EMBEDDING_DIMENSIONS} AND s.model=${EAGLE_EMBEDDING_MODEL}
       AND s."instructionVersion"=${EAGLE_EMBEDDING_INSTRUCTION_VERSION} AND s."preprocessingVersion"=${EAGLE_EMBEDDING_PREPROCESSING_VERSION}  AND e."l2Norm" BETWEEN 0.99 AND 1.01
     RETURNING id
   `);

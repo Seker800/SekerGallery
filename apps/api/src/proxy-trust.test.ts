@@ -18,8 +18,9 @@ void test('API trusts exactly one gateway hop and gateway replaces untrusted for
   assert.match(gateway, /location \/api\/[\s\S]*proxy_read_timeout 15s;/u);
   assert.match(gateway, /location \/api\/[\s\S]*proxy_send_timeout 15s;/u);
   assert.match(gateway, /location \/api\/[\s\S]*proxy_buffering off;/u);
-  assert.match(gateway, /assets\/batch\|assets\/batch\/manual-tags/u);
-  assert.match(gateway, /assets\/batch\/edit-renders\|assets\/batch\/edit-render-context/u);
+  assert.match(gateway, /assets\/batch\(\/\.\*\)\?/u);
+  assert.match(gateway, /assets\/selection/u);
+  assert.match(gateway, /manual-tags\/merge|tags\/merge/u);
   assert.match(gateway, /preflight\$" \{[\s\S]*?proxy_read_timeout 660s;/u);
 });
 

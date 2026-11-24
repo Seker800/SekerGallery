@@ -93,16 +93,27 @@ export class EagleAssetEntityStore {
     if (changed) this.#emit();
   }
 
-  /** Optimistic metadata patch; callers restore the previous entities on failure. */
-  patchMany(ids: readonly string[], patch: Partial<Pick<EagleAssetListItem, 'rating'>>) {
+  /** Optimistic list patch; callers restore the previous entities on failure. */
+  applyPatches(
+    entries: readonly {
+      id: string;
+      patch: Partial<
+        Pick<EagleAssetListItem, 'rating' | 'displayName' | 'manualTags' | 'rowVersion'>
+      >;
+    }[],
+  ) {
     let changed = false;
-    for (const id of ids) {
+    for (const { id, patch } of entries) {
       const current = this.#entities.get(id);
       if (!current) continue;
       this.#entities.set(id, { ...current, ...patch });
       changed = true;
     }
     if (changed) this.#emit();
+  }
+
+  patchMany(ids: readonly string[], patch: Partial<Pick<EagleAssetListItem, 'rating'>>) {
+    this.applyPatches(ids.map((id) => ({ id, patch })));
   }
 
   removeMany(ids: ReadonlySet<string>) {

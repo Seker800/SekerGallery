@@ -14,6 +14,7 @@ import {
 import { mediaMemoryMiB, WORKER_INFLIGHT_MEMORY_MIB } from './media-resource-budget';
 import { computePolicySignature } from './compute-runtime';
 import { RemoteMediaClient } from './remote-media';
+import { WorkerSourceCache } from './source-cache';
 import { remoteMediaKinds, remoteImageKinds, remoteVideoKinds } from './compute-runtime';
 import {
   mediaWaitData,
@@ -132,6 +133,8 @@ const remoteMediaClient = new RemoteMediaClient(
   process.env.MLX_EMBEDDING_URL ?? 'http://host.docker.internal:11435',
   process.env.MLX_EMBEDDING_TOKEN ?? '',
 );
+// Disk-bounded accelerator only: SEKEREAGLE_WORKER_SOURCE_CACHE_BYTES defaults to 2 GiB.
+const sourceCache = new WorkerSourceCache();
 const embeddingSpaceId = process.env.MLX_EMBEDDING_SPACE_ID ?? EAGLE_EMBEDDING_SPACE_ID;
 const embeddingModel = process.env.MLX_EMBEDDING_MODEL ?? EAGLE_EMBEDDING_MODEL;
 const embeddingRevision = process.env.MLX_EMBEDDING_REVISION ?? EAGLE_EMBEDDING_REVISION;
@@ -342,6 +345,7 @@ const mediaJobContext = {
   facesConfigured,
   remoteKinds: () => remoteMediaKinds(embeddingClient.computeRuntime),
   resourcePool,
+  sourceCache,
   embeddingSpaceId,
   embeddingDimensions,
 };

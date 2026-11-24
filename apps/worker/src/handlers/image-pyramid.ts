@@ -14,6 +14,7 @@ export async function generateImagePyramid(
   { job, remoteRequired, context }: JobExecution,
   asset: JobMediaAsset,
   sourceBody: AsyncIterable<Uint8Array>,
+  cachedSha256?: string,
 ): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), 'sekereagle-pyramid-'));
   const outputAttempt = new MediaOutputAttempt(
@@ -28,6 +29,9 @@ export async function generateImagePyramid(
       ? await context.remoteMediaClient.pyramid(sourceBody, asset.mimeType, directory)
       : await renderPyramidWork(sourceBody, asset.mimeType, asset.originalObjectKey, directory);
     const { descriptor: result, sha256, tileDirectory } = output;
+    // A cached copy is trusted only when its recorded hash still matches the bytes
+    // just read; anything else is a miss and the caller retries from object storage.
+    if (cachedSha256 && sha256 !== cachedSha256) throw new Error('SOURCE_CACHE_HASH_MISMATCH');
     assertExpectedHash(asset.uploadSessions[0]?.eagleState?.expectedContentSha256, sha256);
 
     const tilePaths = output.files.map((name) => join(tileDirectory, name));

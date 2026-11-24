@@ -162,3 +162,66 @@ test('an idle queue does not touch the database beyond the claim', async () => {
   await run.tick();
   assert.deepEqual(updates, []);
 });
+
+test('the executor processes up to the configured transfer concurrency in parallel', async () => {
+  const pending = [
+    { ...job, id: 'job-1', uploadSessionId: 'session-1' },
+    { ...job, id: 'job-2', uploadSessionId: 'session-2' },
+    { ...job, id: 'job-3', uploadSessionId: 'session-3' },
+  ];
+  const updates: Array<Record<string, unknown>> = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const prisma: any = {
+    $queryRaw: async () => {
+      await Promise.resolve();
+      const next = pending.shift();
+      return next ? [next] : [];
+    },
+    uploadSession: {
+      findFirst: async () => ({
+        status: 'ASSEMBLED',
+        uploaderId: 'owner-1',
+        finalizationAttempts: 0,
+        eagleAssetId: null,
+      }),
+      updateMany: async () => ({ count: 0 }),
+    },
+    uploadFinalizationJob: {
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        updates.push(data);
+        return data;
+      },
+    },
+  };
+  prisma.$transaction = async (callback: (transaction: unknown) => unknown) => callback(prisma);
+  const finishes: Array<() => void> = [];
+  const recover = async () => {
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise<void>((resolve) => finishes.push(resolve));
+    inFlight--;
+    return { assetId: null };
+  };
+  const parallel = new UploadFinalizationExecutor(
+    prisma as never,
+    {
+      PHOTO: { recoverUploadSession: recover },
+      MATERIAL: { recoverUploadSession: recover },
+    } as never,
+    { finalizeUpload: async () => undefined } as never,
+    2,
+  );
+  let settled = false;
+  const tick = parallel.tick().then(() => {
+    settled = true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(maxInFlight, 2, 'both transfer slots must be used');
+  while (!settled) {
+    while (finishes.length) finishes.shift()!();
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  await tick;
+  assert.equal(updates.filter((update) => update.status === 'COMPLETED').length, 3);
+});

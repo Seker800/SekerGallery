@@ -193,11 +193,12 @@ class NativeBackgroundTransferTest {
                 manager.pause(photoId)
             }
             compose.waitUntil(5000) {
-                manager.state.value.batches.first { it.id == photoId }.progress?.cancelled == true
+                manager.state.value.batches.first { it.id == photoId }.paused
             }
             compose.runOnUiThread { manager.resume(photoId) }
             compose.waitUntil(5000) {
-                manager.state.value.batches.first { it.id == photoId }.waiting
+                val batch = manager.state.value.batches.first { it.id == photoId }
+                !batch.paused && manager.state.value.activeId == photoId
             }
             compose.onNodeWithTag("native-upload-dialog").assertDoesNotExist()
             compose.onNodeWithTag("mode:MATERIAL").performClick()
@@ -225,8 +226,18 @@ class NativeBackgroundTransferTest {
                     } &&
                     !manager.state.value.busy
             }
-            assertTrue(server.paths.contains("/api/photos/uploads/check-content"))
-            assertTrue(server.paths.contains("/api/eagle/uploads/check-content"))
+            assertTrue(
+                server.paths.any {
+                    it == "/api/photos/uploads/check-content" ||
+                        it == "/api/photos/uploads/check-content-batch"
+                }
+            )
+            assertTrue(
+                server.paths.any {
+                    it == "/api/eagle/uploads/check-content" ||
+                        it == "/api/eagle/uploads/check-content-batch"
+                }
+            )
             assertEquals(2, server.paths.count { it.contains("/sekereagle-assets/test/part?") })
             val saved = NativeTransferStore(context).load()
             compose.waitUntil(5000) {

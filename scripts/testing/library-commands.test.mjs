@@ -468,3 +468,64 @@ test(
     await f.service.cancel(f.principal, op.id);
   },
 );
+
+test('tag merge moves links and removes sources in one command transaction', async () => {
+  const f = await fixture();
+  const assets = await Promise.all([f.add(), f.add()]);
+  const target = await f.tag();
+  const source = await f.tag();
+  await db.eagleAssetManualTag.createMany({
+    data: assets.map((asset) => ({
+      ownerId: f.ownerId,
+      libraryMode: f.mode,
+      assetId: asset.id,
+      tagId: source.id,
+    })),
+  });
+  const op = await f.service.enqueueCommand(f.principal, {
+    type: 'TAG_MERGE',
+    payload: { sourceTagIds: [source.id], targetTagId: target.id },
+  });
+  const result = await f.drain(op.id);
+  assert.equal(result.state, 'COMPLETED');
+  assert.equal(
+    await db.eagleManualTag.count({
+      where: { id: source.id, ownerId: f.ownerId, libraryMode: f.mode },
+    }),
+    0,
+  );
+  const links = await db.eagleAssetManualTag.findMany({
+    where: { ownerId: f.ownerId, libraryMode: f.mode, tagId: target.id },
+    select: { assetId: true },
+  });
+  assert.deepEqual(
+    links.map((link) => link.assetId).sort(),
+    assets.map((asset) => asset.id).sort(),
+  );
+  assert.equal(
+    await db.eagleAssetManualTag.count({
+      where: { ownerId: f.ownerId, libraryMode: f.mode, tagId: source.id },
+    }),
+    0,
+  );
+  assert.equal(storageCalls, 0);
+});
+
+test('explicit permanent purge marks trash and schedules one purge job', async () => {
+  const f = await fixture();
+  const asset = await f.add({ deletedAt: new Date() });
+  const op = await f.service.enqueueCommand(f.principal, {
+    type: 'ASSET_PURGE',
+    assetIds: [asset.id],
+    payload: {},
+  });
+  const result = await f.drain(op.id);
+  assert.equal(result.state, 'COMPLETED');
+  const row = await db.eagleAsset.findUniqueOrThrow({ where: { id: asset.id } });
+  assert.ok(row.purgeAfter);
+  const job = await db.eagleAssetProcessingJob.findFirst({
+    where: { ownerId: f.ownerId, assetId: asset.id, kind: 'PURGE_ASSET' },
+  });
+  assert.ok(job);
+  assert.equal(storageCalls, 0);
+});

@@ -303,8 +303,9 @@ export class EagleAssetOperationService implements OnModuleDestroy {
             ownerId: item.ownerId,
             libraryMode: this.libraryMode,
             id: { in: item.assetIds },
-            deletedAt: null,
-            purgeAfter: null,
+            ...(definition.resourceState === 'TRASH'
+              ? { deletedAt: { not: null } }
+              : { deletedAt: null, purgeAfter: null }),
             ...(item.operation.isPrivate ? {} : { isPrivate: false }),
           },
           select: { id: true, mediaRevision: true },

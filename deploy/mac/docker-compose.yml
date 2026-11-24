@@ -40,6 +40,10 @@ x-api-environment: &api-environment
   EAGLE_EMPTY_TRASH_TIMEOUT_MS: ${EAGLE_EMPTY_TRASH_TIMEOUT_MS:-12000}
   EAGLE_UPLOAD_PUBLICATION_TIMEOUT_MS: ${EAGLE_UPLOAD_PUBLICATION_TIMEOUT_MS:-30000}
   EAGLE_VIDEO_TRANSCODING_ENABLED: ${EAGLE_VIDEO_TRANSCODING_ENABLED:-true}
+  # The API owns the share spec; the renderer only executes the persisted spec.
+  EAGLE_SHARE_IMAGE_MAX_EDGE: ${EAGLE_SHARE_IMAGE_MAX_EDGE:-4096}
+  EAGLE_SHARE_IMAGE_MAX_BYTES: ${EAGLE_SHARE_IMAGE_MAX_BYTES:-15728640}
+  EAGLE_SHARE_IMAGE_MIN_QUALITY: ${EAGLE_SHARE_IMAGE_MIN_QUALITY:-60}
 
 services:
   postgres:
@@ -79,7 +83,8 @@ services:
     volumes:
       - sekereagle_minio:/data
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      # The MinIO image ships wget, not curl.
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:9000/minio/health/live']
       interval: ${SEKEREAGLE_HEALTHCHECK_INTERVAL:-60s}
       timeout: 3s
       retries: 3
@@ -196,6 +201,47 @@ services:
       retries: 3
     stop_grace_period: 90s
     mem_limit: ${EAGLE_OPERATION_MEMORY_LIMIT:-768m}
+
+  share-renderer:
+    logging: *bounded-logging
+    platform: linux/arm64
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    command: ['node', 'apps/api/dist/library-share-renderer.js']
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/sekereagle?schema=public&connection_limit=${EAGLE_SHARE_RENDER_DB_CONNECTIONS:-4}
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: sekereagle-assets
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_MAX_SOCKETS: ${EAGLE_SHARE_RENDER_S3_MAX_SOCKETS:-8}
+      EAGLE_SHARE_IMAGE_MAX_EDGE: ${EAGLE_SHARE_IMAGE_MAX_EDGE:-4096}
+      EAGLE_SHARE_IMAGE_MAX_BYTES: ${EAGLE_SHARE_IMAGE_MAX_BYTES:-15728640}
+      EAGLE_SHARE_IMAGE_MIN_QUALITY: ${EAGLE_SHARE_IMAGE_MIN_QUALITY:-60}
+      EAGLE_SHARE_RENDERER_READY_FILE: /tmp/sekereagle-share-renderer-ready
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "process.kill(Number(require('node:fs').readFileSync('/tmp/sekereagle-share-renderer-ready','utf8')),0)",
+        ]
+      interval: ${SEKEREAGLE_HEALTHCHECK_INTERVAL:-60s}
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 90s
+    mem_limit: ${EAGLE_SHARE_RENDERER_MEMORY_LIMIT:-1536m}
 
   worker:
     logging: *bounded-logging

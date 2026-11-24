@@ -5,12 +5,11 @@ import {
 } from '../common/range-parser';
 import type { LibraryMode } from '@prisma/client';
 import { LIBRARY_MODE } from './library-mode';
-import { BadRequestException, Injectable, NotFoundException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject } from '@nestjs/common';
 import { Readable } from 'node:stream';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertOwnedObjectKey } from '../storage/object-key';
 import { ObjectStorageService } from '../storage/object-storage.service';
-import { renderShareImage, shareImageBudget, type RenderedShareImage } from './eagle-share-image';
 import { visibleAssetWhere } from './library-values';
 
 @Injectable()
@@ -57,38 +56,6 @@ export class EagleMediaService {
     return { size: asset.byteSize };
   }
 
-  async renderShareImage(
-    ownerId: string,
-    assetId: string,
-    includePrivate = false,
-    abortSignal?: AbortSignal,
-  ): Promise<RenderedShareImage> {
-    const asset = await this.prisma.eagleAsset.findFirst({
-      where: {
-        ...visibleAssetWhere(ownerId, this.libraryMode, includePrivate, 'media'),
-        id: assetId,
-      },
-      select: { originalObjectKey: true, mimeType: true },
-    });
-    if (!asset) throw new NotFoundException('素材不存在。');
-    if (!asset.mimeType.startsWith('image/'))
-      throw new BadRequestException('仅图片支持复制分享版。');
-    assertOwnedObjectKey(ownerId, asset.originalObjectKey);
-    const key = asset.originalObjectKey;
-    return renderShareImage(
-      {
-        mimeType: asset.mimeType,
-        openBody: async () => {
-          const object = await this.storage.getObject(key, { abortSignal });
-          if (!object.Body) throw new NotFoundException('素材文件不存在。');
-          return object.Body as unknown as AsyncIterable<Uint8Array>;
-        },
-      },
-      shareImageBudget(),
-      abortSignal,
-    );
-  }
-
   async getRendition(
     ownerId: string,
     assetId: string,
@@ -129,7 +96,13 @@ export class EagleMediaService {
       return await this.open(
         ownerId,
         rendition.storageKey,
-        `${rendition.kind.toLowerCase()}.${rendition.mimeType === 'video/mp4' ? 'mp4' : 'webp'}`,
+        `${rendition.kind.toLowerCase()}.${
+          rendition.mimeType === 'video/mp4'
+            ? 'mp4'
+            : rendition.mimeType === 'image/jpeg'
+              ? 'jpg'
+              : 'webp'
+        }`,
         rendition.mimeType,
         {
           range: parsedRange,

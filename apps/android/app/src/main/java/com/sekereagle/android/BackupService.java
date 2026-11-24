@@ -767,7 +767,16 @@ public final class BackupService extends Service {
               text -> {});
       guard();
       if (result == BackupEngine.Result.PENDING) {
-        journal.scanResult(scope, fileKey, fingerprint, "PENDING");
+        journal.scanPending(
+            scope,
+            fileKey,
+            fingerprint,
+            item.uri.toString(),
+            item.name,
+            mode,
+            item.size,
+            item.modified,
+            item.document);
         refreshCounts(journal);
         BackupLive.finish(item.uri.toString(), BackupLive.PENDING, "");
         recordTransfer(item.name, mode, "已上传");

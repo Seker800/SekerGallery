@@ -16,11 +16,15 @@ export function assertSafeHeifInfo(output: string): void {
 }
 
 /** Header inspection is shared with decoding; upload never expands the image into RGB. */
-export async function probeHeifFile(inputPath: string): Promise<{ width: number; height: number }> {
+export async function probeHeifFile(
+  inputPath: string,
+  abortSignal?: AbortSignal,
+): Promise<{ width: number; height: number }> {
   const { stdout } = await run(process.env.HEIF_INFO_PATH?.trim() || 'heif-info', [inputPath], {
     env: mediaSubprocessEnvironment(),
     maxBuffer: 256 * 1024,
     timeout: 30_000,
+    signal: abortSignal,
   });
   return parseHeifInfo(stdout);
 }
@@ -38,11 +42,16 @@ export function parseHeifInfo(stdout: string): { width: number; height: number }
 }
 
 /** Same native decoder and aggregate pixel guard at preview generation. */
-export async function decodeHeifFile(inputPath: string, outputPath: string): Promise<void> {
-  await probeHeifFile(inputPath);
+export async function decodeHeifFile(
+  inputPath: string,
+  outputPath: string,
+  abortSignal?: AbortSignal,
+): Promise<void> {
+  await probeHeifFile(inputPath, abortSignal);
   await run(process.env.HEIF_CONVERT_PATH?.trim() || 'heif-dec', [inputPath, outputPath], {
     env: mediaSubprocessEnvironment(),
     timeout: 120_000,
     maxBuffer: 256 * 1024,
+    signal: abortSignal,
   });
 }

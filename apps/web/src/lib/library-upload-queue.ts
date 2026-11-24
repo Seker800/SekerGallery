@@ -46,6 +46,7 @@ export class LibraryUploadQueue {
   #items: EagleUploadItem[] = [];
   #jobs = new Map<number, Job>();
   #listeners = new Set<() => void>();
+  #version = 0;
   #nextId = 0;
   #tail = Promise.resolve();
   #controller = new AbortController();
@@ -71,13 +72,31 @@ export class LibraryUploadQueue {
       this.#listeners.delete(listener);
     };
   };
+  get items() {
+    return this.#items;
+  }
+  /** Stable scalar snapshot for useSyncExternalStore; items stay in place. */
+  getVersion = () => this.#version;
+  /** Compatibility read for tests and non-React callers. */
   snapshot = () => this.#items;
-  #publish(items: EagleUploadItem[]) {
-    this.#items = items;
+  #emit() {
+    this.#version += 1;
     this.#listeners.forEach((listener) => listener());
   }
+  #publish(items: EagleUploadItem[]) {
+    this.#items = items;
+    this.#emit();
+  }
   #update(id: number, patch: Partial<EagleUploadItem>) {
-    this.#publish(this.#items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+    const index = this.#items.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const current = this.#items[index];
+    if (
+      Object.entries(patch).every(([key, value]) => current[key as keyof EagleUploadItem] === value)
+    )
+      return;
+    this.#items[index] = { ...current, ...patch };
+    this.#emit();
   }
   clear = () => {
     this.#controller.abort();
@@ -108,13 +127,13 @@ export class LibraryUploadQueue {
   pauseAll = () => {
     if (this.#paused) return;
     this.#paused = true;
-    this.#publish([...this.#items]);
+    this.#emit();
   };
   resumeAll = () => {
     if (!this.#paused) return;
     this.#paused = false;
     this.#resumeWaiters.splice(0).forEach((resume) => resume());
-    this.#publish([...this.#items]);
+    this.#emit();
   };
   retryAllFailed = (scope?: string) =>
     this.enqueue(
@@ -262,7 +281,7 @@ export class LibraryUploadQueue {
     if (!this.#active.size && this.#paused) {
       this.#paused = false;
       this.#resumeWaiters.splice(0).forEach((resume) => resume());
-      this.#publish([...this.#items]);
+      this.#emit();
     }
   }
   #waitWhilePaused(signal: AbortSignal) {

@@ -81,6 +81,22 @@ data class GalleryState(
 }
 
 /**
+ * Paged append with the old `distinctBy { it.id }` semantics: the first occurrence wins, so loaded
+ * item instances stay untouched and only genuinely new ids are appended. Returns the original list
+ * instance (no reallocation) when the page adds nothing.
+ */
+internal fun appendNewAssets(
+    existing: List<NativeAsset>,
+    incoming: List<NativeAsset>,
+): List<NativeAsset> {
+    if (incoming.isEmpty()) return existing
+    val seen = existing.mapTo(HashSet(existing.size)) { it.id }
+    val appended = ArrayList<NativeAsset>(minOf(incoming.size, 64))
+    for (asset in incoming) if (seen.add(asset.id)) appended.add(asset)
+    return if (appended.isEmpty()) existing else existing + appended
+}
+
+/**
  * Owns the native flow. A cancelled/replaced scope can never publish a response into another one.
  */
 class NativeGalleryViewModel(application: Application) : AndroidViewModel(application) {
@@ -534,10 +550,11 @@ class NativeGalleryViewModel(application: Application) : AndroidViewModel(applic
                 if (request != generation) return@launch
                 mutable.value =
                     state.value.copy(
+                        // Reuse loaded item instances and append only ids we have not seen so a
+                        // page turn never re-hashes or re-allocates the whole loaded list.
                         items =
-                            (if (next) snapshot.items + page.items else page.items).distinctBy {
-                                it.id
-                            },
+                            if (next) appendNewAssets(snapshot.items, page.items)
+                            else appendNewAssets(emptyList(), page.items),
                         cursor = page.cursor,
                         previousCursor =
                             if (next) snapshot.previousCursor else page.previousCursor,
