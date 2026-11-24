@@ -8,8 +8,10 @@ import { AppModule } from './app.module';
 import { installEditRequestBodyParser } from './eagle/eagle-edit-request-body';
 import { installOperationRequestBodyParser } from './eagle/eagle-operation-request-body';
 import { installPhotoRequestBodyParser } from './photos/photo-request-body';
+import { assertCompiledWorkspaceExports } from './runtime-artifacts';
 
 async function bootstrap(): Promise<void> {
+  assertCompiledWorkspaceExports();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableShutdownHooks();
   installOperationRequestBodyParser(app);

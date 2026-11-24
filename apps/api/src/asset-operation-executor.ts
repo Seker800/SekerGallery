@@ -38,6 +38,7 @@ import { EagleImportsService } from './eagle/import/eagle-app-import.service';
 import { PrismaEagleImportsRepository } from './eagle/import/adapters/prisma/eagle-app-import.repository';
 import { PrismaSekerEagleIngestionAdapter } from './eagle/adapters/prisma/seker-eagle-ingestion.adapter';
 import { UploadFinalizationExecutor } from './upload-finalization-executor';
+import { assertCompiledWorkspaceExports } from './runtime-artifacts';
 
 const UPLOAD_MODES = ['MATERIAL', 'PHOTO'] as const;
 
@@ -129,6 +130,7 @@ export function createAssetOperationBackground(
 }
 
 async function main() {
+  assertCompiledWorkspaceExports();
   const env = process.env;
   assertSafeRuntimeTarget({
     databaseUrl: env.DATABASE_URL ?? '',

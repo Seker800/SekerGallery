@@ -14,9 +14,11 @@ import {
 } from './eagle/reader-semantic-store';
 import { readResidentPhotoFacets, residentPhotoFacets } from './photos/photo-facets-memory';
 import { residentPersonCounts } from './photos/photo-people-memory';
+import { assertCompiledWorkspaceExports } from './runtime-artifacts';
 
 /** Explicit standalone entry. Importing shared HTTP providers never starts it. */
 export async function startLibraryReader(env = process.env) {
+  assertCompiledWorkspaceExports();
   if (!env.DATABASE_URL || !env.EAGLE_READER_TOKEN)
     throw new Error('Reader database and service identity are required');
   assertSafeRuntimeTarget({

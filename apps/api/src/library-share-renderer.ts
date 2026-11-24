@@ -6,6 +6,7 @@ import { PrismaService } from './prisma/prisma.service';
 import { ObjectStorageService } from './storage/object-storage.service';
 import { objectStorageRuntimeOptions } from './config/runtime-config';
 import { LibraryShareRenderWorker } from './eagle/library-share-render-worker';
+import { assertCompiledWorkspaceExports } from './runtime-artifacts';
 
 const REQUIRED_STORAGE_KEYS = [
   'S3_BUCKET',
@@ -18,6 +19,7 @@ const REQUIRED_STORAGE_KEYS = [
 
 /** Same API image, separate process: the HTTP API never decodes a share-image original. */
 async function main(): Promise<void> {
+  assertCompiledWorkspaceExports();
   const env = process.env;
   assertSafeRuntimeTarget({
     databaseUrl: env.DATABASE_URL ?? '',

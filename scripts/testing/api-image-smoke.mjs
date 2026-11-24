@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { assertSafeRuntimeTarget } from '../../packages/config/dist/index.js';
 
@@ -76,8 +78,80 @@ async function waitFor(check, name, attempts = 120) {
   }
   throw new Error(`API image smoke: ${name} timed out`);
 }
+// Every compiled directory the image runs must come from this workspace build.
+// Release images are assembled by replacing dist directories in place; a package
+// left on an older build imports fine but exposes undefined exports at call time.
+const runtimeArtifactDirectories = [
+  'apps/api/dist',
+  'packages/config/dist',
+  'packages/eagle-filter-core/dist',
+  'packages/library-core/dist',
+  'packages/library-persistence/dist',
+  'packages/media-core/dist',
+  'packages/photo-render-core/dist',
+  'packages/vector-core/dist',
+];
+function localArtifactManifest() {
+  const manifest = new Map();
+  for (const directory of runtimeArtifactDirectories) {
+    const walk = (current) => {
+      for (const entry of readdirSync(current, { withFileTypes: true })) {
+        const path = join(current, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else
+          manifest.set(
+            `${directory}/${relative(directory, path)}`,
+            createHash('sha256').update(readFileSync(path)).digest('hex'),
+          );
+      }
+    };
+    walk(directory);
+  }
+  return manifest;
+}
+function assertCompiledArtifactsMatch() {
+  const local = localArtifactManifest();
+  const imageScript = `const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const root='/sekereagle',out={};
+const walk=(base,current)=>{for(const entry of fs.readdirSync(current,{withFileTypes:true})){
+const full=path.join(current,entry.name);
+if(entry.isDirectory())walk(base,full);
+else out[base+'/'+path.relative(path.join(root,base),full)]=crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex');}};
+for(const base of process.argv.slice(1))walk(base,path.join(root,base));
+console.log(JSON.stringify(out));`;
+  const remote = new Map(
+    Object.entries(
+      JSON.parse(
+        run([
+          'run',
+          '--rm',
+          '--pull',
+          'never',
+          image,
+          'node',
+          '-e',
+          imageScript,
+          ...runtimeArtifactDirectories,
+        ]),
+      ),
+    ),
+  );
+  const missing = [...local.keys()].filter((key) => !remote.has(key));
+  const mismatched = [...local.keys()].filter(
+    (key) => remote.has(key) && remote.get(key) !== local.get(key),
+  );
+  const extra = [...remote.keys()].filter((key) => !local.has(key));
+  if (missing.length || mismatched.length || extra.length)
+    throw new Error(
+      'API image smoke: compiled artifacts differ from the workspace build ' +
+        `(missing ${missing.length}, mismatched ${mismatched.length}, extra ${extra.length}: ` +
+        `${[...missing, ...mismatched, ...extra].slice(0, 10).join(', ')}). ` +
+        'Run npm run build, then replace every runtime dist directory in the image wholesale.',
+    );
+}
 try {
   run(['image', 'inspect', image]);
+  assertCompiledArtifactsMatch();
   run(['network', 'create', prefix]);
   networkCreated = true;
   const pg = `${prefix}-postgres`;
@@ -420,6 +494,7 @@ try {
   process.stdout.write(
     JSON.stringify({
       image,
+      compiledArtifactsMatch: true,
       isolatedFinalImageBoot: true,
       migrations: true,
       readiness: 200,
