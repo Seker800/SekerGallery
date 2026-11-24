@@ -1,6 +1,6 @@
 # 大图复制与分享版
 
-状态：现行；核验日期：2026-11-24；对应提交：本地候选（未提交）。
+状态：现行；核验日期：2026-11-24；对应提交：22b9e92b。
 
 素材和照片共用同一个复制/分享入口。普通查看器、照片组预览、查重比较和右键菜单都请求服务端生成的分享版，不再直接复制 1600px 浏览预览；向量工作台的大图查看器只持有预览地址、没有完整素材对象，仍保留旧的预览复制，不在本功能范围内。
 
@@ -75,7 +75,8 @@
 - 真实隔离 PostgreSQL（`scripts/testing/share-render.test.mjs`，随 `test:library-integration` 运行）：渲染一次并生成永久 `SHARE_JPEG`、缓存命中直接 READY、取消 PROCESSING、素材版本变化失败、原图对象不被改写。
 - 架构门禁：`architecture:check`、`test:architecture`；新表登记在 media 能力，`SHARE_JPEG` 属于 rendition，新增进程写入 process-map。
 - 2026-11-24 本机真实端（网页，本地 Compose API／Web／share-renderer／Postgres／MinIO）：登录后打开 9000×6000、47MB 测试图；首次复制生成 5.5MB `SHARE_JPEG`，系统剪贴板出现 PNG（31.5MB）及 JPEG 等表示；第二次复制直接命中缓存（`LibraryShareRender` 1 行、`SHARE_JPEG` 1 条，无新渲染）；右键菜单复制显示浮动阶段“正在压缩 4K 已用 4 秒”，完成后生成同一永久分享版；取消 PROCESSING 后队列为 CANCELLED、没有结果 renditions。网关 `nginx -t` 通过，120 秒内容路径在配置中。测试资产没有金字塔，查看器对 `/pyramid` 的 404 是夹具缺失，不是分享图错误。
-- 尚未完成：桌面真实窗口、安卓固定测试图库、NAS 真实 HEIC/RAW 计时/内存峰值、`test:api-image` 成品镜像和完整 `test:library-integration`。这些是发布前置条件，不能用单测替代。
+- 2026-11-24 成品镜像与生产：最终 API 镜像通过 `npm run test:api-image -- sekereagle/api:main-22b9e92b`，隔离启动、107 项迁移、readiness 200、匿名 401、独立 operations 与 share-renderer 启动并优雅退出 0；完整 `test:library-integration` 0 失败，含历史升级与全量恢复。NAS 生产发布 `main-22b9e92b` 启用独立 `share-renderer`（healthy、0 重启、心跳新鲜），网关“分享结果内容 120 秒”路由生效，公网首页／readiness 200、匿名分享任务 401。发布时未产生 `LibraryShareRender`／`SHARE_JPEG` 行。
+- 尚未完成：登录后的生产分享复制交互、NAS 真实 HEIC/RAW 分享渲染耗时与内存峰值、桌面真实窗口、安卓固定测试图库和真实相机 RAW 分享复制。不能以单测或本机 Compose 结果替代这些现场验证。
 
 ## 边界
 
