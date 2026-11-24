@@ -1156,7 +1156,10 @@ export class PhotoAgentService {
       if (s.status !== 'ACCEPTED') throw new ConflictException('只有已应用建议可以撤销。');
       await tx.$queryRaw`SELECT id FROM "EagleAsset" WHERE id=${s.assetId} AND "ownerId"=${ownerId} AND "libraryMode"='PHOTO' FOR UPDATE`;
       const a = await tx.eagleAsset.findFirst({
-        where: { ...scope(ownerId, includePrivate), id: s.assetId, purgeAfter: null },
+        where: {
+          ...visibleAssetWhere(ownerId, 'PHOTO', includePrivate, 'media'),
+          id: s.assetId,
+        },
         select: { rowVersion: true, mediaRevision: true, deletedAt: true },
       });
       const op = s.operation as { assetRowVersion: number; locationVersion?: number };
