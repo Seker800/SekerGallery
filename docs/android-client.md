@@ -1,5 +1,11 @@
 # 安卓客户端与手机备份
 
+## 0.9.36 统一上传协议与 4 路并发（2026-11-24）
+
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode53、versionName 0.9.36，本轮调试 APK SHA-256 `9af830a94459ea1c0ee030c505369ea35c406d4d47d4c960143ac7446fa1d586`（含分享图修复 `bac14bf6`）。手动上传与自动备份改为共用 `UploadPipeline`：同时 4 个文件、单文件最多 3 个分片并行、一次请求签完所有缺片（旧服务端返回 404/405 时退回逐片签名）、`complete` 被接受即开始下一个文件，不再逐文件等待入库；入库状态由 1.5 秒一次的批量接口确认，传输列表区分「入库校验中」与「已完成」，自动备份在全部上传后最多再等 60 秒入库确认，未确认记录保留到下次运行先对账。手动暂停改为文件边界生效，系统停止与清除仍立即取消。
+
+分片缓冲增加进程级预算：正常 4 文件 / 64MiB，低内存设备 2 文件 / 32MiB，`onTrimMemory` 或分配失败时本批降为 1 文件 / 24MiB，下一批恢复；降到 1 档仍失败则暂停并提示，不崩溃。`BackupJournal` 升 v6（`files.uploaded` 与 `PENDING` 扫描结果，旧数据保留）；入库确认前不写清理回执，`CleanupEngine` 不会把未入库文件列为可释放。同版并入分享图修复（`bac14bf6`）：服务端同步渲染分享 JPEG 的 HEIC 解码预算 120 秒、RAW 显影 180 秒，而安卓沿用 30 秒媒体读超时会被提前断开；新增 `NativeRequestPolicy` 按路径分配读超时（share-image 300 秒、upload complete 660 秒、其余媒体 30 秒），分享图失败原因显示在“改发原图”弹窗。验证：`npm run android:check`、核心覆盖率门禁（行/分支 ≥80%）与 JVM 单测通过；网页 159 个测试文件／1260 项、typecheck 与构建通过。设备套件未运行：隔离测试环境本轮在生成预览阶段超时（本机缺少 `exiftool`），按约定不改为指向固定测试图库；4 路并发、入库校验中、暂停继续、杀进程续传与内存降档仍需在真机或带 exiftool 的隔离环境验收。统一规格见[上传协议](upload-protocol.md)。
+
 ## 0.9.34 上传改用系统照片选择器（2026-11-23）
 
 本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode51、versionName 0.9.34，调试 APK SHA-256 `1ef0923af204032dde2b4d27bd18615a04be122b7b9cbab6fb09522409bae1a6`。图库上传此前用 `OpenMultipleDocuments`（`*/*`）打开文件管理器；改为系统照片选择器（`PickMultipleVisualMedia`，图片与视频），照片与素材两种模式共用，编辑器导入 LUT 仍走文件选择器，备份继续用媒体库扫描。单次最多 100 个为平台限制。`npm run android:check` 通过；2026-11-23 22:50 安装到小米 Pad 7 Ultra（25032RP42C），点「⋯ → 上传」确认弹出系统相册选择器（`com.android.photopicker`）。

@@ -39,7 +39,9 @@ class NativeBackgroundTransferTest {
                         while (!socket.isClosed) socket.accept().use { client ->
                             client.soTimeout = 8000
                             val reader = client.getInputStream().bufferedReader()
-                            val path = reader.readLine().split(' ')[1]
+                            val request = reader.readLine().split(' ')
+                            val method = request[0]
+                            val path = request[1]
                             var size = 0
                             while (true) {
                                 val line = reader.readLine()
@@ -50,8 +52,9 @@ class NativeBackgroundTransferTest {
                             repeat(size) { reader.read() }
                             paths.add(path)
                             if (
-                                (path.endsWith("/check-content") || path.endsWith("/original")) &&
-                                    !held
+                                (path.endsWith("/check-content") ||
+                                    path.endsWith("/check-content-batch") ||
+                                    path.endsWith("/original")) && !held
                             ) {
                                 held = true
                                 entered.countDown()
@@ -65,9 +68,16 @@ class NativeBackgroundTransferTest {
                                         """{"mediaRevision":1,"byteSize":4,"mimeType":"image/png","originalName":"$downloadName"}"""
                                     path.endsWith("/original") -> "data"
                                     path.endsWith("/check-content") -> """{"exists":false}"""
+                                    path.endsWith("/check-content-batch") ->
+                                        """{"exists":[false]}"""
+                                    path.endsWith("/status-batch") ->
+                                        """{"items":[{"id":"11111111-1111-4111-8111-111111111111","status":"COMPLETED","eagleAssetId":"uploaded","objectCleanupPending":false,"finalizationAttempts":0,"lastError":""}]}"""
                                     path.endsWith("/uploads") ->
                                         """{"id":"11111111-1111-4111-8111-111111111111","partSize":5242880}"""
-                                    path.endsWith("/parts") -> """{"parts":[]}"""
+                                    path.endsWith("/parts") && method == "GET" ->
+                                        """{"parts":[]}"""
+                                    path.endsWith("/parts") ->
+                                        """{"parts":[{"partNumber":1,"uploadUrl":"$origin/sekereagle-assets/test/part?X-Amz-Signature=abc"}]}"""
                                     path.endsWith("/parts/1") ->
                                         """{"uploadUrl":"$origin/sekereagle-assets/test/part?X-Amz-Signature=abc"}"""
                                     path.endsWith("/complete") ->

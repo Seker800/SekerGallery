@@ -39,6 +39,15 @@ class NativeTransferJobService : JobService() {
             .createNotificationChannel(
                 NotificationChannel(CHANNEL, "文件传输", NotificationManager.IMPORTANCE_LOW)
             )
+        com.sekereagle.android.core.UploadBudget.shared().configureLowRam(
+            getSystemService(android.app.ActivityManager::class.java).isLowRamDevice
+        )
+    }
+
+    override fun onTrimMemory(level: Int) {
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)
+            com.sekereagle.android.core.UploadBudget.shared().degradeForBatch()
+        super.onTrimMemory(level)
     }
 
     override fun onStartJob(job: JobParameters): Boolean {

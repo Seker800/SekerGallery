@@ -6,6 +6,8 @@ import java.util.*;
 public final class BackupLive {
   public static final String QUEUED = "QUEUED";
   public static final String UPLOADING = "UPLOADING";
+  /** Bytes accepted; the operations host is still inspecting and publishing. */
+  public static final String PENDING = "PENDING";
   public static final String UPLOADED = "UPLOADED";
   public static final String SKIPPED = "SKIPPED";
   public static final String FAILED = "FAILED";
@@ -113,7 +115,8 @@ public final class BackupLive {
       if (row == null) return;
       row.state = state;
       row.error = error == null ? "" : error;
-      if (state.equals(UPLOADED) || state.equals(SKIPPED)) row.bytes = row.size;
+      if (state.equals(UPLOADED) || state.equals(SKIPPED) || state.equals(PENDING))
+        row.bytes = row.size;
     }
   }
 
@@ -144,7 +147,9 @@ public final class BackupLive {
       List<Row> waiting = new ArrayList<>();
       LinkedList<Row> done = new LinkedList<>();
       for (Row row : rows.values()) {
-        if (row.state.equals(UPLOADED) || row.state.equals(SKIPPED)) {
+        if (row.state.equals(UPLOADED)
+            || row.state.equals(SKIPPED)
+            || row.state.equals(PENDING)) {
           completed++;
           done.addLast(row);
           if (done.size() > 100) done.removeFirst();

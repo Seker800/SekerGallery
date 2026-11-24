@@ -7,7 +7,9 @@ import java.io.IOException;
 public final class BackupEngine {
   public enum Result {
     UPLOADED,
-    SKIPPED
+    SKIPPED,
+    /** Bytes are accepted; the operations host is still inspecting and publishing them. */
+    PENDING
   }
 
   public interface Hash {
@@ -64,12 +66,20 @@ public final class BackupEngine {
   public static final class Checkpoint {
     public String hash = "", session = "", terminalError = "";
     public long partSize;
+    public boolean uploaded;
     public boolean confirmed;
   }
 
   public static final class PermanentFailure extends IOException {
     public PermanentFailure(String message) {
       super(message + "；文件变化或手动重试失败文件后会重新检查");
+    }
+  }
+
+  /** The phone cannot allocate another part buffer; the batch pauses instead of crashing. */
+  public static final class MemoryPressure extends IOException {
+    public MemoryPressure() {
+      super("手机内存不足，已暂停上传，点继续可稍后重试");
     }
   }
 
@@ -110,6 +120,10 @@ public final class BackupEngine {
       else throw new PermanentFailure(cp.terminalError);
     }
     if (cp != null && cp.confirmed && file.modified > 0) return Result.SKIPPED;
+    if (cp != null && cp.uploaded && !cp.confirmed) {
+      if (file.modified == 0 && !file.hash.read().equals(cp.hash)) cp = null;
+      else return Result.PENDING;
+    }
     if (cp == null || file.modified == 0) cp = new Checkpoint();
     if (cp.hash.isEmpty()) cp.hash = file.hash.read();
     if (!cp.hash.matches("[a-f0-9]{64}")) throw new IOException("文件校验失败");
@@ -122,10 +136,15 @@ public final class BackupEngine {
       if (!skipped) {
         transport.upload(file, cp, value -> store.save(key, value), guard);
         if (!file.stable.check()) throw new IOException("上传期间文件已变化，留待下次校验");
+        cp.uploaded = true;
+        store.save(key, cp);
+        // Ingestion runs on the operations host; the shared tracker confirms the receipt.
+        return Result.PENDING;
       }
+      cp.uploaded = true;
       cp.confirmed = true;
       store.confirm(key, content, cp);
-      return skipped ? Result.SKIPPED : Result.UPLOADED;
+      return Result.SKIPPED;
     }
   }
 }

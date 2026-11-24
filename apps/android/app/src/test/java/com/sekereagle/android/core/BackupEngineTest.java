@@ -76,18 +76,27 @@ public class BackupEngineTest {
   }
 
   @Test
-  public void confirmsOnlyAfterServerAcknowledgesAndSkipsUnchangedFiles() throws Exception {
+  public void uploadsStayPendingUntilTheTrackerConfirmsTheReceipt() throws Exception {
     BackupEngine e = engine(false);
-    assertEquals(BackupEngine.Result.UPLOADED, e.process("scope", "PHOTO", file("one", 12, 1)));
-    assertEquals(BackupEngine.Result.SKIPPED, e.process("scope", "PHOTO", file("one", 12, 1)));
+    assertEquals(BackupEngine.Result.PENDING, e.process("scope", "PHOTO", file("one", 12, 1)));
+    assertTrue(receipts.isEmpty());
+    // A replay before ingestion finishes resumes the same session instead of uploading again.
+    assertEquals(BackupEngine.Result.PENDING, e.process("scope", "PHOTO", file("one", 12, 1)));
     assertEquals(1, hashes);
     assertEquals(1, uploads);
+    BackupEngine.Checkpoint cp = files.values().iterator().next();
+    cp.confirmed = true;
+    receipts.add("scope:PHOTO:" + cp.hash + ":12");
+    assertEquals(BackupEngine.Result.SKIPPED, e.process("scope", "PHOTO", file("one", 12, 1)));
   }
 
   @Test
   public void movedRenamedAndOverlappingSourcesUseContentReceipt() throws Exception {
     BackupEngine e = engine(false);
     e.process("scope", "PHOTO", file("one", 12, 1));
+    BackupEngine.Checkpoint cp = files.values().iterator().next();
+    cp.confirmed = true;
+    receipts.add("scope:PHOTO:" + cp.hash + ":12");
     assertEquals(BackupEngine.Result.SKIPPED, e.process("scope", "PHOTO", file("renamed", 12, 2)));
     assertEquals(1, uploads);
   }
@@ -117,7 +126,7 @@ public class BackupEngineTest {
     assertTrue(receipts.isEmpty());
     assertEquals("session", files.values().iterator().next().session);
     fail = false;
-    assertEquals(BackupEngine.Result.UPLOADED, e.process("scope", "PHOTO", file("one", 12, 1)));
+    assertEquals(BackupEngine.Result.PENDING, e.process("scope", "PHOTO", file("one", 12, 1)));
     assertEquals(1, hashes);
     assertEquals(2, uploads);
   }
@@ -135,7 +144,7 @@ public class BackupEngineTest {
   public void missingTimestampsAreRehashedInsteadOfSilentlySkipped() throws Exception {
     BackupEngine e = engine(false);
     e.process("scope", "PHOTO", file("one", 12, 0));
-    e.process("scope", "PHOTO", file("one", 12, 0));
+    assertEquals(BackupEngine.Result.PENDING, e.process("scope", "PHOTO", file("one", 12, 0)));
     assertEquals(2, hashes);
     assertEquals(1, uploads);
   }
@@ -220,7 +229,7 @@ public class BackupEngineTest {
     assertEquals(0, uploads);
     assertEquals(0, checks);
     assertEquals(
-        BackupEngine.Result.UPLOADED, engine(false).process("scope", "PHOTO", file("one", 13, 2)));
+        BackupEngine.Result.PENDING, engine(false).process("scope", "PHOTO", file("one", 13, 2)));
   }
 
   @Test
@@ -232,7 +241,7 @@ public class BackupEngineTest {
   }
 
   @Test
-  public void identicalContentUploadsOnceUnderConcurrentWorkers() throws Exception {
+  public void identicalContentIsDedupedByPublicationRatherThanByAnUnconfirmedReceipt() throws Exception {
     Map<String, BackupEngine.Checkpoint> files = new ConcurrentHashMap<>();
     Set<String> receipts = ConcurrentHashMap.newKeySet();
     AtomicInteger uploads = new AtomicInteger();
@@ -284,9 +293,11 @@ public class BackupEngineTest {
           pool.submit(() -> engine.process("scope", "PHOTO", file("two", 12, 1)));
       Thread.sleep(100);
       release.countDown();
-      assertEquals(BackupEngine.Result.UPLOADED, first.get(5, TimeUnit.SECONDS));
-      assertEquals(BackupEngine.Result.SKIPPED, second.get(5, TimeUnit.SECONDS));
-      assertEquals(1, uploads.get());
+      assertEquals(BackupEngine.Result.PENDING, first.get(5, TimeUnit.SECONDS));
+      assertEquals(BackupEngine.Result.PENDING, second.get(5, TimeUnit.SECONDS));
+      // Neither receipt is confirmed yet, so both sessions upload; the server's publication
+      // transaction still collapses them into one asset.
+      assertEquals(2, uploads.get());
     } finally {
       pool.shutdownNow();
     }

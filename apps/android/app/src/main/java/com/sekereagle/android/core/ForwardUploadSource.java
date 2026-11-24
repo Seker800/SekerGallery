@@ -5,7 +5,7 @@ import java.io.*;
 /** One forward pass works for seekable files and pipe-backed/cloud document providers alike. */
 public final class ForwardUploadSource implements AutoCloseable {
 
-  public static final int MAX_BUFFER = 8 * 1024 * 1024;
+  public static final int MAX_BUFFER = 16 * 1024 * 1024;
   private final InputStream input;
   private long position;
 

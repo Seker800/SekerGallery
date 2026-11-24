@@ -35,7 +35,9 @@ public class ForwardUploadSourceTest {
                     throw new IOException("paused");
                   }));
       assertThrows(
-          IllegalArgumentException.class, () -> source.read(0, 16 * 1024 * 1024, () -> {}));
+          IllegalArgumentException.class,
+          () -> source.read(0, ForwardUploadSource.MAX_BUFFER + 1, () -> {}));
+      assertEquals(16 * 1024 * 1024, ForwardUploadSource.MAX_BUFFER);
     }
   }
 

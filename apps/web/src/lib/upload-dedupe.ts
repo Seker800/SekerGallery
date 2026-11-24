@@ -1,9 +1,11 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import type { EagleUploadContentCheckItem } from './eagle-api';
 
-const HASH_CONCURRENCY = 2;
+// Matches UPLOAD_FILE_CONCURRENCY so hashing never starves a transfer slot; the 8 MiB
+// whole-file threshold keeps four parallel hashes within a bounded memory budget.
+const HASH_CONCURRENCY = 4;
 const HASH_CHUNK_BYTES = 4 * 1024 * 1024;
-const HASH_SMALL_FILE_MAX = 32 * 1024 * 1024;
+const HASH_SMALL_FILE_MAX = 8 * 1024 * 1024;
 const BATCH_SIZE = 50;
 const FLUSH_DELAY_MS = 80;
 

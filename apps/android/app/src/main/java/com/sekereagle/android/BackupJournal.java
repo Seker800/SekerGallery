@@ -16,7 +16,7 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
   }
 
   BackupJournal(Context context, String name) {
-    super(context, name, null, 5);
+    super(context, name, null, 6);
     setWriteAheadLoggingEnabled(true);
   }
 
@@ -53,8 +53,8 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
   public void onCreate(SQLiteDatabase db) {
     db.execSQL(
         "CREATE TABLE files (key TEXT PRIMARY KEY, hash TEXT NOT NULL, session TEXT NOT NULL,"
-            + " part_size INTEGER NOT NULL, confirmed INTEGER NOT NULL, terminal_error TEXT NOT"
-            + " NULL DEFAULT '')");
+            + " part_size INTEGER NOT NULL, uploaded INTEGER NOT NULL DEFAULT 0, confirmed INTEGER"
+            + " NOT NULL, terminal_error TEXT NOT NULL DEFAULT '')");
     db.execSQL("CREATE TABLE receipts (key TEXT PRIMARY KEY)");
     createProgress(db);
     createScanState(db);
@@ -89,6 +89,14 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
       // Rows written by older versions only kept hashes; one full pass rebuilds their metadata.
       db.execSQL("DELETE FROM scan_state");
     }
+    if (oldVersion < 6) {
+      db.execSQL("ALTER TABLE files ADD COLUMN uploaded INTEGER NOT NULL DEFAULT 0");
+      // Uploaded-but-unconfirmed rows are already counted as uploaded in the run summary.
+      db.execSQL("DROP TRIGGER IF EXISTS scan_insert");
+      db.execSQL("DROP TRIGGER IF EXISTS scan_update");
+      db.execSQL("DROP TRIGGER IF EXISTS scan_delete");
+      createTriggers(db);
+    }
   }
 
   private static void createScanState(SQLiteDatabase db) {
@@ -109,19 +117,23 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
     db.execSQL(
         "CREATE TABLE scan_runs (scope TEXT PRIMARY KEY, seen INTEGER NOT NULL, uploaded INTEGER"
             + " NOT NULL, skipped INTEGER NOT NULL, failed INTEGER NOT NULL)");
+    createTriggers(db);
+  }
+
+  private static void createTriggers(SQLiteDatabase db) {
     db.execSQL(
         "CREATE TRIGGER scan_insert AFTER INSERT ON scan_progress BEGIN INSERT INTO scan_runs"
-            + " VALUES (new.scope,1,new.result='UPLOADED',new.result='SKIPPED',new.result='FAILED')"
+            + " VALUES (new.scope,1,new.result IN ('UPLOADED','PENDING'),new.result='SKIPPED',new.result='FAILED')"
             + " ON CONFLICT(scope) DO UPDATE SET"
-            + " seen=seen+1,uploaded=uploaded+(new.result='UPLOADED'),skipped=skipped+(new.result='SKIPPED'),failed=failed+(new.result='FAILED');"
+            + " seen=seen+1,uploaded=uploaded+(new.result IN ('UPLOADED','PENDING')),skipped=skipped+(new.result='SKIPPED'),failed=failed+(new.result='FAILED');"
             + " END");
     db.execSQL(
         "CREATE TRIGGER scan_update AFTER UPDATE ON scan_progress BEGIN UPDATE scan_runs SET"
-            + " uploaded=uploaded+(new.result='UPLOADED')-(old.result='UPLOADED'),skipped=skipped+(new.result='SKIPPED')-(old.result='SKIPPED'),failed=failed+(new.result='FAILED')-(old.result='FAILED')"
+            + " uploaded=uploaded+(new.result IN ('UPLOADED','PENDING'))-(old.result IN ('UPLOADED','PENDING')),skipped=skipped+(new.result='SKIPPED')-(old.result='SKIPPED'),failed=failed+(new.result='FAILED')-(old.result='FAILED')"
             + " WHERE scope=new.scope; END");
     db.execSQL(
         "CREATE TRIGGER scan_delete AFTER DELETE ON scan_progress BEGIN UPDATE scan_runs SET"
-            + " seen=seen-1,uploaded=uploaded-(old.result='UPLOADED'),skipped=skipped-(old.result='SKIPPED'),failed=failed-(old.result='FAILED')"
+            + " seen=seen-1,uploaded=uploaded-(old.result IN ('UPLOADED','PENDING')),skipped=skipped-(old.result='SKIPPED'),failed=failed-(old.result='FAILED')"
             + " WHERE scope=old.scope; END");
   }
 
@@ -130,7 +142,7 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
         getReadableDatabase()
             .rawQuery(
                 "SELECT 1 FROM scan_progress WHERE scope=? AND key=? AND fingerprint=? AND"
-                    + " result IN ('UPLOADED','SKIPPED')",
+                    + " result IN ('UPLOADED','SKIPPED','PENDING')",
                 new String[] {scope, key, fingerprint})) {
       return cursor.moveToFirst();
     }
@@ -183,6 +195,55 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
               error,
               System.currentTimeMillis()
             });
+  }
+
+  /** Files whose bytes were accepted but whose ingestion had not finished when the run ended. */
+  static final class Pending {
+    final String key, uri, name, mode, fingerprint;
+    final long size, modified;
+    final boolean document;
+
+    Pending(
+        String key,
+        String uri,
+        String name,
+        String mode,
+        String fingerprint,
+        long size,
+        long modified,
+        boolean document) {
+      this.key = key;
+      this.uri = uri;
+      this.name = name;
+      this.mode = mode;
+      this.fingerprint = fingerprint;
+      this.size = size;
+      this.modified = modified;
+      this.document = document;
+    }
+  }
+
+  List<Pending> pendingUploads(String scope) {
+    List<Pending> result = new ArrayList<>();
+    try (Cursor cursor =
+        getReadableDatabase()
+            .rawQuery(
+                "SELECT key,uri,name,mode,fingerprint,size,modified,document FROM scan_progress"
+                    + " WHERE scope=? AND result='PENDING' AND uri<>''",
+                new String[] {scope})) {
+      while (cursor.moveToNext())
+        result.add(
+            new Pending(
+                cursor.getString(0),
+                cursor.getString(1),
+                cursor.getString(2),
+                cursor.getString(3),
+                cursor.getString(4),
+                cursor.getLong(5),
+                cursor.getLong(6),
+                cursor.getInt(7) == 1));
+    }
+    return result;
   }
 
   List<Retry> failures(String scope) {
@@ -262,6 +323,7 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
       cp.hash = cursor.getString(cursor.getColumnIndexOrThrow("hash"));
       cp.session = cursor.getString(cursor.getColumnIndexOrThrow("session"));
       cp.partSize = cursor.getLong(cursor.getColumnIndexOrThrow("part_size"));
+      cp.uploaded = cursor.getInt(cursor.getColumnIndexOrThrow("uploaded")) == 1;
       cp.confirmed = cursor.getInt(cursor.getColumnIndexOrThrow("confirmed")) == 1;
       return cp;
     }
@@ -275,6 +337,7 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
     values.put("terminal_error", cp.terminalError);
     values.put("session", cp.session);
     values.put("part_size", cp.partSize);
+    values.put("uploaded", cp.uploaded ? 1 : 0);
     values.put("confirmed", cp.confirmed ? 1 : 0);
     getWritableDatabase()
         .insertWithOnConflict("files", null, values, SQLiteDatabase.CONFLICT_REPLACE);
@@ -377,7 +440,7 @@ final class BackupJournal extends SQLiteOpenHelper implements BackupEngine.Store
       db.delete("scan_state", "scope=?", new String[] {scope});
       db.delete(
           "files",
-          "key LIKE ? AND terminal_error <> ''",
+          "key LIKE ? AND (terminal_error <> '' OR confirmed=0)",
           new String[] {
             scope + ":%",
           });

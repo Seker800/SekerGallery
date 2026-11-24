@@ -13,6 +13,8 @@ import com.sekereagle.android.core.BackupExecutor;
 import com.sekereagle.android.core.BackupPermissionPolicy;
 import com.sekereagle.android.core.BackupRunPolicy;
 import com.sekereagle.android.core.BackupScanPolicy;
+import com.sekereagle.android.core.ContentCheckBatcher;
+import com.sekereagle.android.core.UploadBudget;
 import com.sekereagle.android.core.UploadRetryPolicy;
 import java.io.IOException;
 import java.util.*;
@@ -59,9 +61,10 @@ public final class BackupService extends Service {
   static final String CHANNEL = "mobile-backup";
   static final int NOTICE = 42;
   private static final ExecutorService executor = Executors.newSingleThreadExecutor();
-  // Two files overlap hashing/finalization with the other's upload while the shared part budget stays at three.
-  private static final int FILE_THREADS = 2;
-  private static final int FILES_IN_FLIGHT = 2;
+  // Four files overlap hashing with another file's parts; UploadBudget bounds the part bytes
+  // shared with manual transfers.
+  private static final int FILE_THREADS = 4;
+  private static final int FILES_IN_FLIGHT = 4;
   private final BackupEngine.ContentLock contentLock = new BackupContentLock(64);
   private final AtomicBoolean working = new AtomicBoolean();
   private volatile boolean cancelled;
@@ -196,6 +199,7 @@ public final class BackupService extends Service {
   private JSONArray transferRows = new JSONArray();
   private PowerManager.WakeLock wake;
   private long wakeUntil;
+  private volatile IngestionTracker ingestion;
 
   static final class Hold extends IOException {
 
@@ -212,6 +216,8 @@ public final class BackupService extends Service {
     NotificationManager manager = getSystemService(NotificationManager.class);
     manager.createNotificationChannel(
         new NotificationChannel(CHANNEL, "手机备份", NotificationManager.IMPORTANCE_LOW));
+    UploadBudget.shared()
+        .configureLowRam(getSystemService(ActivityManager.class).isLowRamDevice());
   }
 
   @Override
@@ -286,6 +292,62 @@ public final class BackupService extends Service {
       if (token.isEmpty()) throw new Hold("请登录并启用备份授权");
       ApiClient api = new ApiClient(origin, token);
       activeApi = api;
+      UploadBudget budget = UploadBudget.shared();
+      if (budget.idle()) budget.resetForBatch();
+      final Map<String, ContentCheckBatcher> checkers = new HashMap<>();
+      for (String checkMode : List.of("PHOTO", "MATERIAL")) {
+        checkers.put(
+            checkMode,
+            new ContentCheckBatcher(
+                items -> {
+                  JSONArray batch = new JSONArray();
+                  for (ContentCheckBatcher.Item entry : items)
+                    batch.put(
+                        new JSONObject()
+                            .put("contentSha256", entry.hash)
+                            .put("size", entry.size));
+                  JSONArray exists =
+                      api.request(
+                              "POST",
+                              "/api/"
+                                  + (checkMode.equals("PHOTO") ? "photos" : "eagle")
+                                  + "/uploads/check-content-batch",
+                              new JSONObject().put("items", batch))
+                          .getJSONArray("exists");
+                  boolean[] result = new boolean[items.size()];
+                  for (int i = 0; i < result.length && i < exists.length(); i++)
+                    result[i] = exists.getBoolean(i);
+                  return result;
+                }));
+      }
+      final IngestionTracker tracker =
+          new IngestionTracker(
+              (pollMode, ids) -> {
+                JSONArray sessions = new JSONArray();
+                for (String id : ids) sessions.put(id);
+                JSONArray items =
+                    api.request(
+                            "POST",
+                            "/api/"
+                                + (pollMode.equals("PHOTO") ? "photos" : "eagle")
+                                + "/uploads/status-batch",
+                            new JSONObject().put("uploadSessionIds", sessions))
+                        .getJSONArray("items");
+                Map<String, IngestionTracker.Status> statuses = new HashMap<>();
+                for (int i = 0; i < items.length(); i++) {
+                  JSONObject item = items.getJSONObject(i);
+                  statuses.put(
+                      item.getString("id"),
+                      new IngestionTracker.Status(
+                          item.optString("status"),
+                          item.isNull("eagleAssetId") ? "" : item.optString("eagleAssetId"),
+                          item.optString("lastError"),
+                          item.optInt("finalizationAttempts"),
+                          item.optBoolean("objectCleanupPending")));
+                }
+                return statuses;
+              });
+      ingestion = tracker;
       JSONObject me = api.request("GET", "/api/auth/me", null);
       if (!me.getJSONObject("user").getString("id").equals(settings.value(scope, "owner", ""))
           || !me.getJSONObject("desktopCache")
@@ -304,6 +366,42 @@ public final class BackupService extends Service {
       MediaCatalog catalog = new MediaCatalog(this);
       workers = new BackupExecutor(FILE_THREADS, FILES_IN_FLIGHT);
       final BackupExecutor fileWorkers = workers;
+      // Sessions accepted by a previous run keep polling instead of uploading their bytes again.
+      for (BackupJournal.Pending pendingRow : store.pendingUploads(scope)) {
+        guard();
+        BackupEngine.Checkpoint checkpoint =
+            store.load(
+                BackupEngine.fileKey(
+                    scope,
+                    pendingRow.mode,
+                    pendingRow.uri,
+                    pendingRow.size,
+                    pendingRow.modified));
+        if (checkpoint == null
+            || !checkpoint.uploaded
+            || checkpoint.confirmed
+            || checkpoint.session.isEmpty()) continue;
+        MediaCatalog.Item pendingItem;
+        try {
+          pendingItem =
+              catalog.stored(
+                  pendingRow.uri,
+                  pendingRow.name,
+                  pendingRow.size,
+                  pendingRow.modified,
+                  pendingRow.document);
+        } catch (Exception unsupported) {
+          continue;
+        }
+        trackPending(
+            tracker,
+            store,
+            pendingItem,
+            pendingRow.mode,
+            pendingRow.key,
+            pendingRow.fingerprint,
+            checkpoint);
+      }
       // Files that failed before this run stay queued for after the scan; new photos must never
       // wait behind a multi-gigabyte retry backlog. Incremental scans never revisit them.
       final Set<String> retriedKeys = new HashSet<>();
@@ -361,13 +459,20 @@ public final class BackupService extends Service {
                   BackupEngine.fileKey(
                       scope, mode, item.uri.toString(), item.size, item.modified);
               if (store.scanCompleted(scope, fileKey, fingerprint)) {
+                BackupEngine.Checkpoint checkpoint = store.load(engineKey);
+                if (checkpoint != null
+                    && checkpoint.uploaded
+                    && !checkpoint.confirmed
+                    && !checkpoint.session.isEmpty()) {
+                  trackPending(tracker, store, item, mode, fileKey, fingerprint, checkpoint);
+                  return;
+                }
                 // A full scan re-verifies completed receipts against the server; the ordinary
                 // incremental pass keeps its cheap local shortcut.
                 if (!BackupScanPolicy.verifyCompleted(full, true)) {
                   countRun("SKIPPED");
                   return;
                 }
-                BackupEngine.Checkpoint checkpoint = store.load(engineKey);
                 if (checkpoint != null
                     && checkpoint.confirmed
                     && checkpoint.terminalError.isEmpty()) {
@@ -389,8 +494,18 @@ public final class BackupService extends Service {
             }
             if (!submittedKeys.add(fileKey)) return;
             BackupLive.queued(item.uri.toString(), item.name, mode, item.size);
-            fileWorkers.submit(
-                () -> processItem(store, catalog, api, item, mode, fileKey, fingerprint));
+            submitItem(
+                fileWorkers,
+                budget,
+                store,
+                catalog,
+                api,
+                checkers,
+                tracker,
+                item,
+                mode,
+                fileKey,
+                fingerprint);
           };
       if (full) {
         // Newest files first: a multi-gigabyte backlog of older failures must not hide today's
@@ -407,16 +522,18 @@ public final class BackupService extends Service {
         guard();
         BackupLive.queued(
             retry.item.uri.toString(), retry.item.name, retry.mode, retry.item.size);
-        fileWorkers.submit(
-            () ->
-                processItem(
-                    store,
-                    catalog,
-                    api,
-                    retry.item,
-                    retry.mode,
-                    retry.fileKey,
-                    retry.fingerprint));
+        submitItem(
+            fileWorkers,
+            budget,
+            store,
+            catalog,
+            api,
+            checkers,
+            tracker,
+            retry.item,
+            retry.mode,
+            retry.fileKey,
+            retry.fingerprint);
       }
       update("正在扫描所选目录");
       catalog.scan(
@@ -430,6 +547,19 @@ public final class BackupService extends Service {
       runDeleted = verifySkipped(api, store, pendingSkips);
       guard();
       fileWorkers.drain();
+      // A bounded wait keeps "backup finished" meaningful without the old one-file-at-a-time
+      // polling: whatever is still verifying stays durable for the next run.
+      long settle = SystemClock.elapsedRealtime() + 60_000L;
+      while (tracker.size() > 0 && !cancelled && SystemClock.elapsedRealtime() < settle) {
+        guard();
+        try {
+          Thread.sleep(250);
+        } catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+          throw interrupted;
+        }
+      }
+      boolean lingering = tracker.size() > 0;
       guard();
       long maxId = catalog.maxSeenId();
       store.saveScanState(
@@ -443,7 +573,7 @@ public final class BackupService extends Service {
       update(
           runFailed == 0
               ? (runDeleted == 0
-                  ? "备份完成"
+                  ? (lingering ? "备份完成，部分文件等待入库确认" : "备份完成")
                   : "备份完成，" + runDeleted + " 张在服务器已删除（未上传）")
               : "备份结束，有失败项可重试");
       BackupLive.end(pendingMessage);
@@ -457,6 +587,9 @@ public final class BackupService extends Service {
     } catch (Exception e) {
       update(safeMessage(e));
     } finally {
+      IngestionTracker tracker = ingestion;
+      ingestion = null;
+      if (tracker != null) tracker.close();
       ApiClient api = activeApi;
       if (api != null) api.close();
       activeApi = null;
@@ -566,10 +699,45 @@ public final class BackupService extends Service {
     }
   }
 
+  private void submitItem(
+      BackupExecutor workers,
+      UploadBudget budget,
+      BackupJournal store,
+      MediaCatalog catalog,
+      ApiClient api,
+      Map<String, ContentCheckBatcher> checkers,
+      IngestionTracker tracker,
+      MediaCatalog.Item item,
+      String mode,
+      String fileKey,
+      String fingerprint)
+      throws Exception {
+    workers.submit(
+        () -> {
+          budget.acquireFile();
+          try {
+            processItem(
+                store,
+                catalog,
+                api,
+                checkers.get(mode),
+                tracker,
+                item,
+                mode,
+                fileKey,
+                fingerprint);
+          } finally {
+            budget.releaseFile();
+          }
+        });
+  }
+
   private void processItem(
       BackupJournal journal,
       MediaCatalog catalog,
       ApiClient api,
+      ContentCheckBatcher contentCheck,
+      IngestionTracker tracker,
       MediaCatalog.Item item,
       String mode,
       String fileKey,
@@ -581,27 +749,38 @@ public final class BackupService extends Service {
     update("正在检查：" + item.name);
     BackupLive.start(item.uri.toString());
     try {
-      catalog.checkSize(item);
-      BackupEngine engine =
-          new BackupEngine(
+      BackupEngine.Result result =
+          UploadPipeline.process(
+              catalog,
+              api,
               journal,
-              new MultipartTransport(
-                  api,
-                  mode,
-                  catalog,
-                  item,
-                  bytes -> BackupLive.progress(item.uri.toString(), bytes)),
+              UploadBudget.shared(),
+              contentCheck,
+              contentLock,
+              scope,
+              mode,
+              item,
               this::guard,
-              contentLock);
-      BackupEngine.File source =
-          new BackupEngine.File(
-              item.uri.toString(),
-              item.size,
-              item.modified,
-              () -> catalog.hash(item, this::guard),
-              () -> catalog.stable(item));
-      BackupEngine.Result result = processWithRetry(engine, scope, mode, source, item);
+              null,
+              bytes -> {},
+              bytes -> BackupLive.progress(item.uri.toString(), bytes),
+              text -> {});
       guard();
+      if (result == BackupEngine.Result.PENDING) {
+        journal.scanResult(scope, fileKey, fingerprint, "PENDING");
+        refreshCounts(journal);
+        BackupLive.finish(item.uri.toString(), BackupLive.PENDING, "");
+        recordTransfer(item.name, mode, "已上传");
+        countRun("PENDING");
+        BackupEngine.Checkpoint checkpoint =
+            journal.load(
+                BackupEngine.fileKey(
+                    scope, mode, item.uri.toString(), item.size, item.modified));
+        if (checkpoint != null && checkpoint.uploaded && !checkpoint.session.isEmpty())
+          trackPending(tracker, journal, item, mode, fileKey, fingerprint, checkpoint);
+        update("正在扫描并备份");
+        return;
+      }
       journal.scanResult(scope, fileKey, fingerprint, result.name());
       refreshCounts(journal);
       BackupLive.finish(item.uri.toString(), result.name(), "");
@@ -610,6 +789,8 @@ public final class BackupService extends Service {
       update("正在扫描并备份");
     } catch (Hold e) {
       throw e;
+    } catch (BackupEngine.MemoryPressure memory) {
+      throw new Hold(memory.getMessage());
     } catch (ApiClient.Failure e) {
       if (e.status == 401 || e.status == 403) throw e;
       guard();
@@ -631,6 +812,80 @@ public final class BackupService extends Service {
       countRun("FAILED");
       update("正在扫描并备份");
     }
+  }
+
+  /** Polls an accepted session; only a completed publication writes the cleanup receipt. */
+  private void trackPending(
+      IngestionTracker tracker,
+      BackupJournal journal,
+      MediaCatalog.Item item,
+      String mode,
+      String fileKey,
+      String fingerprint,
+      BackupEngine.Checkpoint checkpoint) {
+    final String uri = item.uri.toString();
+    final String engineKey = BackupEngine.fileKey(scope, mode, uri, item.size, item.modified);
+    final String content = scope + ":" + mode + ":" + checkpoint.hash + ":" + item.size;
+    BackupLive.queued(uri, item.name, mode, item.size);
+    BackupLive.finish(uri, BackupLive.PENDING, "");
+    tracker.track(
+        mode,
+        checkpoint.session,
+        new IngestionTracker.Observer() {
+          public void completed(String sessionId) {
+            try {
+              BackupEngine.Checkpoint current = journal.load(engineKey);
+              if (current == null) return;
+              current.uploaded = true;
+              current.confirmed = true;
+              journal.confirm(engineKey, content, current);
+              journal.scanResult(scope, fileKey, fingerprint, "UPLOADED");
+              refreshCounts(journal);
+              BackupLive.finish(uri, BackupLive.UPLOADED, "");
+              recordTransfer(item.name, mode, "已入库");
+            } catch (Exception ignored) {
+            }
+          }
+
+          public void failed(String sessionId, String error) {
+            try {
+              BackupEngine.Checkpoint current = journal.load(engineKey);
+              if (current != null) {
+                // The server session is dead; a retry must start a fresh upload, not poll it.
+                current.uploaded = false;
+                current.session = "";
+                current.partSize = 0;
+                current.terminalError = error;
+                journal.save(engineKey, current);
+              }
+              journal.scanFailure(
+                  scope,
+                  fileKey,
+                  fingerprint,
+                  uri,
+                  item.name,
+                  mode,
+                  item.size,
+                  item.modified,
+                  item.document,
+                  error);
+              refreshCounts(journal);
+              BackupLive.finish(uri, BackupLive.FAILED, error);
+              failure(item.name, new IOException(error));
+              settledFailure();
+            } catch (Exception ignored) {
+            }
+          }
+
+          public void stillPending(String sessionId) {
+            // The durable PENDING row and session are reconciled by the next run.
+          }
+        });
+  }
+
+  private synchronized void settledFailure() {
+    runFailed++;
+    runUploaded = Math.max(0, runUploaded - 1);
   }
 
   private void markFailure(
@@ -657,36 +912,6 @@ public final class BackupService extends Service {
     BackupLive.finish(item.uri.toString(), BackupLive.FAILED, message);
   }
 
-  /** A rolling deploy can refuse connections for a few seconds; each file resumes from its checkpoint. */
-  private BackupEngine.Result processWithRetry(
-      BackupEngine engine,
-      String scope,
-      String mode,
-      BackupEngine.File source,
-      MediaCatalog.Item item)
-      throws Exception {
-    for (int attempt = 1; ; attempt++) {
-      try {
-        return engine.process(scope, mode, source);
-      } catch (Exception error) {
-        if (error instanceof Hold
-            || attempt >= UploadRetryPolicy.MAX_ATTEMPTS
-            || !UploadRetryPolicy.retryable(error)) throw error;
-        update("网络波动，正在重试：" + item.name);
-        long until = SystemClock.elapsedRealtime() + UploadRetryPolicy.delayMillis(attempt);
-        while (SystemClock.elapsedRealtime() < until) {
-          guard();
-          try {
-            Thread.sleep(Math.max(50L, Math.min(250L, until - SystemClock.elapsedRealtime())));
-          } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw error;
-          }
-        }
-      }
-    }
-  }
-
   private synchronized void resetRunCounts() {
     runSeen = runUploaded = runSkipped = runFailed = runDeleted = 0;
   }
@@ -698,7 +923,7 @@ public final class BackupService extends Service {
 
   private synchronized void countRun(String result) {
     runSeen++;
-    if ("UPLOADED".equals(result)) runUploaded++;
+    if ("UPLOADED".equals(result) || "PENDING".equals(result)) runUploaded++;
     else if ("SKIPPED".equals(result)) runSkipped++;
     else if ("FAILED".equals(result)) runFailed++;
   }
@@ -888,6 +1113,13 @@ public final class BackupService extends Service {
   }
 
   @Override
+  public void onTrimMemory(int level) {
+    if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)
+      UploadBudget.shared().degradeForBatch();
+    super.onTrimMemory(level);
+  }
+
+  @Override
   public void onTimeout(int startId, int foregroundServiceType) {
     cancelled = true;
     timedOut = true;
@@ -899,6 +1131,8 @@ public final class BackupService extends Service {
   @Override
   public void onDestroy() {
     cancelled = true;
+    IngestionTracker tracker = ingestion;
+    if (tracker != null) tracker.close();
     boolean wasRunning = working.getAndSet(false);
     if (current == this) {
       if (!scope.isEmpty()) {

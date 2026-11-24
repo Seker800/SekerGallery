@@ -1,22 +1,32 @@
 package com.sekereagle.android;
 
 import com.sekereagle.android.core.BackupEngine;
+import com.sekereagle.android.core.ContentCheckBatcher;
 import com.sekereagle.android.core.ForwardUploadSource;
+import com.sekereagle.android.core.UploadBudget;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import org.json.*;
 
 final class MultipartTransport implements BackupEngine.Transport {
-  // Shared across backup and manual queues: at most 3 buffers of at most 8 MiB.
-  private static final Semaphore slots = new Semaphore(3, true);
-  private static final ExecutorService uploads = Executors.newFixedThreadPool(3);
+  // One shared pool for every file: at most four files x three parts can be in flight.
+  private static final ExecutorService uploads =
+      Executors.newFixedThreadPool(
+          12,
+          runnable -> {
+            Thread thread = new Thread(runnable, "upload-part");
+            thread.setDaemon(true);
+            return thread;
+          });
 
   private final UploadApi api;
   private final String path;
   private final MediaCatalog catalog;
   private final MediaCatalog.Item item;
   private final java.util.function.LongConsumer progress;
+  private final UploadBudget budget;
+  private final ContentCheckBatcher batcher;
 
   MultipartTransport(UploadApi api, String mode, MediaCatalog catalog, MediaCatalog.Item item) {
     this(api, mode, catalog, item, null);
@@ -28,17 +38,31 @@ final class MultipartTransport implements BackupEngine.Transport {
       MediaCatalog catalog,
       MediaCatalog.Item item,
       java.util.function.LongConsumer progress) {
+    this(api, mode, catalog, item, progress, UploadBudget.shared(), null);
+  }
+
+  MultipartTransport(
+      UploadApi api,
+      String mode,
+      MediaCatalog catalog,
+      MediaCatalog.Item item,
+      java.util.function.LongConsumer progress,
+      UploadBudget budget,
+      ContentCheckBatcher batcher) {
     if (!(mode.equals("PHOTO") || mode.equals("MATERIAL")))
       throw new IllegalArgumentException("无效模式");
     this.api = api;
     this.catalog = catalog;
     this.item = item;
     this.progress = progress;
+    this.budget = budget == null ? UploadBudget.shared() : budget;
+    this.batcher = batcher;
     path = "/api/" + (mode.equals("PHOTO") ? "photos" : "eagle") + "/uploads";
   }
 
   @Override
   public boolean exists(String hash, long size) throws Exception {
+    if (batcher != null) return batcher.check(hash, size);
     return api.request(
             "POST",
             path + "/check-content",
@@ -120,13 +144,24 @@ final class MultipartTransport implements BackupEngine.Transport {
       try {
         JSONObject session = api.request("GET", path + "/" + cp.session, null);
         if (session.getLong("size") != item.size) throw new IOException("上传检查点与文件不一致");
-        status = session.getString("status");
-        if (status.equals("COMPLETED")) {
-          if (session.isNull("eagleAssetId")) throw new IOException("入库尚未确认");
-          return;
+        status = session.optString("status");
+        if (status.equals("COMPLETED")) return;
+        if (status.equals("ABORTED")) {
+          cp.session = "";
+          cp.partSize = 0;
+          save.write(cp);
         }
-        if (status.equals("ABORTED")) cp.session = "";
-        if (status.equals("FINALIZING")) throw new IOException("服务器正在确认入库，下次自动接续");
+        if (status.equals("FAILED")
+            && (session.optInt("finalizationAttempts") >= 10
+                || session.optBoolean("objectCleanupPending"))) {
+          cp.session = "";
+          cp.partSize = 0;
+          cp.terminalError = "服务器已拒绝该文件，请检查后重试失败文件";
+          save.write(cp);
+          throw new BackupEngine.PermanentFailure(cp.terminalError);
+        }
+        // ASSEMBLED and FINALIZING only need the ingestion poller; never re-upload them.
+        if (!status.equals("INITIATED")) return;
       } catch (ApiClient.Failure e) {
         if (e.status != 404) throw e;
         cp.session = "";
@@ -160,6 +195,46 @@ final class MultipartTransport implements BackupEngine.Transport {
     }
     JSONArray parts = new JSONArray();
     int total = (int) ((item.size + cp.partSize - 1) / cp.partSize);
+    List<Integer> missing = new ArrayList<>();
+    for (int number = 1; number <= total; number++) {
+      guard.check();
+      long offset = (number - 1L) * cp.partSize,
+          length = Math.min(cp.partSize, item.size - offset);
+      JSONObject part = committed.get(number);
+      boolean reusable = part != null && (!part.has("size") || part.getLong("size") == length);
+      if (reusable) {
+        parts.put(new JSONObject().put("partNumber", number).put("etag", part.getString("etag")));
+      } else {
+        missing.add(number);
+      }
+    }
+    if (missing.isEmpty()) {
+      complete(cp, parts, guard);
+      return;
+    }
+    if (!status.equals("INITIATED")) throw new IOException("上传已进入确认阶段，等待服务器恢复");
+
+    // One request signs every remaining part; the PUTs below then run without queueing
+    // control requests behind each other on the phone's connections.
+    JSONArray numbers = new JSONArray();
+    for (int number : missing) numbers.put(number);
+    Map<Integer, String> urls = new HashMap<>();
+    try {
+      JSONArray signedParts =
+          api.request(
+                  "POST",
+                  path + "/" + cp.session + "/parts",
+                  new JSONObject().put("partNumbers", numbers))
+              .getJSONArray("parts");
+      for (int i = 0; i < signedParts.length(); i++) {
+        JSONObject signed = signedParts.getJSONObject(i);
+        urls.put(signed.getInt("partNumber"), signed.getString("uploadUrl"));
+      }
+    } catch (ApiClient.Failure failure) {
+      // Older servers only expose per-part signing; keep those working during a rolling deploy.
+      if (failure.status != 404 && failure.status != 405) throw failure;
+    }
+
     ArrayDeque<Future<JSONObject>> pending = new ArrayDeque<>();
     try (ForwardUploadSource source =
         new ForwardUploadSource(catalog.open(item, 0, guard, progress))) {
@@ -168,49 +243,47 @@ final class MultipartTransport implements BackupEngine.Transport {
           guard.check();
           long offset = (number - 1L) * cp.partSize,
               length = Math.min(cp.partSize, item.size - offset);
-          JSONObject part = committed.get(number);
-          boolean reusable = part != null && (!part.has("size") || part.getLong("size") == length);
-          if (reusable) {
-            parts.put(
-                new JSONObject().put("partNumber", number).put("etag", part.getString("etag")));
-            continue;
-          }
-          if (!status.equals("INITIATED")) throw new IOException("上传已进入确认阶段，等待服务器恢复");
+          if (committed.containsKey(number)) continue;
           if (pending.size() == 3) parts.put(await(pending.removeFirst()));
-          slots.acquire();
-          boolean scheduled = false;
-          try {
-            guard.check();
+          String resolved = urls.get(number);
+          if (resolved == null)
+            resolved =
+                api.request(
+                        "POST", path + "/" + cp.session + "/parts/" + number, new JSONObject())
+                    .getString("uploadUrl");
+          final String url = resolved;
+          if (length <= ForwardUploadSource.MAX_BUFFER) {
             final int partNumber = number;
-            if (length <= ForwardUploadSource.MAX_BUFFER) {
-              byte[] buffer = source.read(offset, (int) length, guard);
+            final byte[] buffer = readBuffered(source, offset, (int) length, guard);
+            boolean scheduled = false;
+            try {
               pending.add(
                   uploads.submit(
                       () -> {
                         try {
-                          return uploadPart(cp.session, partNumber, buffer, guard);
+                          return uploadPart(cp.session, partNumber, url, buffer, guard);
                         } finally {
-                          slots.release();
+                          budget.releaseBytes(length);
                         }
                       }));
               scheduled = true;
-            } else {
-              // Legacy sessions may have larger parts. Stream them without a large allocation.
-              while (!pending.isEmpty()) parts.put(await(pending.removeFirst()));
-              guard.check();
-              JSONObject signed =
-                  api.request(
-                      "POST", path + "/" + cp.session + "/parts/" + number, new JSONObject());
-              String etag =
-                  api.put(
-                      signed.getString("uploadUrl"),
-                      source.part(offset, length, guard),
-                      length,
-                      guard);
-              parts.put(new JSONObject().put("partNumber", number).put("etag", etag));
+            } finally {
+              if (!scheduled) budget.releaseBytes(length);
             }
-          } finally {
-            if (!scheduled) slots.release();
+          } else {
+            // Legacy sessions may have larger parts. Stream them without a large allocation.
+            while (!pending.isEmpty()) parts.put(await(pending.removeFirst()));
+            guard.check();
+            JSONObject signed =
+                api.request(
+                    "POST", path + "/" + cp.session + "/parts/" + number, new JSONObject());
+            String etag =
+                api.put(
+                    signed.getString("uploadUrl"),
+                    source.part(offset, length, guard),
+                    length,
+                    guard);
+            parts.put(new JSONObject().put("partNumber", number).put("etag", etag));
           }
         }
         while (!pending.isEmpty()) parts.put(await(pending.removeFirst()));
@@ -225,61 +298,65 @@ final class MultipartTransport implements BackupEngine.Transport {
       }
     }
     guard.check();
-    JSONObject completed =
-        api.request(
-            "POST", path + "/" + cp.session + "/complete", new JSONObject().put("parts", parts));
-    if (completed.optString("assetId").isEmpty()) awaitFinalization(cp, save, guard);
+    complete(cp, parts, guard);
   }
 
-  /** Completion only accepts the durable job; the operations host inspects and publishes later. */
-  private void awaitFinalization(
-      BackupEngine.Checkpoint cp, BackupEngine.Save save, BackupEngine.Guard guard)
+  /**
+   * Claims part-buffer bytes before allocating. A failed allocation degrades this batch once and
+   * retries; a second failure pauses the batch instead of crashing the app.
+   */
+  private byte[] readBuffered(
+      ForwardUploadSource source, long offset, int length, BackupEngine.Guard guard)
       throws Exception {
-    long deadline = System.currentTimeMillis() + 120_000;
-    for (; ; ) {
+    boolean claimed = false;
+    try {
+      budget.claimBytes(length);
+      claimed = true;
+      return source.read(offset, length, guard);
+    } catch (OutOfMemoryError memory) {
+      if (claimed) budget.releaseBytes(length);
+      budget.degradeForBatch();
       guard.check();
-      JSONObject session = api.request("GET", path + "/" + cp.session, null);
-      String status = session.optString("status");
-      if (status.equals("COMPLETED")
-          && !session.isNull("eagleAssetId")
-          && !session.optString("eagleAssetId").isEmpty()) return;
-      if (status.equals("ABORTED")) throw new IOException("上传会话已中止");
-      if (status.equals("FAILED")
-          && (session.optInt("finalizationAttempts") >= 10
-              || session.optBoolean("objectCleanupPending"))) {
-        cp.session = "";
-        cp.partSize = 0;
-        cp.terminalError = "服务器已拒绝该文件，请检查后重试失败文件";
-        save.write(cp);
-        throw new BackupEngine.PermanentFailure(cp.terminalError);
-      }
-      if (System.currentTimeMillis() >= deadline)
-        throw new IOException("服务器仍在确认入库，下次自动接续");
+      Thread.sleep(2_000);
       try {
-        Thread.sleep(1000);
-      } catch (InterruptedException error) {
-        Thread.currentThread().interrupt();
-        throw error;
+        budget.claimBytes(length);
+        claimed = true;
+        return source.read(offset, length, guard);
+      } catch (OutOfMemoryError again) {
+        if (claimed) budget.releaseBytes(length);
+        throw new BackupEngine.MemoryPressure();
+      } catch (Exception retryError) {
+        if (claimed) budget.releaseBytes(length);
+        throw retryError;
       }
+    } catch (Exception error) {
+      if (claimed) budget.releaseBytes(length);
+      throw error;
     }
   }
 
-  private JSONObject uploadPart(String session, int number, byte[] bytes, BackupEngine.Guard guard)
+  private void complete(
+      BackupEngine.Checkpoint cp, JSONArray parts, BackupEngine.Guard guard) throws Exception {
+    guard.check();
+    // Completion only accepts the durable job; the operations host inspects and publishes later.
+    // The shared ingestion tracker polls the session, so this call never waits for publication.
+    api.request("POST", path + "/" + cp.session + "/complete", new JSONObject().put("parts", parts));
+  }
+
+  private JSONObject uploadPart(
+      String session, int number, String url, byte[] bytes, BackupEngine.Guard guard)
       throws Exception {
     for (int attempt = 0; attempt < 2; attempt++) {
       guard.check();
-      JSONObject signed =
-          api.request("POST", path + "/" + session + "/parts/" + number, new JSONObject());
       try {
-        String etag =
-            api.put(
-                signed.getString("uploadUrl"),
-                new ByteArrayInputStream(bytes),
-                bytes.length,
-                guard);
+        String etag = api.put(url, new ByteArrayInputStream(bytes), bytes.length, guard);
         return new JSONObject().put("partNumber", number).put("etag", etag);
       } catch (ApiClient.Failure error) {
         if (attempt != 0 || !error.renewSignature()) throw error;
+        // Signed part URLs expire after 15 minutes; re-sign only the failed part.
+        url =
+            api.request("POST", path + "/" + session + "/parts/" + number, new JSONObject())
+                .getString("uploadUrl");
       }
     }
     throw new IOException("分片未能上传");

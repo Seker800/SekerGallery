@@ -26,6 +26,15 @@ class NativeUploadService : Service() {
             .createNotificationChannel(
                 NotificationChannel(CHANNEL, "文件传输", NotificationManager.IMPORTANCE_LOW)
             )
+        com.sekereagle.android.core.UploadBudget.shared().configureLowRam(
+            getSystemService(android.app.ActivityManager::class.java).isLowRamDevice
+        )
+    }
+
+    override fun onTrimMemory(level: Int) {
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)
+            com.sekereagle.android.core.UploadBudget.shared().degradeForBatch()
+        super.onTrimMemory(level)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -37,10 +46,9 @@ class NativeUploadService : Service() {
         }
         target = scope
         if (intent?.action == "pause") {
-            manager.halt(target, "已暂停")
+            // Pause between files: in-flight parts finish, then the batch stays visible as paused.
+            manager.pauseAll(target)
             manager.downloads.cancel()
-            finished = true
-            stopSelf()
             return START_NOT_STICKY
         }
         finished = false

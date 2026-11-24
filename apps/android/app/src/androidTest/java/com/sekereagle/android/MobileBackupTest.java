@@ -537,7 +537,18 @@ public final class MobileBackupTest {
               signs[0]++;
               return new JSONObject().put("uploadUrl", "signed");
             }
-            if (request.endsWith("/parts")) return new JSONObject().put("parts", new JSONArray());
+            if (request.endsWith("/parts")) {
+              if (method.equals("GET")) return new JSONObject().put("parts", new JSONArray());
+              signs[0]++;
+              return new JSONObject()
+                  .put(
+                      "parts",
+                      new JSONArray()
+                          .put(
+                              new JSONObject()
+                                  .put("partNumber", 1)
+                                  .put("uploadUrl", "signed")));
+            }
             return new JSONObject()
                 .put("id", session)
                 .put("size", item.size)
@@ -1229,11 +1240,19 @@ public final class MobileBackupTest {
     }
     try (BackupJournal restored = new BackupJournal(context)) {
       assertEquals(
-          com.sekereagle.android.core.BackupEngine.Result.UPLOADED,
+          com.sekereagle.android.core.BackupEngine.Result.PENDING,
           new com.sekereagle.android.core.BackupEngine(restored, transport, () -> {})
               .process(scope, "PHOTO", file));
       assertEquals(session, restored.load(key).session);
-      assertTrue(restored.load(key).confirmed);
+      // Ingestion runs on the operations host; the tracker confirms the receipt afterwards.
+      assertFalse(restored.load(key).confirmed);
+    }
+    for (int attempt = 0; attempt < 100; attempt++) {
+      if ("COMPLETED"
+          .equals(
+              api.request("GET", "/api/photos/uploads/" + session, null).getString("status")))
+        break;
+      Thread.sleep(200);
     }
     assertEquals(
         "COMPLETED",

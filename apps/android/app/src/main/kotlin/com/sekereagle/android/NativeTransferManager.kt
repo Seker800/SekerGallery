@@ -272,7 +272,12 @@ class NativeTransferManager private constructor(context: Context) {
                                         NativeUploadPhase.PREPARING -> "读取所选文件"
                                         NativeUploadPhase.READY -> "准备上传"
                                         NativeUploadPhase.RUNNING ->
-                                            progress.stage.ifEmpty { "正在上传" }
+                                            when {
+                                                progress.items.values.any { it.active } -> "正在上传"
+                                                progress.items.values.any { it.verifying } ->
+                                                    "服务器确认入库中"
+                                                else -> progress.stage.ifEmpty { "正在上传" }
+                                            }
                                         NativeUploadPhase.FINISHED ->
                                             if (progress.cancelled)
                                                 current.message.takeIf { _ -> current.paused } ?: "已暂停"
@@ -320,7 +325,7 @@ class NativeTransferManager private constructor(context: Context) {
 
     internal fun pause(id: String) = command {
         update(id) { it.copy(waiting = false, paused = true, message = "已暂停") }
-        if (mutable.value.activeId == id) worker?.cancel()
+        if (mutable.value.activeId == id) worker?.pause()
         persist()
     }
 
@@ -342,7 +347,7 @@ class NativeTransferManager private constructor(context: Context) {
                 it.id == mutable.value.activeId && it.scope == scope && it.paused
             }
         )
-            worker?.cancel()
+            worker?.pause()
         persist()
     }
 

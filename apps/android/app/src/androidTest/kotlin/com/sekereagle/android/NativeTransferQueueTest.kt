@@ -72,7 +72,13 @@ class NativeTransferQueueTest {
 
     @Test
     fun cancellingBeforeUploadLoopKeepsEveryFileForRetry() = runBlocking {
-        Server { path -> if (path == "/api/auth/me") me else """{"exists":true}""" }
+        Server { path ->
+                when {
+                    path == "/api/auth/me" -> me
+                    path.endsWith("/check-content-batch") -> """{"exists":[true,true]}"""
+                    else -> """{"exists":true}"""
+                }
+            }
             .use { server ->
                 val session = NativeSession.open(context, server.origin)
                 val target = BackupPolicy.digest("${server.origin}\nqueue\nowner")

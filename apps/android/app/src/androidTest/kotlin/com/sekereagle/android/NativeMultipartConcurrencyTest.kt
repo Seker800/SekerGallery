@@ -54,7 +54,7 @@ class NativeMultipartConcurrencyTest {
                         body: JSONObject?,
                     ): JSONObject =
                         when {
-                            path.endsWith("/parts") ->
+                            path.endsWith("/parts") && method == "GET" ->
                                 JSONObject()
                                     .put(
                                         "parts",
@@ -66,6 +66,19 @@ class NativeMultipartConcurrencyTest {
                                                     .put("size", partSize)
                                             ),
                                     )
+                            path.endsWith("/parts") && method == "POST" -> {
+                                val missing = body!!.getJSONArray("partNumbers")
+                                val signed = JSONArray()
+                                for (index in 0 until missing.length()) {
+                                    val number = missing.getInt(index)
+                                    signed.put(
+                                        JSONObject()
+                                            .put("partNumber", number)
+                                            .put("uploadUrl", number.toString())
+                                    )
+                                }
+                                JSONObject().put("parts", signed)
+                            }
                             path.contains("/parts/") ->
                                 JSONObject().put("uploadUrl", path.substringAfterLast('/'))
                             path.endsWith("/complete") -> {

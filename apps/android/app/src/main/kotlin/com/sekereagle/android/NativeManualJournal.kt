@@ -18,9 +18,12 @@ internal class NativeManualJournal(context: Context, scope: String, id: String) 
             // the server, since its copy could have been removed while this app was stopped.
             if (confirmed) {
                 confirmed = false
+                uploaded = false
                 session = ""
                 partSize = 0
             }
+            // Uploaded-but-unconfirmed bytes keep their session so the ingestion tracker can
+            // resume polling instead of uploading the same file again.
         }
 
     override fun save(key: String, value: BackupEngine.Checkpoint) = delegate.save(key(key), value)

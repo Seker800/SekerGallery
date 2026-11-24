@@ -13,6 +13,33 @@ it('hashes small files through WebCrypto', async () => {
   expect(await sha256File(new NodeBlob([bytes]) as unknown as File)).toBe(expected(bytes));
 });
 
+it('uses one WebCrypto digest at the 8 MiB boundary', async () => {
+  const bytes = new Uint8Array(8 * 1024 * 1024).fill(3);
+  expect(await sha256File(new NodeBlob([bytes]) as unknown as File)).toBe(expected(bytes));
+});
+
+it('streams files larger than 8 MiB in chunks instead of buffering the whole file', async () => {
+  const size = 8 * 1024 * 1024 + 1;
+  let wholeReads = 0;
+  let chunkReads = 0;
+  const file = {
+    size,
+    arrayBuffer: async () => {
+      wholeReads += 1;
+      return new ArrayBuffer(size);
+    },
+    slice: (start: number, end: number) => ({
+      arrayBuffer: async () => {
+        chunkReads += 1;
+        return new ArrayBuffer(end - start);
+      },
+    }),
+  } as unknown as File;
+  await sha256File(file);
+  expect(wholeReads).toBe(0);
+  expect(chunkReads).toBeGreaterThan(1);
+});
+
 it('hashes large files in bounded chunks without a whole-file buffer', async () => {
   const bytes = new Uint8Array(33 * 1024 * 1024).fill(11);
   const file = new NodeBlob([bytes]) as unknown as File;

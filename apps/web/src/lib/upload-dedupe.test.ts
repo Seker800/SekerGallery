@@ -21,6 +21,29 @@ it('hashes and checks nearby files in one batch request', async () => {
   expect(second).toEqual({ sha256: 'a'.repeat(64), exists: false });
 });
 
+it('hashes up to four files at once so upload slots stay busy', async () => {
+  let active = 0;
+  let peak = 0;
+  let open = false;
+  const waiting: Array<() => void> = [];
+  const checker = new UploadDedupeChecker(
+    async (items) => items.map(() => false),
+    async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      if (!open) await new Promise<void>((resolve) => waiting.push(resolve));
+      active -= 1;
+      return 'a'.repeat(64);
+    },
+  );
+  const checks = Array.from({ length: 5 }, (_, index) => checker.check(file(`p${index}.jpg`)));
+  await vi.waitFor(() => expect(active).toBe(4));
+  expect(peak).toBe(4);
+  open = true;
+  waiting.splice(0).forEach((resolve) => resolve());
+  await Promise.all(checks);
+});
+
 it('fails open when the browser cannot hash the file', async () => {
   const checker = new UploadDedupeChecker(
     async () => [true],

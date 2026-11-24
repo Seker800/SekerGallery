@@ -40,10 +40,11 @@ private data class BackupTransferView(
 )
 
 private const val STATE_UPLOADING = "上传中"
+private const val STATE_VERIFYING = "入库校验中"
 private const val STATE_FAILED = "失败"
 private const val STATE_QUEUED = "排队中"
 private const val STATE_PAUSED = "待继续"
-private const val STATE_DONE = "已上传"
+private const val STATE_DONE = "已完成"
 
 private data class TransferRowView(
     val key: String,
@@ -60,7 +61,7 @@ private data class TransferRowView(
             when (state) {
                 STATE_UPLOADING -> 0
                 STATE_FAILED -> 1
-                STATE_QUEUED, STATE_PAUSED -> 2
+                STATE_QUEUED, STATE_PAUSED, STATE_VERIFYING -> 2
                 else -> 3
             }
 }
@@ -187,6 +188,7 @@ fun NativeTransferScreen(
                 val state =
                     when (row.state) {
                         BackupLive.UPLOADING -> if (stopped) STATE_PAUSED else STATE_UPLOADING
+                        BackupLive.PENDING -> STATE_VERIFYING
                         BackupLive.FAILED -> STATE_FAILED
                         BackupLive.UPLOADED, BackupLive.SKIPPED -> STATE_DONE
                         else -> if (stopped) STATE_PAUSED else STATE_QUEUED
@@ -256,12 +258,15 @@ fun NativeTransferScreen(
                 batch.entries.map { entry ->
                     val issue = progress?.issues?.firstOrNull { it.entry.uri == entry.uri }
                     val done = entry.uri in progress?.completedEntries.orEmpty()
-                    val uploading = active && progress != null && progress.current == entry.name
-                    val activeProgress = if (uploading) progress else null
+                    val itemProgress = progress?.items?.get(entry.uri.toString())
+                    val verifying = !done && issue == null && itemProgress?.verifying == true
+                    val uploading =
+                        !done && issue == null && active && itemProgress?.active == true
                     val state =
                         when {
                             done -> STATE_DONE
                             issue != null -> STATE_FAILED
+                            verifying -> STATE_VERIFYING
                             uploading -> STATE_UPLOADING
                             batch.paused -> STATE_PAUSED
                             else -> STATE_QUEUED
@@ -270,15 +275,15 @@ fun NativeTransferScreen(
                         "${batch.id}:${entry.uri}",
                         entry.uri,
                         entry.name,
-                        activeProgress?.size ?: entry.size,
+                        itemProgress?.size?.takeIf { it > 0 } ?: entry.size,
                         state,
                         when {
                             issue != null -> issue.reason
-                            activeProgress != null -> activeProgress.stage
-                            batch.paused -> batch.message
+                            itemProgress != null && itemProgress.stage.isNotEmpty() ->
+                                itemProgress.stage
                             else -> batch.message
                         },
-                        activeProgress?.bytes ?: 0,
+                        itemProgress?.bytes ?: 0,
                         batch.id,
                     )
                 }
@@ -559,13 +564,16 @@ private fun LazyListScope.uploadQueueContent(
     onRetryEntry: (String, Uri) -> Unit,
 ) {
     val uploading = rows.count { it.state == STATE_UPLOADING }
+    val verifying = rows.count { it.state == STATE_VERIFYING }
+    val queuedOnly = (queued - verifying).coerceAtLeast(0)
     item {
         GlassSurface(Modifier.fillMaxWidth(), radius = 22) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     when {
                         uploading > 0 -> "正在上传 $uploading 个文件"
-                        queued > 0 -> "还有 $queued 个文件排队"
+                        verifying > 0 -> "服务器确认入库 $verifying 个文件"
+                        queuedOnly > 0 -> "还有 $queuedOnly 个文件排队"
                         failed > 0 -> "$failed 个文件上传失败"
                         done > 0 -> "上传完成"
                         else -> "暂无手动上传"
@@ -574,7 +582,7 @@ private fun LazyListScope.uploadQueueContent(
                 )
                 if (total > 0)
                     Text(
-                        "已完成 $done · 排队 $queued · 失败 $failed",
+                        "已完成 $done · 入库校验 $verifying · 排队 $queuedOnly · 失败 $failed",
                         color = NativeMuted,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.testTag("upload-status"),

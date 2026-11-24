@@ -151,7 +151,7 @@ internal class NativeUploadJourney(
         compose
             .onNodeWithTag("upload-status")
             .performScrollTo()
-            .assertTextEquals("已完成 ${uploaded + skipped} · 排队 0 · 失败 0")
+            .assertTextEquals("已完成 ${uploaded + skipped} · 入库校验 0 · 排队 0 · 失败 0")
     }
 
     private fun dismiss() {
