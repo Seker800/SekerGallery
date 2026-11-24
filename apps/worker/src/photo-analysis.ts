@@ -1,4 +1,5 @@
 import { parse } from 'exifr';
+import { dhash64 } from '@sekereagle/library-core';
 import { readPhotoMetadataTags } from '@sekereagle/media-core';
 import type { Sharp } from 'sharp';
 
@@ -115,12 +116,8 @@ export async function analyzePhotoPixels(image: Sharp) {
     .greyscale()
     .raw()
     .toBuffer();
-  let hash = 0n;
-  for (let y = 0; y < 8; y++)
-    for (let x = 0; x < 8; x++)
-      hash = (hash << 1n) | (hashData[y * 9 + x]! > hashData[y * 9 + x + 1]! ? 1n : 0n);
   return {
     sharpnessScore: Math.max(0, squared / count - (total / count) ** 2),
-    perceptualHash: hash.toString(16).padStart(16, '0'),
+    perceptualHash: dhash64(hashData),
   };
 }

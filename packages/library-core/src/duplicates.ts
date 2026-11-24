@@ -1,3 +1,5 @@
+import { hashDistance64 } from './perceptual-hash';
+
 export const DUPLICATE_GROUPING_VERSION = 'conditions-visual-v4';
 export const DUPLICATE_PIXEL_VERSION = 'oriented-srgb-rgba8-v1';
 export function canonicalDuplicateFormat(format: string) {
@@ -92,11 +94,7 @@ function popcount(n: number) {
 function hashParts(hash: string) {
   return [parseInt(hash.slice(0, 8), 16), parseInt(hash.slice(8), 16)] as const;
 }
-export function duplicateHashDistance(a: string, b: string) {
-  const left = hashParts(a),
-    right = hashParts(b);
-  return popcount(left[0] ^ right[0]) + popcount(left[1] ^ right[1]);
-}
+export { hashDistance64 as duplicateHashDistance };
 function validFingerprint(value: DuplicateFingerprint | null): value is DuplicateFingerprint {
   return (
     !!value &&
@@ -221,7 +219,7 @@ function groupDuplicateCandidates(
               !representatives.has(key) &&
               [...representatives.values()].some(
                 (other) =>
-                  duplicateHashDistance(
+                  hashDistance64(
                     eligible[other]!.fingerprint!.hash,
                     eligible[candidate]!.fingerprint!.hash,
                   ) > 5 || !visuallyMatches(eligible[other]!, eligible[candidate]!, true),

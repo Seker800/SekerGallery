@@ -1,4 +1,5 @@
 import { isCameraRawMime } from './media-formats';
+import { hashDistance64 } from './perceptual-hash';
 
 interface GroupCandidate {
   id: string;
@@ -7,16 +8,6 @@ interface GroupCandidate {
   mimeType?: string | null;
   perceptualHash: string | null;
   sharpnessScore: number | null;
-}
-function hashDistance(a: string, b: string) {
-  if (!/^[0-9a-f]{16}$/.test(a) || !/^[0-9a-f]{16}$/.test(b)) return 65;
-  let bits = BigInt(`0x${a}`) ^ BigInt(`0x${b}`),
-    count = 0;
-  while (bits) {
-    bits &= bits - 1n;
-    count++;
-  }
-  return count;
 }
 /** Bounded conservative suggestions. Missing capture dates never imply a burst. */
 export function suggestPhotoGroups(candidates: readonly GroupCandidate[]) {
@@ -42,7 +33,7 @@ export function suggestPhotoGroups(candidates: readonly GroupCandidate[]) {
       if (
         !used.has(next.id) &&
         next.cameraModel === anchor.cameraModel &&
-        hashDistance(anchor.perceptualHash!, next.perceptualHash!) <= 8
+        hashDistance64(anchor.perceptualHash!, next.perceptualHash!) <= 8
       )
         members.push(next);
     }
