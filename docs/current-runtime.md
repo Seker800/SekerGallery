@@ -1,6 +1,6 @@
 # 现用运行状态与交接
 
-> 状态：现行 | 核验日期：2026-11-24 23:40（北京时间） | 对应提交：238a228d（web 仍为 22b9e92b；仓库另有未发布 API 提示修正 `feb22236`；Windows 客户端 `9e5420c7`）
+> 状态：现行 | 核验日期：2026-11-25 00:05（北京时间） | 对应提交：API `238a228d`、worker／edit-renderer `30a54d60`（web 仍为 `22b9e92b`；仓库另有未发布 API 提示修正 `feb22236`；Windows 客户端 `9e5420c7`）
 >
 > 本文只记录现用部署事实与接手顺序。完整发布快照、备份哈希和历史恢复过程见
 > [2026-10/11 归档](history/releases/2026-11.md)。设计边界见 [architecture](architecture.md)，
@@ -8,18 +8,19 @@
 
 ## 现用状态
 
-| 项目                                               | 当前值                                                                                                                                                                                      |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 图库                                               | 群晖 SekerDesign（DS1522+，AMD64，8GB），入口 https://yuntai.design:8181/                                                                                                                   |
-| 运行源码                                           | API `238a228d`；web `22b9e92b`；operations／reader／share-renderer `238a228d`；desktop 客户端 0.1.9（macOS `d3568fc9`，Windows 本机 `9e5420c7`）                                            |
-| API / operations / library-reader / share-renderer | `sekereagle/api:main-238a228d`（linux/amd64，镜像 ID `aca98ce6…`；同一镜像的独立 HTTP、operations、reader 与分享渲染进程）                                                                    |
-| Web                                                | `sekereagle/web:main-22b9e92b`                                                                                                                                                              |
-| macOS 桌面客户端                                   | `/Applications/SekerGallery.app` 0.1.9（`d3568fc9` 源码，app.asar `73a2d95a…`，已启动并连接线上图库；旧版备份 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`） |
-| Windows 便携客户端（本机）                         | `D:\SekerEagle\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`9e5420c7` 源码原生构建；exe `e45b2cdc…`、app.asar `da6eb1c1…`；开始菜单 `SekerGallery-0.1.lnk`）                       |
-| 数据库                                             | 107 项迁移，待应用 0；本轮新增上传会话 partSize／私密授权、分享渲染队列表与触发器、人脸确认覆盖索引                                                                                         |
-| Mac 业务执行器                                     | `.runtime/business-worker/releases/worker-22b9e92b`（launchd；PID 54827，worker ID `worker-86111279-9605-4d46-8427-143ba8488b9b`；2026-11-24 已同步 schema 并重建 Prisma 客户端；不是 Compose `worker`） |
-| 未改动                                             | 网关容器复用并更新配置；Postgres、MinIO、计算协调器、中继未重启；不要为排查重启或重建                                                                                                       |
-| 计数                                               | MATERIAL / PHOTO / 回收站 / 草稿从运行检查点读取，本文不维护动态百分比                                                                                                                      |
+| 项目                                               | 当前值                                                                                                                                                                                                                                                            |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 图库                                               | 群晖 SekerDesign（DS1522+，AMD64，8GB），入口 https://yuntai.design:8181/                                                                                                                                                                                         |
+| 运行源码                                           | API `238a228d`；web `22b9e92b`；operations／reader／share-renderer `238a228d`；worker／edit-renderer `30a54d60`；desktop 客户端 0.1.9（macOS `d3568fc9`，Windows 本机 `9e5420c7`）                                                                                |
+| NAS 编辑渲染节点                                   | `sekereagle/worker:main-30a54d60`（Compose `edit-renderer`；只领 `RENDER_EDITED_COPY`、并发 1、内存上限 2GB；心跳声明 `editRendererDedicated`）                                                                                                                   |
+| API / operations / library-reader / share-renderer | `sekereagle/api:main-238a228d`（linux/amd64，镜像 ID `aca98ce6…`；同一镜像的独立 HTTP、operations、reader 与分享渲染进程）                                                                                                                                        |
+| Web                                                | `sekereagle/web:main-22b9e92b`                                                                                                                                                                                                                                    |
+| macOS 桌面客户端                                   | `/Applications/SekerGallery.app` 0.1.9（`d3568fc9` 源码，app.asar `73a2d95a…`，已启动并连接线上图库；旧版备份 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`）                                                                       |
+| Windows 便携客户端（本机）                         | `D:\SekerEagle\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`9e5420c7` 源码原生构建；exe `e45b2cdc…`、app.asar `da6eb1c1…`；开始菜单 `SekerGallery-0.1.lnk`）                                                                                             |
+| 数据库                                             | 107 项迁移，待应用 0；本轮新增上传会话 partSize／私密授权、分享渲染队列表与触发器、人脸确认覆盖索引                                                                                                                                                               |
+| Mac 业务执行器                                     | `.runtime/business-worker/releases/worker-22b9e92b`（launchd；PID 61631，worker ID `worker-338cc85c-61de-4850-b29f-cdf6dce4fc9b`；2026-11-24 已同步 schema、重建 Prisma 客户端并更新 `30a54d60` dist；NAS 编辑节点心跳新鲜时让出编辑成片；不是 Compose `worker`） |
+| 未改动                                             | 网关容器复用并更新配置；Postgres、MinIO、计算协调器、中继未重启；不要为排查重启或重建                                                                                                                                                                             |
+| 计数                                               | MATERIAL / PHOTO / 回收站 / 草稿从运行检查点读取，本文不维护动态百分比                                                                                                                                                                                            |
 
 Web 最近覆盖：`main-22b9e92b`（11-24 17:10）→ `main-d3568fc9`（11-23 18:04）→
 `main-2405f5ed`（11-20 11:02）。11-23 的 API／operations／reader 热修为
@@ -32,6 +33,12 @@ Web 最近覆盖：`main-22b9e92b`（11-24 17:10）→ `main-d3568fc9`（11-23 1
 并加入启动期导出校验与镜像产物哈希门禁；web 与数据库结构未变。切换后素材与照片网格
 缩略图均已恢复，照片页由用户刷新确认。详见 [发布归档](history/releases/2026-11.md)。
 
+11-25 00:00 起 RAW/HEIF 编辑成片默认由 NAS `edit-renderer` 执行：同一 worker
+镜像限定 `RENDER_EDITED_COPY`、并发 1、内存 2GB；Mac worker 在专用节点心跳新鲜
+（60 秒）时让出，心跳过期自动兜底。真实保存 `3fbc36d3` 由 NAS 完成（提交到完成
+7.75 秒，峰值内存约 789MB），Mac 未接手，成片 `SEK_0853-已编辑.jpg` 正常生成。
+Mac 兜底路径本轮未做线上实测，仅由单测覆盖让位判定。
+
 ## 进程入口
 
 | 进程           | 入口                                       | 说明                                    |
@@ -40,6 +47,7 @@ Web 最近覆盖：`main-22b9e92b`（11-24 17:10）→ `main-d3568fc9`（11-23 1
 | operations     | `apps/api/src/asset-operation-executor.ts` | 批量操作、上传终结、恢复、维护          |
 | library-reader | `apps/api/src/library-reader.ts`           | 独立读取宿主，内部端口 3001             |
 | share-renderer | `apps/api/src/library-share-renderer.ts`   | 分享图按需渲染，独立进程、并发 1        |
+| edit-renderer  | `apps/worker/src/main.ts`（受限任务类型）  | NAS Compose 服务，只领编辑成片、并发 1  |
 | 业务 worker    | `apps/worker/src/main.ts`                  | Compose `worker` 或 Mac launchd release |
 | 计算节点       | `apps/compute-coordinator/main.mjs`        | 节点策略与远程媒体                      |
 
@@ -69,6 +77,7 @@ Web 最近覆盖：`main-22b9e92b`（11-24 17:10）→ `main-d3568fc9`（11-23 1
 
 - Web 回退：`sekereagle/web:main-d3568fc9`（再上一版 `main-2405f5ed`）。
 - 2026-11-24 22:36 热修回退：四个应用进程可临时切回 `sekereagle/api:main-22b9e92b`（`maintenance/main-238a228d/rollback.json`）；没有数据库变更。但该镜像的共享包产物陈旧，回退会恢复缩略图／上传等 500，仅用于紧急对比。
+- edit-renderer 回退：用同一 Compose 链追加 `maintenance/edit-renderer-20261125/edit-renderer.json` 后执行 `rm -f edit-renderer` 或 `stop edit-renderer`；Mac worker 会在心跳过期约 70 秒内自动接管，不需要改配置。Mac worker 程序回退可用 `apps/worker-dist-before-edit-renderer-20261125.tar` 恢复旧 dist 后重启 launchd。
 - API／operations／reader 回退：`sekereagle/api:main-d3568fc9-hotfix1`。**一旦 `SHARE_JPEG` 渲染结果存在，不得回退旧 API／operations／reader**：旧 Prisma 客户端不认识该枚举。需要回退时先确认 `LibraryShareRender` 与 `SHARE_JPEG` 行为 0，停止并移除 `share-renderer`，再按 `maintenance/main-22b9e92b/rollback.json` 切回；共享图产生后只能回退网页或向前修复。
 - Mac worker 回退：`.runtime/business-worker/releases/worker-93b5d583`；切换前 plist 备份在 `.omx/artifacts/release-22b9e92b/worker-before.plist`。
 - 2026-11-24 17:10 发布前一致性备份：939,533,209 字节，SHA-256 `ce92c1b6dafdc8488d11c98efd5fc451a2013b2c8add2555a638b9ac9f5cb7b9`，`pg_restore --list` 完整解析。NAS 证据与镜像、回退清单在 `maintenance/main-22b9e92b/`。
