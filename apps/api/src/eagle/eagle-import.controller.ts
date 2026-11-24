@@ -25,7 +25,6 @@ import {
 } from './eagle-import.dto';
 import { EagleUploadService } from './eagle-upload.service';
 import { EagleImportsService } from './import/eagle-app-import.service';
-import { UPLOAD_PART_SIZE_BYTES } from './import/upload-limits';
 
 @ApiTags('eagle-imports')
 @ApiCookieAuth()
@@ -133,9 +132,8 @@ export class EagleImportController {
       const session = await this.uploads.getSession(principal.sub, start.sessionId);
       return {
         ...session,
-        partSize: UPLOAD_PART_SIZE_BYTES,
-        partSizeBytes: UPLOAD_PART_SIZE_BYTES,
         resumed: true,
+        finalizing: start.kind === 'FINALIZING' || session.status !== 'INITIATED',
       };
     }
     if (start.kind === 'IMPORTED') {

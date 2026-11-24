@@ -365,12 +365,23 @@ class ImportEngine {
       return session;
     }
     const sessionId = session.id;
+    if (session.finalizing) {
+      onProgress(1);
+      return this.awaitFinalization(sessionId);
+    }
     const uploaded = session.resumed
       ? await this.api.getUploadedParts(sessionId)
       : { parts: [], partSizeBytes: session.partSizeBytes };
     const existing = new Map(uploaded.parts.map((part) => [part.partNumber, part]));
     const partSize = uploaded.partSizeBytes || session.partSizeBytes;
+    if (!partSize) throw new Error('服务器未返回分片大小，无法恢复该文件。');
     const partCount = Math.ceil(source.size / partSize);
+    for (const part of existing.values()) {
+      const expected =
+        part.partNumber < partCount ? partSize : source.size - (partCount - 1) * partSize;
+      if (part.size && part.size !== expected)
+        throw new Error('已上传分片大小不一致，请重新开始该文件的导入。');
+    }
     const completedParts = new Map(existing);
     const fileHandle = await fs.open(source.filePath, 'r');
     try {

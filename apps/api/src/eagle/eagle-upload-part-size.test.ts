@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { chooseUploadPartSize } from '@sekereagle/library-core';
 import { EagleUploadService } from './eagle-upload.service';
 
 const MiB = 1024 * 1024;
@@ -30,6 +31,12 @@ test('larger media uses 16 MiB parts under the gateway request limit', () => {
   const fiveGigabytes = 5_000_000_000;
   assert.equal(service().partSizeFor(fiveGigabytes), 16 * MiB);
   assert.ok(Math.ceil(fiveGigabytes / service().partSizeFor(fiveGigabytes)) <= 10_000);
+});
+
+test('the service and shared upload policy return the same part size', () => {
+  for (const size of [1, 3 * MiB, 12 * MiB, 16 * MiB, 20 * MiB, 5_000_000_000]) {
+    assert.equal(service().partSizeFor(size), chooseUploadPartSize(size));
+  }
 });
 
 test('the 10,000-part ceiling still raises the part size for future huge files', () => {

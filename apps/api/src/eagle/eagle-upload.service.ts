@@ -8,7 +8,7 @@ import {
 import { validatedEditRecipe } from './eagle-edit-recipe';
 import { invalidateMediaRevision } from './invalidate-media-revision';
 import { Prisma } from '@prisma/client';
-import { isCameraVideoMime } from '@sekereagle/library-core';
+import { chooseUploadPartSize, isCameraVideoMime } from '@sekereagle/library-core';
 import type { LibraryMode } from '@prisma/client';
 import {
   LIBRARY_MODE,
@@ -81,7 +81,7 @@ export class EagleUploadService {
   ) {}
 
   partSizeFor(size: number): number {
-    return choosePartSize(size);
+    return chooseUploadPartSize(size);
   }
 
   async initiate(ownerId: string, input: InitiateEagleUploadDto, includePrivate = false) {
@@ -124,6 +124,7 @@ export class EagleUploadService {
           originalName,
           mimeType,
           size: BigInt(input.size),
+          partSize: chooseUploadPartSize(input.size),
           objectKey,
           multipartUploadId,
           eagleState: {
@@ -146,10 +147,15 @@ export class EagleUploadService {
           originalName: true,
           mimeType: true,
           size: true,
+          partSize: true,
           createdAt: true,
         },
       });
-      return { ...session, size: Number(session.size), partSize: choosePartSize(input.size) };
+      return {
+        ...session,
+        size: Number(session.size),
+        partSize: session.partSize ?? chooseUploadPartSize(input.size),
+      };
     } catch (error) {
       await this.storage.abortMultipartUpload(objectKey, multipartUploadId).catch(() => undefined);
       throw error;
@@ -214,6 +220,7 @@ export class EagleUploadService {
         originalName: true,
         mimeType: true,
         size: true,
+        partSize: true,
         eagleAssetId: true,
         eagleAsset: { select: { lifecycleStatus: true, mediaErrorCode: true } },
         lastError: true,
@@ -228,6 +235,7 @@ export class EagleUploadService {
     return {
       ...upload,
       size: Number(upload.size),
+      partSizeBytes: upload.partSize ?? chooseUploadPartSize(Number(upload.size)),
       assetStatus: eagleAsset?.lifecycleStatus ?? null,
       assetError: eagleAsset?.mediaErrorCode ?? null,
     };
@@ -257,6 +265,7 @@ export class EagleUploadService {
     const session = await this.requireInitiated(ownerId, uploadSessionId);
     return {
       partNumber,
+      partSizeBytes: session.partSize ?? chooseUploadPartSize(Number(session.size)),
       uploadUrl: await this.storage.presignUploadPart(
         session.objectKey,
         session.multipartUploadId,
@@ -289,26 +298,44 @@ export class EagleUploadService {
         expiresInSeconds: PART_URL_EXPIRES_IN_SECONDS,
       })),
     );
-    return { parts };
+    return {
+      partSizeBytes: session.partSize ?? chooseUploadPartSize(Number(session.size)),
+      parts,
+    };
   }
 
   async listParts(ownerId: string, uploadSessionId: string) {
     const session = await this.requirePartListable(ownerId, uploadSessionId);
+    const partSize = session.partSize ?? chooseUploadPartSize(Number(session.size));
     if (session.status !== 'INITIATED') {
       return {
         uploadSessionId: session.id,
+        status: session.status,
+        partSizeBytes: partSize,
         parts: normalizeStoredParts(session.completionParts).map(({ PartNumber, ETag }) => ({
           partNumber: PartNumber,
           etag: ETag,
         })),
       };
     }
+    const parts = await this.storage.listMultipartUploadParts(
+      session.objectKey,
+      session.multipartUploadId,
+    );
+    const size = Number(session.size);
+    const partCount = Math.max(1, Math.ceil(size / partSize));
+    for (const part of parts) {
+      const expected =
+        part.partNumber < partCount ? partSize : size - (partCount - 1) * partSize;
+      if (part.partNumber > partCount || (part.size > 0 && part.size !== expected)) {
+        throw new ConflictException('已上传分片与当前上传会话的分片大小不一致，请重新上传该文件。');
+      }
+    }
     return {
       uploadSessionId: session.id,
-      parts: await this.storage.listMultipartUploadParts(
-        session.objectKey,
-        session.multipartUploadId,
-      ),
+      status: session.status,
+      partSizeBytes: partSize,
+      parts,
     };
   }
 
@@ -983,21 +1010,6 @@ export class EagleUploadService {
 }
 
 const PART_URL_EXPIRES_IN_SECONDS = 900;
-/** Files at or below this size upload as a single part. */
-const TARGET_PART_SIZE_BYTES = 16 * 1024 * 1024;
-/**
- * The Android backup transport rejects a session whose partSize is below 5 MiB
- * (MultipartTransport), so small single-part files keep this floor as well.
- */
-const MIN_PART_SIZE_BYTES = 5 * 1024 * 1024;
-
-function choosePartSize(size: number): number {
-  // One part for ordinary photos keeps presign requests, round trips and NAS
-  // object writes to one each. Larger media stays at 16 MiB, which also keeps
-  // every part under the gateway's 32 MiB request limit and under 10,000 parts.
-  if (size <= TARGET_PART_SIZE_BYTES) return Math.max(MIN_PART_SIZE_BYTES, size);
-  return Math.max(TARGET_PART_SIZE_BYTES, Math.ceil(size / 10000));
-}
 
 function normalizeParts(parts: CompleteEagleUploadDto['parts']) {
   const sorted = parts

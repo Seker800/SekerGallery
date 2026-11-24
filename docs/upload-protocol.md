@@ -11,7 +11,8 @@
 - 网页与桌面客户端：`apps/web/src/lib/library-upload-queue.ts`、`upload-dedupe.ts`、`eagle-api.ts`。
 - 安卓手动上传：`NativeUploads.kt` + `UploadPipeline.java`。
 - 安卓自动备份：`BackupService.java` + 同一 `UploadPipeline`。
-- 服务端只使用既有接口，本协议未新增端点或字段。
+- Eagle 迁移工具（`plugins/eagle-importer`）采用同一会话分片大小规则，但不使用本协议的并发/内存预算。
+- 服务端在 `UploadSession.partSize` 持久化协商结果；恢复路径原样返回，不由客户端或导入器重算。
 
 ## 流程与状态机
 
@@ -44,7 +45,8 @@
 ## 暂停、取消与续传
 
 - 用户暂停只在文件/分片边界生效：网页在文件之间暂停；安卓手动传输停止领取新文件，在途文件传完后停下。安卓自动备份的暂停与系统停止、清除任务、切换账号一样立即结束连接（保持原行为）。
-- 断点保存在服务端会话上：恢复时读取 `GET .../:id` 与 `GET .../:id/parts`。`INITIATED` 只补缺失分片；`ASSEMBLED`/`FINALIZING` 或本地已记录上传完成 → 进入入库轮询；`COMPLETED` → 直接确认；`ABORTED`/终态 `FAILED` → 清空会话后重新上传。
+- 断点保存在服务端会话上：恢复时读取 `GET .../:id` 与 `GET .../:id/parts`，分片大小以会话持久化的 `partSize` 为准。`INITIATED` 只补缺失分片；`ASSEMBLED`/`FINALIZING` 或本地已记录上传完成 → 进入入库轮询；`COMPLETED` → 直接确认；`ABORTED`/终态 `FAILED` → 清空会话后重新上传。
+- 恢复前服务端校验已存在分片的真实大小；与 `partSize` 不一致时返回 409，客户端必须重新开始该文件，不能继续拼接。
 - 安卓 `BackupJournal` v6 为 `files` 增加 `uploaded` 列；`scan_progress.result` 新增 `PENDING`。老版本检查点（v5，无 `uploaded`）按旧语义重传一次，不丢回执。
 
 ## 清理回执安全
@@ -73,4 +75,4 @@
 - 网页：`library-upload-queue.test.ts`（4 并发、入库不占上传位、暂停/重试）、`upload-dedupe.test.ts`（4 路哈希）、`upload-dedupe-sha256.test.ts`（8MiB 边界与分块）、`eagle-api.test.ts`（批量签名、分片并发、状态批量）。
 - 安卓 JVM：`UploadBudgetTest`、`ContentCheckBatcherTest`、`IngestionTrackerTest`、`BackupEngineTest`（PENDING、断点续入库、未确认不写回执）、`ForwardUploadSourceTest`（16MiB 缓冲上限）。
 - 安卓设备：`NativeUploadTest`、`NativeUploadJourney`、`MobileBackupTest`、`NativeBackgroundTransferTest`、`NativeTransferQueueTest`。本轮设备套件未运行：隔离环境在生成预览阶段超时（本机缺少 `exiftool`）；4 个并发、入库校验中状态、暂停继续、杀进程续传与低内存降级仍需真机或带 exiftool 的隔离环境验收。
-- 服务端不改：API/DTO/Prisma/镜像均无变化，本次不需要重建或部署服务端。
+- 服务端变更：`UploadSession.partSize` 为可空新增列，恢复与分片列表返回该值；旧会话为空时按文件大小回退到同一 `chooseUploadPartSize` 规则。发布前按迁移和镜像门禁验证。

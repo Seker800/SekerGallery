@@ -44,6 +44,8 @@ test('lists uploaded multipart parts for resumable clients', async () => {
         id: sessionId,
         uploaderId: ownerId,
         status: 'INITIATED',
+        size: 5_243_904n,
+        partSize: 5_242_880,
         objectKey: `users/${ownerId}/assets/id/example.jpg`,
         multipartUploadId: 'multipart-id',
         eagleState: {},
@@ -61,11 +63,44 @@ test('lists uploaded multipart parts for resumable clients', async () => {
 
   assert.deepEqual(await service.listParts(ownerId, sessionId), {
     uploadSessionId: sessionId,
+    status: 'INITIATED',
+    partSizeBytes: 5_242_880,
     parts: [
       { partNumber: 1, etag: '"first"', size: 5_242_880 },
       { partNumber: 2, etag: '"second"', size: 1024 },
     ],
   });
+});
+
+test('rejects resumed parts that do not match the persisted session part size', async () => {
+  const prisma = {
+    uploadSession: {
+      findFirst: async () => ({
+        id: sessionId,
+        uploaderId: ownerId,
+        status: 'INITIATED',
+        size: 17n * 1024n * 1024n,
+        partSize: 16 * 1024 * 1024,
+        objectKey: `users/${ownerId}/assets/id/example.jpg`,
+        multipartUploadId: 'multipart-id',
+        eagleState: {},
+      }),
+      count: async () => 1,
+    },
+  };
+  const service = new EagleUploadService(
+    prisma as never,
+    {
+      listMultipartUploadParts: async () => [
+        { partNumber: 1, etag: '"first"', size: 5 * 1024 * 1024 },
+      ],
+    } as never,
+    {} as never,
+    {} as never,
+    'MATERIAL',
+  );
+
+  await assert.rejects(service.listParts(ownerId, sessionId), /分片大小不一致/);
 });
 
 test('multipart part listing does not reveal another owner session', async () => {
@@ -93,6 +128,8 @@ test('lists committed parts from the database while recovering an assembled uplo
         id: sessionId,
         uploaderId: ownerId,
         status: 'FAILED',
+        size: 5_243_904n,
+        partSize: 5_242_880,
         completionParts: [
           { PartNumber: 1, ETag: 'first' },
           { partNumber: 2, etag: 'second' },
@@ -115,6 +152,8 @@ test('lists committed parts from the database while recovering an assembled uplo
 
   assert.deepEqual(await service.listParts(ownerId, sessionId), {
     uploadSessionId: sessionId,
+    status: 'FAILED',
+    partSizeBytes: 5_242_880,
     parts: [
       { partNumber: 1, etag: 'first' },
       { partNumber: 2, etag: 'second' },

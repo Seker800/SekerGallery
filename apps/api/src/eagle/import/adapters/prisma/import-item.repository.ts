@@ -6,7 +6,7 @@ import {
   Prisma,
   UploadSessionStatus,
 } from '@prisma/client';
-import { UPLOAD_PART_SIZE_BYTES } from '../../upload-limits';
+import { chooseUploadPartSize } from '@sekereagle/library-core';
 import type { PrismaService } from '../../../../prisma/prisma.service';
 import type { SekerEagleIngestionPort } from '../../../seker-eagle-ingestion.port';
 import {
@@ -81,7 +81,13 @@ export class ImportItemRepository {
     const sessions = activeSessionIds.length
       ? await this.prisma.uploadSession.findMany({
           where: { uploaderId: ownerId, id: { in: activeSessionIds }, libraryMode: 'MATERIAL' },
-          select: { id: true, status: true, createdAt: true, updatedAt: true },
+          select: {
+            id: true,
+            status: true,
+            partSize: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         })
       : [];
     const sessionsById = new Map(sessions.map((session) => [session.id, session]));
@@ -739,7 +745,13 @@ export class ImportItemRepository {
 
   private serializeItem(
     item: ImportItemProjection,
-    session?: { id: string; status: UploadSessionStatus; createdAt: Date; updatedAt: Date },
+    session?: {
+      id: string;
+      status: UploadSessionStatus;
+      partSize: number | null;
+      createdAt: Date;
+      updatedAt: Date;
+    },
   ) {
     const { activeUploadSessionId: _activeUploadSessionId, ...view } = item;
     void _activeUploadSessionId;
@@ -750,7 +762,8 @@ export class ImportItemRepository {
         ? {
             sessionId: session.id,
             status: session.status,
-            partSizeBytes: UPLOAD_PART_SIZE_BYTES,
+            partSizeBytes:
+              session.partSize ?? chooseUploadPartSize(Number(item.byteSize)),
             createdAt: session.createdAt,
             updatedAt: session.updatedAt,
             expiresAt: new Date(session.createdAt.getTime() + 24 * 60 * 60 * 1_000),

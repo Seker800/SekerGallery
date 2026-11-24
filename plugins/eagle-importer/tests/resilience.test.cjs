@@ -231,6 +231,76 @@ test('resumed uploads still recover already uploaded parts', async () => {
   assert.deepEqual(uploadedPartNumbers, [2]);
 });
 
+test('resumed 16 MiB sessions keep the server part size instead of assuming 5 MiB', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'seker-eagle-resumed-16m-'));
+  const filePath = path.join(directory, 'photo.jpg');
+  const size = 17 * 1024 * 1024;
+  await fs.writeFile(filePath, Buffer.alloc(size));
+  const uploaded = [];
+  const partSize = 16 * 1024 * 1024;
+  const api = {
+    initiateUpload: async () => ({ id: 'session-1', partSizeBytes: partSize, resumed: true }),
+    getUploadedParts: async () => ({
+      parts: [{ partNumber: 1, etag: 'existing', size: partSize }],
+      partSizeBytes: partSize,
+    }),
+    uploadPart: async (_sessionId, partNumber, bytes) => {
+      uploaded.push({ partNumber, size: bytes.length });
+      return { partNumber, etag: 'new' };
+    },
+    completeUpload: async () => ({ assetId: 'asset-1' }),
+  };
+  const engine = new ImportEngine({ api, store: { state: {}, save: async () => {} } });
+
+  await engine.uploadItem(
+    'run-1',
+    { id: 'item-1' },
+    { filePath, originalFileName: 'photo.jpg', mimeType: 'image/jpeg', size },
+    () => {},
+  );
+
+  assert.deepEqual(uploaded, [{ partNumber: 2, size: 1024 * 1024 }]);
+});
+
+test('finalizing sessions poll the server instead of uploading more parts', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'seker-eagle-finalizing-'));
+  const filePath = path.join(directory, 'photo.jpg');
+  await fs.writeFile(filePath, 'helloworld');
+  const api = {
+    initiateUpload: async () => ({
+      id: 'session-1',
+      partSizeBytes: 5,
+      resumed: true,
+      finalizing: true,
+      status: 'FINALIZING',
+    }),
+    getUploadedParts: async () => {
+      throw new Error('finalizing session must not list parts');
+    },
+    uploadPart: async () => {
+      throw new Error('finalizing session must not upload parts');
+    },
+    completeUpload: async () => {
+      throw new Error('finalizing session must not complete again');
+    },
+    getUploadSession: async () => ({
+      status: 'COMPLETED',
+      eagleAssetId: 'asset-1',
+      objectCleanupPending: false,
+    }),
+  };
+  const engine = new ImportEngine({ api, store: { state: {}, save: async () => {} } });
+
+  const result = await engine.uploadItem(
+    'run-1',
+    { id: 'item-1' },
+    { filePath, originalFileName: 'photo.jpg', mimeType: 'image/jpeg', size: 10 },
+    () => {},
+  );
+
+  assert.equal(result.assetId, 'asset-1');
+});
+
 test('local importer defaults to 32 concurrent files and allows up to 64', () => {
   const dependencies = { api: {}, store: {} };
 

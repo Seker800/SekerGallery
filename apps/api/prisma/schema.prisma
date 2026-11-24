@@ -332,6 +332,7 @@ model UploadSession {
   originalName          String
   mimeType              String
   size                  BigInt
+  partSize              Int?
   objectKey             String                   @unique
   multipartUploadId     String
   completionParts       Json?
