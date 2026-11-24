@@ -92,7 +92,7 @@ test('source scope is verified before an original can be read', async () => {
       ownerId: 'owner',
       libraryMode: 'PHOTO',
     } as EagleAssetProcessingJob),
-    /EDIT_SOURCE_SCOPE/,
+    /对象不属于当前用户/,
   );
   assert.equal(reads, 0);
 });

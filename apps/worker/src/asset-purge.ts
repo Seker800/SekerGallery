@@ -1,4 +1,4 @@
-import { retryDelayMs } from '@sekereagle/library-core';
+import { assertOwnedObjectKey, retryDelayMs } from '@sekereagle/library-core';
 import {
   Prisma,
   type EagleAssetProcessingJob,
@@ -72,13 +72,7 @@ export async function prepareAssetPurge(
 }
 
 export function assertDeletionKey(ownerId: string, key: string): void {
-  if (
-    !key.startsWith(`users/${ownerId}/`) ||
-    key.includes('..') ||
-    key.includes('\\') ||
-    key.includes('\0')
-  )
-    throw new Error('UNSAFE_OBJECT_DELETION');
+  assertOwnedObjectKey(ownerId, key);
 }
 
 /** Four receipts run concurrently; each receipt retains its own lease and retry result. */

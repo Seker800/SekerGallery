@@ -1,5 +1,8 @@
 import { createPrismaAdapter } from '@sekereagle/library-persistence';
-import { PHOTO_SOURCE_DETAILS_PROCESSOR_VERSION } from '@sekereagle/library-core';
+import {
+  assertOwnedObjectKey,
+  PHOTO_SOURCE_DETAILS_PROCESSOR_VERSION,
+} from '@sekereagle/library-core';
 import { mediaMemoryMiB, WORKER_INFLIGHT_MEMORY_MIB } from './media-resource-budget';
 import { computePolicySignature } from './compute-runtime';
 import { RemoteMediaClient } from './remote-media';
@@ -605,7 +608,7 @@ async function processClaimedJob(
 }
 
 function assertOwnedKey(ownerId: string, key: string): void {
-  if (!key.startsWith(`users/${ownerId}/`)) throw new Error('CROSS_OWNER_OBJECT_KEY');
+  assertOwnedObjectKey(ownerId, key);
 }
 
 function hasActiveWork(): boolean {

@@ -55,6 +55,7 @@ test('expired and exhausted uploads retain cleanup intent until multipart abort 
             ? [
                 {
                   id: 'expired',
+                  uploaderId: 'owner-1',
                   objectKey: 'users/owner-1/temp',
                   multipartUploadId: 'upload-1',
                   status: 'ABORTED',

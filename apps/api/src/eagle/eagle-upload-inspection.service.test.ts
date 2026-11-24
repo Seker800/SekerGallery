@@ -5,6 +5,8 @@ import test from 'node:test';
 import sharp from 'sharp';
 import { EagleUploadInspectionService } from './eagle-upload-inspection.service';
 
+const OWNER = '5a1fd7d1-fd57-4e42-83f7-55425ca8704a';
+
 test('upload inspection streams image hashing and enforces the declared format', async () => {
   const png = await sharp({
     create: { width: 12, height: 8, channels: 4, background: '#336699' },
@@ -15,14 +17,14 @@ test('upload inspection streams image hashing and enforces the declared format',
     getObject: async () => ({ Body: Readable.from([png]) }),
   } as never);
 
-  const result = await service.inspect('users/owner-a/assets/id/original.png', 'image/png');
+  const result = await service.inspect(`users/${OWNER}/assets/id/original.png`, 'image/png', OWNER);
 
   assert.equal(result.format, 'png');
   assert.equal(result.width, 12);
   assert.equal(result.height, 8);
   assert.match(result.sha256, /^[a-f0-9]{64}$/);
   await assert.rejects(
-    service.inspect('users/owner-a/assets/id/original.png', 'image/jpeg'),
+    service.inspect(`users/${OWNER}/assets/id/original.png`, 'image/jpeg', OWNER),
     /格式不匹配/,
   );
 });
@@ -37,13 +39,17 @@ test('upload inspection accepts real AVIF bytes but rejects a mismatched declara
     getObject: async () => ({ Body: Readable.from([avif]) }),
   } as never);
 
-  const result = await service.inspect('users/owner-a/assets/id/original.avif', 'image/avif');
+  const result = await service.inspect(
+    `users/${OWNER}/assets/id/original.avif`,
+    'image/avif',
+    OWNER,
+  );
 
   assert.equal(result.format, 'heif');
   assert.equal(result.width, 10);
   assert.equal(result.height, 6);
   await assert.rejects(
-    service.inspect('users/owner-a/assets/id/original.avif', 'image/webp'),
+    service.inspect(`users/${OWNER}/assets/id/original.avif`, 'image/webp', OWNER),
     /格式不匹配/,
   );
 });
@@ -74,7 +80,11 @@ test('HEIC upload probes guarded native headers without full RGB decode and hash
     getObject: async () => ({ Body: Readable.from([source]) }),
   } as never);
   try {
-    const result = await service.inspect('users/owner/assets/id/original.heic', 'image/heic');
+    const result = await service.inspect(
+      `users/${OWNER}/assets/id/original.heic`,
+      'image/heic',
+      OWNER,
+    );
     assert.equal(result.width, 12);
     assert.equal(result.height, 8);
     assert.equal(result.format, 'heif');
@@ -84,13 +94,19 @@ test('HEIC upload probes guarded native headers without full RGB decode and hash
       `#!${process.execPath}\nconsole.log('MIME type: image/heic\\nimage: 100000x100000 (id=1), primary');`,
       { mode: 0o700 },
     );
-    await assert.rejects(service.inspect('original.heic', 'image/heic'), /像素|pixel/);
+    await assert.rejects(
+      service.inspect(`users/${OWNER}/assets/id/original.heic`, 'image/heic', OWNER),
+      /像素|pixel/,
+    );
     await writeFile(
       info,
       `#!${process.execPath}\nconsole.log('MIME type: image/jpeg\\nimage: 12x8 (id=1), primary');`,
       { mode: 0o700 },
     );
-    await assert.rejects(service.inspect('original.heic', 'image/heic'), /格式|decode|解码/);
+    await assert.rejects(
+      service.inspect(`users/${OWNER}/assets/id/original.heic`, 'image/heic', OWNER),
+      /格式|decode|解码/,
+    );
   } finally {
     if (oldInfo === undefined) delete process.env.HEIF_INFO_PATH;
     else process.env.HEIF_INFO_PATH = oldInfo;
@@ -115,7 +131,11 @@ test('ordinary image inspection writes a temporary file and removes it after rea
     const service = new EagleUploadInspectionService({
       getObject: async () => ({ Body: Readable.from([png]) }),
     } as never);
-    const result = await service.inspect('original.png', 'image/png');
+    const result = await service.inspect(
+      `users/${OWNER}/assets/id/original.png`,
+      'image/png',
+      OWNER,
+    );
     assert.equal(result.width, 12);
     assert.deepEqual(await readdir(dir), []);
   } finally {
@@ -134,7 +154,11 @@ test('ordinary camera JPEG above 50 megapixels is accepted within the shared inp
   const service = new EagleUploadInspectionService({
     getObject: async () => ({ Body: Readable.from([bytes]) }),
   } as never);
-  const result = await service.inspect('original.jpg', 'image/jpeg');
+  const result = await service.inspect(
+    `users/${OWNER}/assets/id/original.jpg`,
+    'image/jpeg',
+    OWNER,
+  );
   assert.equal(result.width, 6144);
   assert.equal(result.height, 8160);
 });

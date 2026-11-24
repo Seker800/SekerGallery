@@ -18,6 +18,7 @@ import {
   type ScanSnapshot,
 } from './eagle-duplicate-model';
 import { DUPLICATE_FINGERPRINT_VERSION, fingerprintPreview } from './eagle-duplicate-fingerprint';
+import { assertOwnedObjectKey } from '../storage/object-key';
 import { executeDuplicateVerification } from './eagle-duplicate-verification';
 async function buildProjection(
   prisma: PrismaService,
@@ -105,6 +106,7 @@ export async function executeDuplicateIndex(
           (r) => r.revision === row.mediaRevision && r.mimeType.startsWith('image/'),
         );
         if (!rendition) throw new ConflictException('缩略图尚未就绪，请稍后重试。');
+        assertOwnedObjectKey(item.ownerId, rendition.storageKey);
         const signal = AbortSignal.timeout(10_000);
         const response = await storage.getObject(rendition.storageKey, {
           abortSignal: signal,

@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EagleUploadService } from './eagle-upload.service';
 import { EagleImportsService } from './import/eagle-app-import.service';
+import { assertOwnedObjectKey } from '../storage/object-key';
 import { ObjectStorageService } from '../storage/object-storage.service';
 
 const RECOVERY_INTERVAL_MS = 60_000;
@@ -120,12 +121,19 @@ export class EagleUploadRecoveryService {
         status: { in: ['COMPLETED', 'FAILED', 'ABORTED'] },
         libraryMode: this.libraryMode,
       },
-      select: { id: true, objectKey: true, multipartUploadId: true, status: true },
+      select: {
+        id: true,
+        objectKey: true,
+        multipartUploadId: true,
+        status: true,
+        uploaderId: true,
+      },
       orderBy: { updatedAt: 'asc' },
       take: 50,
     });
     for (const session of sessions) {
       try {
+        assertOwnedObjectKey(session.uploaderId, session.objectKey);
         if (session.status === 'ABORTED')
           await this.storage
             .abortMultipartUpload(session.objectKey, session.multipartUploadId)
@@ -158,12 +166,15 @@ export class EagleUploadRecoveryService {
         replacementAsset: { lifecycleStatus: 'READY' },
         libraryMode: this.libraryMode,
       },
-      select: { uploadSessionId: true, retiredObjectKeys: true },
+      select: { uploadSessionId: true, ownerId: true, retiredObjectKeys: true },
       take: 50,
     });
     for (const replacement of replacements) {
       try {
-        for (const key of replacement.retiredObjectKeys) await this.storage.deleteObject(key);
+        for (const key of replacement.retiredObjectKeys) {
+          assertOwnedObjectKey(replacement.ownerId, key);
+          await this.storage.deleteObject(key);
+        }
         await this.prisma.eagleUploadSessionState.updateMany({
           where: {
             uploadSessionId: replacement.uploadSessionId,

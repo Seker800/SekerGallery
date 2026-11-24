@@ -1,3 +1,4 @@
+import { assertOwnedObjectKey } from '@sekereagle/library-core';
 import { PermanentMediaValidationError } from '../media-validation-error';
 
 export async function readBoundedBytes(
@@ -15,7 +16,7 @@ export async function readBoundedBytes(
 }
 
 export function assertOwnedKey(ownerId: string, key: string): void {
-  if (!key.startsWith(`users/${ownerId}/`)) throw new Error('CROSS_OWNER_OBJECT_KEY');
+  assertOwnedObjectKey(ownerId, key);
 }
 
 export function assertExpectedHash(expected: string | null | undefined, actual: string): void {

@@ -31,6 +31,7 @@ export function sameLibraryScope(left: LibraryScope, right: LibraryScope): boole
 export { suggestPhotoGroups } from './photo-grouping';
 export * from './media-formats';
 export * from './upload-policy';
+export * from './object-keys';
 export * from './timeline';
 
 export * from './photo-edit-recipe';

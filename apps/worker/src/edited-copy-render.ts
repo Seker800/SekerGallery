@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { EagleAssetProcessingJob, PrismaClient, Prisma } from '@prisma/client';
 import { GetObjectCommand, PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
-import { readPhotoEditRecipe } from '@sekereagle/library-core';
+import { assertOwnedObjectKey, editedCopyKey, readPhotoEditRecipe } from '@sekereagle/library-core';
 import {
   buildImageProcessingJobs,
   editedCopyTag,
@@ -40,8 +40,7 @@ export async function renderEditedCopy(
   const source = await db.eagleAsset.findFirst({ where });
   if (!row || !source || source.rowVersion !== row.sourceRowVersion)
     throw new Error('EDIT_SOURCE_CHANGED');
-  if (!source.originalObjectKey.startsWith(`users/${job.ownerId}/assets/`))
-    throw new Error('EDIT_SOURCE_SCOPE');
+  assertOwnedObjectKey(job.ownerId, source.originalObjectKey);
   const recipe = readPhotoEditRecipe(row.recipe);
   const outputFormat = editedOutputFormat(
     source.mimeType,
@@ -70,7 +69,7 @@ export async function renderEditedCopy(
   if (source.sha256 && source.sha256 !== sha256) throw new Error('EDIT_SOURCE_HASH_MISMATCH');
   const dimensions = await sharp(bytes).metadata();
   const id = randomUUID();
-  const key = `users/${job.ownerId}/assets/${id}/original.${outputFormat.extension}`;
+  const key = editedCopyKey(job.ownerId, id, outputFormat.extension);
   const digest = createHash('sha256').update(bytes).digest('hex');
   // An outbox precedes PUT: a crash or ambiguous storage response cannot strand an object.
   // Publication removes it atomically; uncertain DB commits never trigger an unsafe direct delete.

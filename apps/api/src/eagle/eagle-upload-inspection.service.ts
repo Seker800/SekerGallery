@@ -18,6 +18,7 @@ import { pipeline } from 'node:stream/promises';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import sharp from 'sharp';
 import { ObjectStorageService } from '../storage/object-storage.service';
+import { assertOwnedObjectKey } from '../storage/object-key';
 import { MAX_EAGLE_IMAGE_INPUT_PIXELS } from './eagle-image-processing-policy';
 
 sharp.cache({ memory: 64 });
@@ -27,7 +28,8 @@ sharp.concurrency(1);
 export class EagleUploadInspectionService {
   constructor(private readonly storage: ObjectStorageService) {}
 
-  inspect(objectKey: string, mimeType: string, ownerId = objectKey) {
+  inspect(objectKey: string, mimeType: string, ownerId: string) {
+    assertOwnedObjectKey(ownerId, objectKey);
     return mediaInspectionBudget.run(ownerId, () => this.inspectWithinBudget(objectKey, mimeType));
   }
 

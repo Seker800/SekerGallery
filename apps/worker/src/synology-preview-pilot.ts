@@ -1,5 +1,8 @@
 import { createPrismaAdapter } from '@sekereagle/library-persistence';
-import { PHOTO_SOURCE_DETAILS_PROCESSOR_VERSION } from '@sekereagle/library-core';
+import {
+  assertOwnedObjectKey,
+  PHOTO_SOURCE_DETAILS_PROCESSOR_VERSION,
+} from '@sekereagle/library-core';
 import { PrismaClient, type Prisma } from '@prisma/client';
 import { HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { assertSafeRuntimeTarget } from '@sekereagle/config';
@@ -95,8 +98,7 @@ async function run(manifest: Manifest, root: string, apply: boolean) {
           });
           continue;
         }
-        if (!asset.originalObjectKey.startsWith(`users/${asset.ownerId}/`))
-          throw new Error('ORIGINAL_SCOPE');
+        assertOwnedObjectKey(asset.ownerId, asset.originalObjectKey);
         const head = await storage.send(
           new HeadObjectCommand({ Bucket: process.env.S3_BUCKET, Key: asset.originalObjectKey }),
         );

@@ -5,6 +5,7 @@ import type { PrismaService } from '../prisma/prisma.service';
 import type { ObjectStorageService } from '../storage/object-storage.service';
 import { inDuplicateLibrary, type Item, type ScanSnapshot } from './eagle-duplicate-model';
 import { completeDuplicateItem } from './eagle-duplicate-item';
+import { assertOwnedObjectKey } from '../storage/object-key';
 import {
   verifyDuplicateOriginal,
   withDuplicateOriginalSlot,
@@ -49,6 +50,7 @@ export async function executeDuplicateVerification(
         const timeout = Number(process.env.EAGLE_DUPLICATE_ORIGINAL_TIMEOUT_MS ?? 120_000);
         if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 4_294_967_295)
           throw new Error('INVALID_DUPLICATE_ORIGINAL_BUDGET');
+        assertOwnedObjectKey(item.ownerId, row.originalObjectKey);
         const signal = AbortSignal.timeout(timeout);
         const response = await storage.getObject(row.originalObjectKey, { abortSignal: signal });
         return verifyDuplicateOriginal(response.Body as Readable, row.sha256!, { signal });

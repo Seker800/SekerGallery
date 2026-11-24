@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { mediaOutputPrefix } from '@sekereagle/library-core';
 import type { EagleAsset, Prisma, PrismaClient } from '@prisma/client';
 import { assertDeletionKey } from './asset-purge';
 
@@ -16,7 +17,13 @@ export class MediaOutputAttempt {
   ) {
     if (!Number.isSafeInteger(asset.mediaRevision) || asset.mediaRevision < 0)
       throw new Error('INVALID_MEDIA_OUTPUT_REVISION');
-    this.prefix = `users/${asset.ownerId}/assets/${asset.id}/${kind}/${asset.mediaRevision}/attempts/${randomUUID()}/`;
+    this.prefix = mediaOutputPrefix(
+      asset.ownerId,
+      asset.id,
+      kind,
+      asset.mediaRevision,
+      randomUUID(),
+    );
     assertDeletionKey(asset.ownerId, this.prefix);
     this.retentionMs = Number(process.env.EAGLE_MEDIA_OUTPUT_RETENTION_MS ?? 86400000);
     if (
