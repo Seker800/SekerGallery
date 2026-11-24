@@ -111,3 +111,8 @@ test('clear preserves domain/security errors', async () => {
   );
   await assert.rejects(service.emptyTrashBatch('owner'), (error: unknown) => error === failure);
 });
+
+test('clear-trash batches stay small enough for slow NAS storage', async () => {
+  const { OPERATION_EMPTY_TRASH_BATCH_SIZE } = await import('./eagle-operation-settings');
+  assert.equal(OPERATION_EMPTY_TRASH_BATCH_SIZE, 128);
+});

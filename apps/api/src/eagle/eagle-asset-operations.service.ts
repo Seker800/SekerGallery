@@ -717,16 +717,34 @@ export class EagleAssetOperationService implements OnModuleDestroy {
     for (const entry of items)
       await this.duplicates.executeScan(entry, (tx) => this.assertActor(tx, operation, [entry]));
   }
+  /** Disk I/O spikes can exceed one batch budget; retry the same bounded step before failing. */
+  private async emptyTrashWithRetry(
+    operation: EagleAssetOperation,
+    assertPublication: (tx: Prisma.TransactionClient) => Promise<void>,
+  ) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.eagle.emptyTrashBatch(
+          operation.ownerId,
+          operation.isPrivate,
+          operation.createdAt,
+          assertPublication,
+        );
+      } catch (error) {
+        const busy =
+          error instanceof ServiceUnavailableException &&
+          typeof error.getResponse() === 'object' &&
+          (error.getResponse() as { code?: string }).code === 'EMPTY_TRASH_BUSY';
+        if (!busy || attempt >= 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+    }
+  }
   private async executeEmptyTrash(items: ClaimedItem[]) {
     const operation = items[0]!.operation;
     const beforeWrite = (tx: Prisma.TransactionClient) => this.assertActor(tx, operation, items);
     await this.prisma.$transaction(beforeWrite);
-    const result = await this.eagle.emptyTrashBatch(
-      operation.ownerId,
-      operation.isPrivate,
-      operation.createdAt,
-      beforeWrite,
-    );
+    const result = await this.emptyTrashWithRetry(operation, beforeWrite);
     await this.prisma.eagleAssetOperationItem.updateMany({
       where: { libraryMode: this.libraryMode, ...this.leaseWhere(items) },
       // purgeAfter is the durable checkpoint. An empty bounded step proves the cutoff is drained.

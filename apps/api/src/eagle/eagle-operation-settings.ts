@@ -20,9 +20,13 @@ export const OPERATION_METADATA_BATCH_SIZE = operationSetting(
   32,
 );
 
-/** Bounds row locks and purge/event work per clear command step, not user selection. */
+/**
+ * Bounds row locks and purge/event work per clear command step, not user selection.
+ * 128 keeps one batch near 2–3 seconds on the NAS HDD; 512 reached the 12-second
+ * statement budget and failed intermittently under disk I/O.
+ */
 export const OPERATION_EMPTY_TRASH_BATCH_SIZE = operationSetting(
   'EAGLE_EMPTY_TRASH_BATCH_SIZE',
-  512,
+  128,
   512,
 );

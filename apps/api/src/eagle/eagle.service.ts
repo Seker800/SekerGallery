@@ -45,6 +45,7 @@ import {
   Injectable,
   NotFoundException,
   Inject,
+  Logger,
   Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -109,6 +110,7 @@ type AssetSelectionPage = {
 
 @Injectable()
 export class EagleService {
+  private readonly logger = new Logger(EagleService.name);
   constructor(
     private readonly prisma: PrismaService,
     @Inject(EagleImageSearchService)
@@ -1314,6 +1316,12 @@ export class EagleService {
         { timeout },
       )
       .catch((error: unknown) => {
+        this.logger.warn({
+          event: 'empty_trash_batch_failed',
+          // Keep the raw cause; the public exception below intentionally hides it.
+          code: (error as { code?: string } | null)?.code,
+          message: error instanceof Error ? error.message.slice(0, 300) : 'unknown',
+        });
         if (isDatabaseBusy(error))
           throw new ServiceUnavailableException({
             code: 'EMPTY_TRASH_BUSY',
