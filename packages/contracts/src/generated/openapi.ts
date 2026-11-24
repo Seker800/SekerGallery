@@ -4967,15 +4967,19 @@ export interface components {
       size: number;
     };
     CheckUploadContentResultDto: {
-      /** @description Content exists within the authenticated owner, library and visible scope. */
+      /** @description Content exists within the authenticated owner and library. */
       exists: boolean;
+      /** @description The only match is private; unlock private visibility to see it. */
+      privateMatch: boolean;
     };
     CheckUploadContentBatchDto: {
       items: components['schemas']['CheckUploadContentDto'][];
     };
     CheckUploadContentBatchResultDto: {
-      /** @description One result per request item, in order; content visible to the authenticated owner and library. */
+      /** @description One result per request item, in order; content in the authenticated owner and library. */
       exists: boolean[];
+      /** @description One private-match flag per request item; true only when every match is private. */
+      privateMatches: boolean[];
     };
     UploadStatusBatchDto: {
       uploadSessionIds: string[];

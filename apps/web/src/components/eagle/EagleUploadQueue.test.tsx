@@ -118,3 +118,25 @@ it('collapses the list and labels duplicate skips', () => {
   fireEvent.click(screen.getByRole('button', { name: '展开列表' }));
   expect(screen.getByText('same.jpg')).toBeInTheDocument();
 });
+
+it('labels a duplicate that is hidden behind private visibility', () => {
+  render(
+    <EagleUploadQueue
+      items={[{ ...item(1, 'duplicate', 'private.jpg'), duplicatePrivate: true }]}
+      summary={summary({
+        total: 1,
+        uploaded: 1,
+        completed: 0,
+        duplicate: 1,
+        failed: 0,
+        waiting: 0,
+      })}
+      onPause={vi.fn()}
+      onResume={vi.fn()}
+      onRetryAll={vi.fn(async () => undefined)}
+      onRetry={vi.fn()}
+      onDismiss={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('重复跳过（私密）')).toBeInTheDocument();
+});

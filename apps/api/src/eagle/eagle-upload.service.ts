@@ -84,6 +84,22 @@ export class EagleUploadService {
     return chooseUploadPartSize(size);
   }
 
+  /** Pre-check and publication must make the same duplicate decision. */
+  private duplicateAssetWhere(
+    ownerId: string,
+    sha256: string,
+    byteSize?: number,
+  ): Prisma.EagleAssetWhereInput {
+    return {
+      ownerId,
+      libraryMode: this.libraryMode,
+      sha256: sha256.toLowerCase(),
+      ...(byteSize === undefined ? {} : { byteSize: BigInt(byteSize) }),
+      deletedAt: null,
+      purgeAfter: null,
+    };
+  }
+
   async initiate(ownerId: string, input: InitiateEagleUploadDto, includePrivate = false) {
     if (input.editRecipe && !input.copySourceAssetId)
       throw new BadRequestException('编辑参数必须关联原照片。');
@@ -162,52 +178,51 @@ export class EagleUploadService {
     }
   }
 
-  async checkContent(
-    ownerId: string,
-    input: { contentSha256: string; size: number },
-    includePrivate = false,
-  ) {
+  async checkContent(ownerId: string, input: { contentSha256: string; size: number }) {
     const found = await this.prisma.eagleAsset.findFirst({
       where: {
-        ownerId,
+        ...this.duplicateAssetWhere(ownerId, input.contentSha256, input.size),
         libraryMode: this.libraryMode,
-        sha256: input.contentSha256.toLowerCase(),
-        byteSize: BigInt(input.size),
-        deletedAt: null,
-        purgeAfter: null,
-        ...(includePrivate ? {} : { isPrivate: false }),
       },
-      select: { id: true },
+      select: { isPrivate: true },
     });
-    return { exists: found !== null };
+    return { exists: found !== null, privateMatch: found?.isPrivate ?? false };
   }
 
-  async checkContentBatch(
-    ownerId: string,
-    items: Array<{ contentSha256: string; size: number }>,
-    includePrivate = false,
-  ) {
-    if (!items.length) return { exists: [] as boolean[] };
+  async checkContentBatch(ownerId: string, items: Array<{ contentSha256: string; size: number }>) {
+    if (!items.length) return { exists: [] as boolean[], privateMatches: [] as boolean[] };
     const normalized = items.map((item) => ({
       sha256: item.contentSha256.toLowerCase(),
       size: BigInt(item.size),
     }));
     const values = normalized.map((item) => Prisma.sql`(${item.sha256}, ${item.size})`);
-    const rows = await this.prisma.$queryRaw<Array<{ sha256: string; byteSize: bigint }>>(
+    const rows = await this.prisma.$queryRaw<
+      Array<{ sha256: string; byteSize: bigint; isPrivate: boolean }>
+    >(
       Prisma.sql`
-        SELECT DISTINCT a.sha256, a."byteSize"
+        SELECT DISTINCT a.sha256, a."byteSize", a."isPrivate"
         FROM "EagleAsset" a
         WHERE a."ownerId"=${ownerId}
           AND a."libraryMode"=${this.libraryMode}::"LibraryMode"
           AND a."deletedAt" IS NULL
           AND a."purgeAfter" IS NULL
-          ${includePrivate ? Prisma.empty : Prisma.sql`AND a."isPrivate"=false`}
           AND (a.sha256, a."byteSize") IN (${Prisma.join(values)})
       `,
     );
-    const existing = new Set(rows.map((row) => `${row.sha256}:${row.byteSize.toString()}`));
+    const matches = new Map<string, { visible: boolean; private: boolean }>();
+    for (const row of rows) {
+      const key = `${row.sha256}:${row.byteSize.toString()}`;
+      const entry = matches.get(key) ?? { visible: false, private: false };
+      entry.visible ||= !row.isPrivate;
+      entry.private ||= row.isPrivate;
+      matches.set(key, entry);
+    }
     return {
-      exists: normalized.map((item) => existing.has(`${item.sha256}:${item.size.toString()}`)),
+      exists: normalized.map((item) => matches.has(`${item.sha256}:${item.size.toString()}`)),
+      privateMatches: normalized.map((item) => {
+        const match = matches.get(`${item.sha256}:${item.size.toString()}`);
+        return Boolean(match?.private && !match.visible);
+      }),
     };
   }
 
@@ -712,9 +727,11 @@ export class EagleUploadService {
                 ? null
                 : await transaction.eagleAsset.findFirst({
                     where: {
-                      ownerId: session.uploaderId,
-                      sha256: inspection.sha256,
-                      deletedAt: null,
+                      ...this.duplicateAssetWhere(
+                        session.uploaderId,
+                        inspection.sha256,
+                        Number(session.size),
+                      ),
                       libraryMode: this.libraryMode,
                     },
                     select: { id: true },

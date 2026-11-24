@@ -12,12 +12,14 @@ export interface EagleUploadItem {
   state: 'queued' | 'checking' | 'uploading' | 'uploaded' | 'duplicate' | 'completed' | 'failed';
   phase?: 'validating';
   error?: string;
+  duplicatePrivate?: boolean;
 }
 export interface UploadFinalization {
   sessionId: string;
 }
 export interface UploadOutcome extends Partial<UploadFinalization> {
   duplicate?: boolean;
+  privateMatch?: boolean;
 }
 export type UploadProgress = (value: {
   percent: number;
@@ -197,7 +199,7 @@ export class LibraryUploadQueue {
             signal.throwIfAborted();
             keys.set(hashKey(job.key), job.key);
             if (outcome?.duplicate) {
-              this.#finish(id, 'duplicate');
+              this.#finish(id, 'duplicate', undefined, outcome.privateMatch === true);
             } else if (outcome?.sessionId) {
               this.#pendingFinalizations.set(id, {
                 sessionId: outcome.sessionId,
@@ -241,7 +243,12 @@ export class LibraryUploadQueue {
     ids.forEach((id) => this.#jobs.delete(id));
     this.#publish(this.#items.filter((item) => !ids.has(item.id)));
   }
-  #finish(id: number, state: 'completed' | 'duplicate' | 'failed', error?: string) {
+  #finish(
+    id: number,
+    state: 'completed' | 'duplicate' | 'failed',
+    error?: string,
+    duplicatePrivate = false,
+  ) {
     this.#pendingFinalizations.delete(id);
     this.#active.delete(id);
     if (state !== 'failed') this.#jobs.delete(id);
@@ -249,6 +256,7 @@ export class LibraryUploadQueue {
       state,
       ...(state !== 'failed' ? { percent: 100 } : {}),
       ...(error ? { error } : {}),
+      ...(state === 'duplicate' ? { duplicatePrivate } : {}),
     });
     // A paused queue with nothing left to transfer must not silently pause new imports later.
     if (!this.#active.size && this.#paused) {

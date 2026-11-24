@@ -667,12 +667,20 @@ export function createEagleApi(libraryMode: LibraryMode = 'MATERIAL') {
   function checkEagleUploadContentBatch(
     items: EagleUploadContentCheckItem[],
     signal?: AbortSignal,
-  ): Promise<boolean[]> {
-    return api<{ exists: boolean[] }>('/eagle/uploads/check-content-batch', {
-      method: 'POST',
-      body: JSON.stringify({ items }),
-      signal,
-    }).then((result) => result.exists);
+  ): Promise<Array<{ exists: boolean; privateMatch: boolean }>> {
+    return api<{ exists: boolean[]; privateMatches: boolean[] }>(
+      '/eagle/uploads/check-content-batch',
+      {
+        method: 'POST',
+        body: JSON.stringify({ items }),
+        signal,
+      },
+    ).then((result) =>
+      result.exists.map((exists, index) => ({
+        exists,
+        privateMatch: result.privateMatches?.[index] === true,
+      })),
+    );
   }
 
   type UploadOptions = {

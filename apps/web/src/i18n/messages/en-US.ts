@@ -1841,6 +1841,7 @@ export const enUS = {
   '成功 {{value1}}': '{{value1}} done',
   '重复跳过 {{value1}}': '{{value1}} duplicates skipped',
   重复跳过: 'Duplicate skipped',
+  '重复跳过（私密）': 'Duplicate skipped (private)',
   '失败 {{value1}}': '{{value1}} failed',
   '等待 {{value1}}': '{{value1}} waiting',
   正在导入: 'Importing',

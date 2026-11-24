@@ -12502,10 +12502,14 @@
         "properties": {
           "exists": {
             "type": "boolean",
-            "description": "Content exists within the authenticated owner, library and visible scope."
+            "description": "Content exists within the authenticated owner and library."
+          },
+          "privateMatch": {
+            "type": "boolean",
+            "description": "The only match is private; unlock private visibility to see it."
           }
         },
-        "required": ["exists"]
+        "required": ["exists", "privateMatch"]
       },
       "CheckUploadContentBatchDto": {
         "type": "object",
@@ -12524,14 +12528,21 @@
         "type": "object",
         "properties": {
           "exists": {
-            "description": "One result per request item, in order; content visible to the authenticated owner and library.",
+            "description": "One result per request item, in order; content in the authenticated owner and library.",
+            "type": "array",
+            "items": {
+              "type": "boolean"
+            }
+          },
+          "privateMatches": {
+            "description": "One private-match flag per request item; true only when every match is private.",
             "type": "array",
             "items": {
               "type": "boolean"
             }
           }
         },
-        "required": ["exists"]
+        "required": ["exists", "privateMatches"]
       },
       "UploadStatusBatchDto": {
         "type": "object",

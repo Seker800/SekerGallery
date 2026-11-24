@@ -9,9 +9,13 @@ const HASH_SMALL_FILE_MAX = 8 * 1024 * 1024;
 const BATCH_SIZE = 50;
 const FLUSH_DELAY_MS = 80;
 
-export interface UploadDedupeResult {
-  sha256: string | null;
+export interface UploadDedupeMatch {
   exists: boolean;
+  privateMatch: boolean;
+}
+
+export interface UploadDedupeResult extends UploadDedupeMatch {
+  sha256: string | null;
 }
 
 export class UploadDedupeChecker {
@@ -19,7 +23,7 @@ export class UploadDedupeChecker {
     item: EagleUploadContentCheckItem;
     signal?: AbortSignal;
     detach: () => void;
-    resolve: (exists: boolean) => void;
+    resolve: (match: UploadDedupeMatch) => void;
     reject: (error: unknown) => void;
   }> = [];
   #timer?: ReturnType<typeof setTimeout>;
@@ -29,7 +33,7 @@ export class UploadDedupeChecker {
     private readonly checkBatch: (
       items: EagleUploadContentCheckItem[],
       signal?: AbortSignal,
-    ) => Promise<boolean[]>,
+    ) => Promise<UploadDedupeMatch[]>,
     private readonly hashFile: (file: File, signal?: AbortSignal) => Promise<string> = sha256File,
   ) {}
   async check(file: File, signal?: AbortSignal): Promise<UploadDedupeResult> {
@@ -39,10 +43,10 @@ export class UploadDedupeChecker {
     } catch (error) {
       // Pre-check is an optimization; never block an upload when the browser cannot hash.
       if (signal?.aborted) throw error;
-      return { sha256: null, exists: false };
+      return { sha256: null, exists: false, privateMatch: false };
     }
-    const exists = await this.#enqueue({ contentSha256: sha256, size: file.size }, signal);
-    return { sha256, exists };
+    const match = await this.#enqueue({ contentSha256: sha256, size: file.size }, signal);
+    return { sha256, ...match };
   }
   async #hash(file: File, signal?: AbortSignal) {
     await this.#acquireHashSlot(signal);
@@ -83,7 +87,7 @@ export class UploadDedupeChecker {
   }
   #enqueue(item: EagleUploadContentCheckItem, signal?: AbortSignal) {
     if (signal?.aborted) return Promise.reject(abortError(signal));
-    return new Promise<boolean>((resolve, reject) => {
+    return new Promise<UploadDedupeMatch>((resolve, reject) => {
       const entry = { item, signal, resolve, reject, detach: (): void => undefined };
       const onAbort = () => {
         const index = this.#pending.indexOf(entry);
@@ -112,7 +116,7 @@ export class UploadDedupeChecker {
         for (const [index, entry] of batch.entries()) {
           entry.detach();
           if (entry.signal?.aborted) entry.reject(abortError(entry.signal));
-          else entry.resolve(results[index] === true);
+          else entry.resolve(results[index] ?? { exists: false, privateMatch: false });
         }
       })
       .catch(() => {
@@ -120,7 +124,7 @@ export class UploadDedupeChecker {
         for (const entry of batch) {
           entry.detach();
           if (entry.signal?.aborted) entry.reject(abortError(entry.signal));
-          else entry.resolve(false);
+          else entry.resolve({ exists: false, privateMatch: false });
         }
       });
   }

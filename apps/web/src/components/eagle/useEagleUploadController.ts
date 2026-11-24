@@ -127,9 +127,9 @@ export function useEagleUploadController(assetsQueryKey: QueryKey) {
         async (file, progress, signal) => {
           progress({ percent: 0, phase: 'checking' });
           signal.throwIfAborted();
-          const { sha256, exists } = await prepared(file);
+          const { sha256, exists, privateMatch } = await prepared(file);
           signal.throwIfAborted();
-          if (exists) return { duplicate: true };
+          if (exists) return { duplicate: true, privateMatch };
           const result = await uploadEagleAsset(file, progress, {
             signal,
             waitForFinalization: false,

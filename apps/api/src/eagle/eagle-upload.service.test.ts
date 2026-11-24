@@ -12,7 +12,10 @@ test('batch content checks return one boolean per submitted item with one query'
     {
       $queryRaw: async () => {
         queries++;
-        return [{ sha256: 'a'.repeat(64), byteSize: 100n }];
+        return [
+          { sha256: 'a'.repeat(64), byteSize: 100n, isPrivate: false },
+          { sha256: 'c'.repeat(64), byteSize: 300n, isPrivate: true },
+        ];
       },
     } as never,
     {} as never,
@@ -24,11 +27,33 @@ test('batch content checks return one boolean per submitted item with one query'
   const result = await service.checkContentBatch(ownerId, [
     { contentSha256: 'A'.repeat(64), size: 100 },
     { contentSha256: 'b'.repeat(64), size: 200 },
-    { contentSha256: 'a'.repeat(64), size: 100 },
+    { contentSha256: 'c'.repeat(64), size: 300 },
   ]);
 
-  assert.deepEqual(result, { exists: [true, false, true] });
+  assert.deepEqual(result, {
+    exists: [true, false, true],
+    privateMatches: [false, false, true],
+  });
   assert.equal(queries, 1);
+});
+
+test('single content check reports private matches instead of pretending they do not exist', async () => {
+  const service = new EagleUploadService(
+    {
+      eagleAsset: {
+        findFirst: async () => ({ isPrivate: true }),
+      },
+    } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    'PHOTO',
+  );
+
+  assert.deepEqual(
+    await service.checkContent(ownerId, { contentSha256: 'A'.repeat(64), size: 100 }),
+    { exists: true, privateMatch: true },
+  );
 });
 
 test('lists uploaded multipart parts for resumable clients', async () => {

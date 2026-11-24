@@ -35,7 +35,7 @@ async function asset(db, owner, input) {
   return id;
 }
 
-test('batch content checks match owner, mode, size and visible privacy in one query', async () => {
+test('batch content checks match owner, mode and size and report private-only matches', async () => {
   const owner = randomUUID();
   const db = new PrismaClient({ adapter: createPrismaAdapter() });
   try {
@@ -46,6 +46,7 @@ test('batch content checks match owner, mode, size and visible privacy in one qu
     const privateHash = 'b'.repeat(64);
     const materialHash = 'c'.repeat(64);
     await asset(db, owner, { sha256: publicHash, size: 100 });
+    await asset(db, owner, { sha256: publicHash, size: 100, isPrivate: true });
     await asset(db, owner, { sha256: publicHash, size: 200 });
     await asset(db, owner, { sha256: privateHash, size: 100, isPrivate: true });
     await asset(db, owner, { sha256: materialHash, size: 100, libraryMode: 'MATERIAL' });
@@ -59,14 +60,13 @@ test('batch content checks match owner, mode, size and visible privacy in one qu
       { contentSha256: 'd'.repeat(64), size: 100 },
     ];
 
-    assert.deepEqual(await photos.checkContentBatch(owner, items, false), {
-      exists: [true, true, false, false, false],
-    });
-    assert.deepEqual(await photos.checkContentBatch(owner, items, true), {
+    assert.deepEqual(await photos.checkContentBatch(owner, items), {
       exists: [true, true, true, false, false],
+      privateMatches: [false, false, true, false, false],
     });
-    assert.deepEqual(await photos.checkContentBatch(randomUUID(), items, true), {
+    assert.deepEqual(await photos.checkContentBatch(randomUUID(), items), {
       exists: [false, false, false, false, false],
+      privateMatches: [false, false, false, false, false],
     });
   } finally {
     await db.eagleAsset.deleteMany({ where: { ownerId: owner } });

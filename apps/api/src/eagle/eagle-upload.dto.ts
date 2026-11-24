@@ -134,9 +134,15 @@ export class CheckUploadContentDto {
 export class CheckUploadContentResultDto {
   @ApiProperty({
     type: Boolean,
-    description: 'Content exists within the authenticated owner, library and visible scope.',
+    description: 'Content exists within the authenticated owner and library.',
   })
   exists!: boolean;
+
+  @ApiProperty({
+    type: Boolean,
+    description: 'The only match is private; unlock private visibility to see it.',
+  })
+  privateMatch!: boolean;
 }
 
 export class CheckUploadContentBatchDto {
@@ -153,9 +159,15 @@ export class CheckUploadContentBatchResultDto {
   @ApiProperty({
     type: [Boolean],
     description:
-      'One result per request item, in order; content visible to the authenticated owner and library.',
+      'One result per request item, in order; content in the authenticated owner and library.',
   })
   exists!: boolean[];
+
+  @ApiProperty({
+    type: [Boolean],
+    description: 'One private-match flag per request item; true only when every match is private.',
+  })
+  privateMatches!: boolean[];
 }
 
 export class UploadStatusBatchDto {

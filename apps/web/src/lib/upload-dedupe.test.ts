@@ -6,7 +6,7 @@ const file = (name: string, size = 4) =>
   new File([new Uint8Array(size)], name, { type: 'image/jpeg' });
 
 it('hashes and checks nearby files in one batch request', async () => {
-  const batch = vi.fn(async (items: EagleUploadContentCheckItem[]) => items.map(() => false));
+  const batch = vi.fn(async (items: EagleUploadContentCheckItem[]) => items.map(() => ({ exists: false, privateMatch: false })));
   const checker = new UploadDedupeChecker(batch, async () => 'a'.repeat(64));
   const [first, second] = await Promise.all([
     checker.check(file('a.jpg')),
@@ -17,8 +17,8 @@ it('hashes and checks nearby files in one batch request', async () => {
     { contentSha256: 'a'.repeat(64), size: 4 },
     { contentSha256: 'a'.repeat(64), size: 4 },
   ]);
-  expect(first).toEqual({ sha256: 'a'.repeat(64), exists: false });
-  expect(second).toEqual({ sha256: 'a'.repeat(64), exists: false });
+  expect(first).toEqual({ sha256: 'a'.repeat(64), exists: false, privateMatch: false });
+  expect(second).toEqual({ sha256: 'a'.repeat(64), exists: false, privateMatch: false });
 });
 
 it('hashes up to four files at once so upload slots stay busy', async () => {
@@ -27,7 +27,7 @@ it('hashes up to four files at once so upload slots stay busy', async () => {
   let open = false;
   const waiting: Array<() => void> = [];
   const checker = new UploadDedupeChecker(
-    async (items) => items.map(() => false),
+    async (items) => items.map(() => ({ exists: false, privateMatch: false })),
     async () => {
       active += 1;
       peak = Math.max(peak, active);
@@ -46,12 +46,12 @@ it('hashes up to four files at once so upload slots stay busy', async () => {
 
 it('fails open when the browser cannot hash the file', async () => {
   const checker = new UploadDedupeChecker(
-    async () => [true],
+    async () => [{ exists: true, privateMatch: false }],
     async () => {
       throw new Error('crypto unavailable');
     },
   );
-  expect(await checker.check(file('e.jpg'))).toEqual({ sha256: null, exists: false });
+  expect(await checker.check(file('e.jpg'))).toEqual({ sha256: null, exists: false, privateMatch: false });
 });
 
 it('fails open so the server-side publication check remains authoritative', async () => {
@@ -61,16 +61,28 @@ it('fails open so the server-side publication check remains authoritative', asyn
     },
     async () => 'b'.repeat(64),
   );
-  expect(await checker.check(file('c.jpg'))).toEqual({ sha256: 'b'.repeat(64), exists: false });
+  expect(await checker.check(file('c.jpg'))).toEqual({ sha256: 'b'.repeat(64), exists: false, privateMatch: false });
 });
 
 it('stops hashing when the browser session is aborted', async () => {
   const controller = new AbortController();
   const checker = new UploadDedupeChecker(
-    async () => [false],
+    async () => [{ exists: false, privateMatch: false }],
     async () => 'c'.repeat(64),
   );
   const pending = checker.check(file('d.jpg'), controller.signal);
   controller.abort(new DOMException('cancelled', 'AbortError'));
   await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+});
+
+it('passes through the private duplicate hint', async () => {
+  const checker = new UploadDedupeChecker(
+    async () => [{ exists: true, privateMatch: true }],
+    async () => 'e'.repeat(64),
+  );
+  expect(await checker.check(file('private.jpg'))).toEqual({
+    sha256: 'e'.repeat(64),
+    exists: true,
+    privateMatch: true,
+  });
 });

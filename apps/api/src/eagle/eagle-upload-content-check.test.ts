@@ -6,49 +6,45 @@ import { CheckUploadContentDto } from './eagle-upload.dto';
 import { EagleUploadService } from './eagle-upload.service';
 import { EagleUploadController } from './eagle-upload.controller';
 
-test('content preflight is bounded to owner, mode, size and visible non-deleted resources', async () => {
+test('content preflight is bounded to owner, mode, size and non-deleted resources', async () => {
   for (const mode of ['MATERIAL', 'PHOTO'] as const) {
-    for (const privateAccess of [false, true]) {
-      let query: unknown;
-      const service = new EagleUploadService(
-        {
-          eagleAsset: {
-            findFirst: async (input: unknown) => {
-              query = input;
-              return { id: 'known' };
-            },
+    let query: unknown;
+    const service = new EagleUploadService(
+      {
+        eagleAsset: {
+          findFirst: async (input: unknown) => {
+            query = input;
+            return { isPrivate: false };
           },
-        } as never,
-        {} as never,
-        {} as never,
-        {} as never,
-        mode,
-      );
-      assert.deepEqual(
-        await service.checkContent(
-          'authenticated-owner',
-          { contentSha256: 'A'.repeat(64), size: 12 },
-          privateAccess,
-        ),
-        { exists: true },
-      );
-      assert.deepEqual(query, {
-        where: {
-          ownerId: 'authenticated-owner',
-          libraryMode: mode,
-          sha256: 'a'.repeat(64),
-          byteSize: 12n,
-          deletedAt: null,
-          purgeAfter: null,
-          ...(privateAccess ? {} : { isPrivate: false }),
         },
-        select: { id: true },
-      });
-    }
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      mode,
+    );
+    assert.deepEqual(
+      await service.checkContent('authenticated-owner', {
+        contentSha256: 'A'.repeat(64),
+        size: 12,
+      }),
+      { exists: true, privateMatch: false },
+    );
+    assert.deepEqual(query, {
+      where: {
+        ownerId: 'authenticated-owner',
+        libraryMode: mode,
+        sha256: 'a'.repeat(64),
+        byteSize: 12n,
+        deletedAt: null,
+        purgeAfter: null,
+      },
+      select: { isPrivate: true },
+    });
   }
 });
 
-test('absent, foreign, private or recycled content has the same preflight response', async () => {
+test('absent, foreign or recycled content has the same preflight response', async () => {
   const service = new EagleUploadService(
     { eagleAsset: { findFirst: async () => null } } as never,
     {} as never,
@@ -58,7 +54,7 @@ test('absent, foreign, private or recycled content has the same preflight respon
   );
   assert.deepEqual(
     await service.checkContent('owner', { contentSha256: 'b'.repeat(64), size: 10 }),
-    { exists: false },
+    { exists: false, privateMatch: false },
   );
 });
 
@@ -68,17 +64,20 @@ test('content preflight takes identity from authentication and never returns an 
     {
       checkContent: async (...args: unknown[]) => {
         calls.push(args);
-        return { exists: true };
+        return { exists: true, privateMatch: false };
       },
     } as never,
     {} as never,
   );
   const input = { contentSha256: 'a'.repeat(64), size: 12 };
   assert.deepEqual(
-    await controller.checkContent({ sub: 'owner', canViewPrivate: false } as never, input),
-    { exists: true },
+    await controller.checkContent(
+      { sub: 'owner', canViewPrivate: false } as never,
+      input,
+    ),
+    { exists: true, privateMatch: false },
   );
-  assert.deepEqual(calls, [['owner', input, false]]);
+  assert.deepEqual(calls, [['owner', input]]);
 });
 
 test('preflight DTO rejects malformed hashes, unbounded sizes and owner injection', async () => {

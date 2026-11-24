@@ -109,7 +109,7 @@ export function EagleUploadQueue({
                 {item.state === 'completed'
                   ? t('导入成功')
                   : item.state === 'duplicate'
-                    ? t('重复跳过')
+                    ? t(item.duplicatePrivate ? '重复跳过（私密）' : '重复跳过')
                     : item.state === 'failed'
                       ? t('导入失败')
                       : item.state === 'checking'
