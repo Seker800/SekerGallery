@@ -143,11 +143,9 @@ export async function readEditRender(
       return { status: 'FAILED', message: '成片预览生成失败，请稍后重试。' };
     return { status: 'COMPLETED', asset: { id: result.id, name: result.originalName } };
   }
-  if (
-    source.mediaRevision !== row.job.assetRevision ||
-    source.rowVersion !== row.sourceRowVersion ||
-    ['FAILED', 'COMPLETED'].includes(row.job.status)
-  )
+  if (source.mediaRevision !== row.job.assetRevision || source.rowVersion !== row.sourceRowVersion)
     return { status: 'FAILED', message: '保存未完成，照片可能已变化，请重新打开后重试。' };
+  if (['FAILED', 'COMPLETED'].includes(row.job.status))
+    return { status: 'FAILED', message: '保存失败，请重试。' };
   return { status: row.job.status };
 }

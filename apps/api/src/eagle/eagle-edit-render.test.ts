@@ -121,7 +121,20 @@ test('status reads scope both source and result and never expose raw failure/obj
   } as unknown as PrismaService;
   const status = await readEditRender(failed, 'owner', 'PHOTO', 'source', 'job', false);
   assert.equal(status.status, 'FAILED');
+  assert.equal(status.message, '保存失败，请重试。');
   assert.ok(!JSON.stringify(status).includes('secret'));
+  const changed = {
+    eagleAsset: { findFirst: async () => ({ ...source, rowVersion: 4 }) },
+    eagleEditRender: {
+      findFirst: async () => ({
+        sourceRowVersion: 3,
+        job: { status: 'PROCESSING', assetRevision: 1 },
+      }),
+    },
+  } as unknown as PrismaService;
+  const changedStatus = await readEditRender(changed, 'owner', 'PHOTO', 'source', 'job', false);
+  assert.equal(changedStatus.status, 'FAILED');
+  assert.equal(changedStatus.message, '保存未完成，照片可能已变化，请重新打开后重试。');
 });
 
 test('idempotency compares canonical intent independently of JSON field order', async () => {
