@@ -1,6 +1,6 @@
 # 现用运行状态与交接
 
-> 状态：现行 | 核验日期：2026-11-24 22:40（北京时间） | 对应提交：238a228d（web 仍为 22b9e92b；Windows 客户端 `9e5420c7`）
+> 状态：现行 | 核验日期：2026-11-24 23:40（北京时间） | 对应提交：238a228d（web 仍为 22b9e92b；仓库另有未发布 API 提示修正 `feb22236`；Windows 客户端 `9e5420c7`）
 >
 > 本文只记录现用部署事实与接手顺序。完整发布快照、备份哈希和历史恢复过程见
 > [2026-10/11 归档](history/releases/2026-11.md)。设计边界见 [architecture](architecture.md)，
@@ -17,7 +17,7 @@
 | macOS 桌面客户端                                   | `/Applications/SekerGallery.app` 0.1.9（`d3568fc9` 源码，app.asar `73a2d95a…`，已启动并连接线上图库；旧版备份 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`） |
 | Windows 便携客户端（本机）                         | `D:\SekerEagle\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`9e5420c7` 源码原生构建；exe `e45b2cdc…`、app.asar `da6eb1c1…`；开始菜单 `SekerGallery-0.1.lnk`）                       |
 | 数据库                                             | 107 项迁移，待应用 0；本轮新增上传会话 partSize／私密授权、分享渲染队列表与触发器、人脸确认覆盖索引                                                                                         |
-| Mac 业务执行器                                     | `.runtime/business-worker/releases/worker-22b9e92b`（launchd；PID 27479，worker ID `worker-01185bc9-4aff-4602-a696-98fce404f500`；不是 Compose `worker`）                                   |
+| Mac 业务执行器                                     | `.runtime/business-worker/releases/worker-22b9e92b`（launchd；PID 54827，worker ID `worker-86111279-9605-4d46-8427-143ba8488b9b`；2026-11-24 已同步 schema 并重建 Prisma 客户端；不是 Compose `worker`） |
 | 未改动                                             | 网关容器复用并更新配置；Postgres、MinIO、计算协调器、中继未重启；不要为排查重启或重建                                                                                                       |
 | 计数                                               | MATERIAL / PHOTO / 回收站 / 草稿从运行检查点读取，本文不维护动态百分比                                                                                                                      |
 
