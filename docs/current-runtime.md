@@ -1,6 +1,6 @@
 # 现用运行状态与交接
 
-> 状态：现行 | 核验日期：2026-11-25 00:15（北京时间） | 对应提交：API `238a228d`、worker／nas-media `176b06e5`（web 仍为 `22b9e92b`；仓库另有未发布 API 提示修正 `feb22236`；Windows 客户端 `9e5420c7`）
+> 状态：现行 | 核验日期：2026-11-25 00:45（北京时间） | 对应提交：API `5a67e72f`、worker／nas-media `176b06e5`（web 仍为 `22b9e92b`；Windows 客户端 `9e5420c7`）
 >
 > 本文只记录现用部署事实与接手顺序。完整发布快照、备份哈希和历史恢复过程见
 > [2026-10/11 归档](history/releases/2026-11.md)。设计边界见 [architecture](architecture.md)，
@@ -11,9 +11,9 @@
 | 项目                                               | 当前值                                                                                                                                                                                                                                                         |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 图库                                               | 群晖 SekerDesign（DS1522+，AMD64，8GB），入口 https://yuntai.design:8181/                                                                                                                                                                                      |
-| 运行源码                                           | API `238a228d`；web `22b9e92b`；operations／reader／share-renderer `238a228d`；worker／nas-media `176b06e5`；desktop 客户端 0.1.9（macOS `d3568fc9`，Windows 本机 `9e5420c7`）                                                                                 |
+| 运行源码                                           | API `5a67e72f`；web `22b9e92b`；operations／reader／share-renderer `5a67e72f`；worker／nas-media `176b06e5`；desktop 客户端 0.1.9（macOS `d3568fc9`，Windows 本机 `9e5420c7`）                                                                                 |
 | NAS 媒体节点                                       | `sekereagle/worker:main-176b06e5`（Compose `nas-media`；领编辑成片、上传缩略图/预览/海报/探测、颜色、永久删除；并发 1、内存上限 2GB；心跳声明 `dedicatedMediaKinds`）                                                                                          |
-| API / operations / library-reader / share-renderer | `sekereagle/api:main-238a228d`（linux/amd64，镜像 ID `aca98ce6…`；同一镜像的独立 HTTP、operations、reader 与分享渲染进程）                                                                                                                                     |
+| API / operations / library-reader / share-renderer | `sekereagle/api:main-5a67e72f`（linux/amd64，镜像 ID `0fe3065e…`；同一镜像的独立 HTTP、operations、reader 与分享渲染进程；清空回收站单批 128 行）                                                                                                              |
 | Web                                                | `sekereagle/web:main-22b9e92b`                                                                                                                                                                                                                                 |
 | macOS 桌面客户端                                   | `/Applications/SekerGallery.app` 0.1.9（`d3568fc9` 源码，app.asar `73a2d95a…`，已启动并连接线上图库；旧版备份 `~/SekerEagle-client-backups/SekerEagle-0.1.9-20261123-before-d3568fc9.app`）                                                                    |
 | Windows 便携客户端（本机）                         | `D:\SekerEagle\SekerGallery-0.1.9-windows-x64-portable.exe`，0.1.9（`9e5420c7` 源码原生构建；exe `e45b2cdc…`、app.asar `da6eb1c1…`；开始菜单 `SekerGallery-0.1.lnk`）                                                                                          |
@@ -43,8 +43,12 @@ Web 最近覆盖：`main-22b9e92b`（11-24 17:10）→ `main-d3568fc9`（11-23 1
 任务 attempts=1；永久删除 `83cb0a86` 由 NAS 完成（1.77 秒）。真实上传也已验证：
 平板上传素材 `1000002517.jpg` 后，缩略图 `5d1063af`（0.87 秒）与颜色 `15ea4547`
 （1.5 秒）由 NAS 完成，Mac 只处理向量 `537024ef`；随后该素材由 NAS 的
-`PURGE_ASSET` 删除，素材行与对象都已清理。Mac 兜底仍未做线上实测。另：平板端
-「清空回收站」一次返回 `TRANSACTION_TIMEOUT`（原子失败、回收站内容未变），待单独排查。
+`PURGE_ASSET` 删除，素材行与对象都已清理。Mac 兜底仍未做线上实测。
+
+11-25 00:45 修复清空回收站超时：平板端曾返回 `TRANSACTION_TIMEOUT`。数据库日志
+确认为语句执行满 12 秒被取消、期间在等磁盘读（`DataFileRead`），不是锁等待；同一
+语句 512 行实测约 10.2 秒、128 行 1.5–2.5 秒。现用 `5a67e72f` 将单批降到 128 行、
+繁忙时同一批次自动重试两次，并保留原始错误日志。用户实际重试清空回收站尚未进行。
 
 ## 进程入口
 
@@ -85,6 +89,7 @@ Web 最近覆盖：`main-22b9e92b`（11-24 17:10）→ `main-d3568fc9`（11-23 1
 - Web 回退：`sekereagle/web:main-d3568fc9`（再上一版 `main-2405f5ed`）。
 - 2026-11-24 22:36 热修回退：四个应用进程可临时切回 `sekereagle/api:main-22b9e92b`（`maintenance/main-238a228d/rollback.json`）；没有数据库变更。但该镜像的共享包产物陈旧，回退会恢复缩略图／上传等 500，仅用于紧急对比。
 - edit-renderer 回退：用同一 Compose 链追加 `maintenance/edit-renderer-20261125/edit-renderer.json` 后执行 `rm -f edit-renderer` 或 `stop edit-renderer`；Mac worker 会在心跳过期约 70 秒内自动接管，不需要改配置。Mac worker 程序回退可用 `apps/worker-dist-before-edit-renderer-20261125.tar` 恢复旧 dist 后重启 launchd。
+- API 清空回收站修复回退：四个应用进程按 `maintenance/empty-trash-20261125/rollback.json` 切回 `sekereagle/api:main-238a228d`；数据库结构未变。
 - API／operations／reader 回退：`sekereagle/api:main-d3568fc9-hotfix1`。**一旦 `SHARE_JPEG` 渲染结果存在，不得回退旧 API／operations／reader**：旧 Prisma 客户端不认识该枚举。需要回退时先确认 `LibraryShareRender` 与 `SHARE_JPEG` 行为 0，停止并移除 `share-renderer`，再按 `maintenance/main-22b9e92b/rollback.json` 切回；共享图产生后只能回退网页或向前修复。
 - Mac worker 回退：`.runtime/business-worker/releases/worker-93b5d583`；切换前 plist 备份在 `.omx/artifacts/release-22b9e92b/worker-before.plist`。
 - 2026-11-24 17:10 发布前一致性备份：939,533,209 字节，SHA-256 `ce92c1b6dafdc8488d11c98efd5fc451a2013b2c8add2555a638b9ac9f5cb7b9`，`pg_restore --list` 完整解析。NAS 证据与镜像、回退清单在 `maintenance/main-22b9e92b/`。
