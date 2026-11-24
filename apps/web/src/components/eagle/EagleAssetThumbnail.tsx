@@ -1,4 +1,4 @@
-import { isCameraVideoMime } from '@sekereagle/library-core';
+import { isCameraVideoMime, selectRenditionForWidth } from '@sekereagle/library-core';
 import { getEagleVideoContentUrl } from './eagle-media-sources';
 import { getEagleRenditionContentUrl } from '../../lib/eagle-api';
 import { canUseThumbnailMemoryCache } from '../../lib/media-resolver';
@@ -41,20 +41,12 @@ export function getEagleAssetThumbnailUrls(
   targetPixelWidth: number,
 ): string[] {
   return RENDITION_PRIORITY.flatMap((kind) => {
-    const candidates = asset.renditions
-      .filter(
-        (rendition) =>
-          rendition.kind === kind &&
-          rendition.revision === asset.mediaRevision &&
-          rendition.mimeType.startsWith('image/'),
-      )
-      .sort(
-        (left, right) =>
-          (left.width ?? Number.MAX_SAFE_INTEGER) - (right.width ?? Number.MAX_SAFE_INTEGER),
-      );
-    const selected =
-      candidates.find((rendition) => (rendition.width ?? 0) >= targetPixelWidth) ??
-      candidates.at(-1);
+    const selected = selectRenditionForWidth(
+      asset.renditions,
+      asset.mediaRevision,
+      kind,
+      targetPixelWidth,
+    );
     return selected
       ? [getEagleRenditionContentUrl(asset.id, selected.id, selected.kind, asset.libraryMode)]
       : [];

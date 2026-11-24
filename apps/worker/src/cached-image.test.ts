@@ -28,17 +28,26 @@ async function fixture() {
   return { root, item, preview, original, directory };
 }
 
-test('copies JPEG bytes without re-encoding, reports actual dimensions and preserves source', async () => {
+test('re-encodes cached JPEGs to the standard WebP renditions and preserves the source', async () => {
   const f = await fixture();
   try {
     const result = await loadCachedImage(f.root, f.item);
     assert.equal(result.originalPath, await realpath(f.original));
     assert.equal(result.renditions.length, 3);
+    assert.deepEqual(
+      result.renditions.map(({ kind, variant }) => ({ kind, variant })),
+      [
+        { kind: 'THUMBNAIL', variant: '256' },
+        { kind: 'THUMBNAIL', variant: '512' },
+        { kind: 'PREVIEW', variant: 'default' },
+      ],
+    );
     for (const rendition of result.renditions) {
-      assert.deepEqual(rendition.data, f.preview);
+      assert.notDeepEqual(rendition.data, f.preview);
+      assert.equal((await sharp(rendition.data).metadata()).format, 'webp');
       assert.equal(rendition.width, 96);
       assert.equal(rendition.height, 64);
-      assert.equal(rendition.mimeType, 'image/jpeg');
+      assert.equal(rendition.mimeType, 'image/webp');
     }
   } finally {
     await rm(f.root, { recursive: true });

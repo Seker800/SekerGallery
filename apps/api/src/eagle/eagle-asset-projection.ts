@@ -38,7 +38,7 @@ export const assetListInclude = Prisma.validator<Prisma.EagleAssetInclude>()({
   photoLocation: { select: publicPhotoLocationSelect },
   renditions: {
     where: { status: 'READY' },
-    orderBy: [{ revision: 'desc' }, { kind: 'asc' }],
+    orderBy: [{ revision: 'desc' }, { kind: 'asc' }, { width: 'asc' }],
     select: {
       id: true,
       kind: true,

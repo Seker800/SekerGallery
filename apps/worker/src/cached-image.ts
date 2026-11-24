@@ -1,6 +1,7 @@
 import { constants } from 'node:fs';
 import { open, realpath, stat } from 'node:fs/promises';
 import { dirname, basename, join, resolve, sep } from 'node:path';
+import { imageRenditionSpecs } from '@sekereagle/media-core';
 import sharp from 'sharp';
 
 export interface CachedImageSource {
@@ -13,7 +14,7 @@ export interface CachedImageSource {
 export interface CachedImageRendition {
   kind: 'THUMBNAIL' | 'PREVIEW';
   variant: string;
-  mimeType: 'image/jpeg';
+  mimeType: 'image/webp';
   width: number;
   height: number;
   data: Buffer;
@@ -73,13 +74,27 @@ export async function loadCachedImage(root: string, item: CachedImageSource) {
         .catch(() => {
           throw new Error('CACHE_INVALID');
         });
+      const spec = imageRenditionSpecs('image/jpeg').find(
+        (entry) => entry.kind === kind && entry.variant === variant,
+      );
+      if (!spec) throw new Error('CACHE_INVALID');
+      const encoded = await image
+        .clone()
+        .resize({
+          width: spec.maxSize,
+          height: spec.maxSize,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .webp(spec.encoding)
+        .toBuffer({ resolveWithObject: true });
       renditions.push({
         kind,
         variant,
-        mimeType: 'image/jpeg',
-        width: metadata.width,
-        height: metadata.height,
-        data,
+        mimeType: 'image/webp',
+        width: encoded.info.width,
+        height: encoded.info.height,
+        data: encoded.data,
       });
     } finally {
       await file.close();

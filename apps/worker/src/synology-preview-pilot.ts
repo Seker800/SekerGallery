@@ -171,8 +171,9 @@ async function run(manifest: Manifest, root: string, apply: boolean) {
             });
           const renditions: Prisma.EagleAssetRenditionUncheckedCreateInput[] = [];
           for (const image of cached.renditions) {
+            const extension = image.mimeType === 'image/webp' ? 'webp' : 'jpg';
             const storageKey = outputAttempt.key(
-              `${image.kind.toLowerCase()}-${image.variant}.jpg`,
+              `${image.kind.toLowerCase()}-${image.variant}.${extension}`,
             );
             await outputAttempt.prepare();
             await storage.send(

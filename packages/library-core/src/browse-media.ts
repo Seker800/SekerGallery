@@ -12,6 +12,25 @@ interface BrowseAsset<R extends BrowseRendition> {
   mimeType: string;
   renditions: readonly R[];
 }
+export function selectRenditionForWidth<R extends BrowseRendition>(
+  renditions: readonly R[],
+  mediaRevision: number,
+  kind: string,
+  targetWidth: number,
+): R | undefined {
+  const candidates = renditions.filter(
+    (row) =>
+      row.kind === kind &&
+      row.revision === mediaRevision &&
+      row.variant !== 'edit' &&
+      (!row.mimeType || row.mimeType.startsWith('image/')),
+  );
+  const known = candidates
+    .filter((row) => (row.width ?? 0) > 0)
+    .sort((left, right) => left.width! - right.width!);
+  return known.find((row) => row.width! >= targetWidth) ?? known.at(-1) ?? candidates[0];
+}
+
 export function selectBrowseRendition<R extends BrowseRendition>(
   asset: BrowseAsset<R>,
 ): R | undefined {

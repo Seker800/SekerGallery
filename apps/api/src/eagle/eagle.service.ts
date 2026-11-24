@@ -1021,7 +1021,7 @@ export class EagleService {
           updatedAt: true,
           renditions: {
             where: { status: 'READY' },
-            orderBy: [{ revision: 'desc' as const }, { kind: 'asc' as const }],
+            orderBy: [{ revision: 'desc' as const }, { kind: 'asc' as const }, { width: 'asc' as const }],
             select: {
               id: true,
               kind: true,

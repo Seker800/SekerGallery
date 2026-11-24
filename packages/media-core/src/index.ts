@@ -303,5 +303,6 @@ export {
   LIVE_PHOTO_MAX_DURATION_MS,
 } from './live-photo';
 
+export * from './renditions';
 export { readPhotoMetadataTags } from './photo-metadata';
 export { probeHeifFile, decodeHeifFile, assertSafeHeifInfo } from './heif';

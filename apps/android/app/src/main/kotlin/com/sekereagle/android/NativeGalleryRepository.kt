@@ -133,6 +133,14 @@ internal fun canonicalFormat(extension: String): String =
         else -> value
     }
 
+/** Smallest rendition that still covers the target width, or the largest known width. */
+internal fun <T> selectByWidth(rows: List<T>, targetWidth: Int, widthOf: (T) -> Int): T? {
+    val known = rows.filter { widthOf(it) > 0 }.sortedBy(widthOf)
+    return known.firstOrNull { widthOf(it) >= targetWidth }
+        ?: known.lastOrNull()
+        ?: rows.firstOrNull()
+}
+
 /** One scoped implementation for both modes; only authenticated derived media enters the cache. */
 class NativeGalleryRepository(
     private val session: NativeSession,
@@ -976,6 +984,11 @@ class NativeGalleryRepository(
                         (variant == null || it.optString("variant") == variant)
                 }
                 ?.let { NativeGalleryPolicy.mediaPath(mode.name, id, it.getString("id")) }
+        fun pathForWidth(kind: String, targetWidth: Int): String? =
+            selectByWidth(images.filter { it.optString("kind") == kind }, targetWidth) {
+                    it.optInt("width", 0)
+                }
+                ?.let { NativeGalleryPolicy.mediaPath(mode.name, id, it.getString("id")) }
         val movie =
             (0 until renditions.length())
                 .map { renditions.getJSONObject(it) }
@@ -1018,8 +1031,9 @@ class NativeGalleryRepository(
             date?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "",
             json.optInt("width", 1),
             json.optInt("height", 1),
-            if (largeThumbnails) path("THUMBNAIL", "512") ?: path("THUMBNAIL")
-            else path("THUMBNAIL") ?: path("POSTER") ?: path("PREVIEW"),
+            pathForWidth("THUMBNAIL", if (largeThumbnails) 512 else 256)
+                ?: path("POSTER")
+                ?: path("PREVIEW"),
             path("PREVIEW") ?: path("POSTER") ?: path("THUMBNAIL"),
             json.optString("mimeType").startsWith("video/"),
             json.optInt("mediaRevision"),
