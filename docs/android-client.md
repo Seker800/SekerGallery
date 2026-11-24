@@ -1,5 +1,14 @@
 # 安卓客户端与手机备份
 
+## 0.9.39 分享图下载离开主线程（2026-11-24）
+
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode56、versionName 0.9.39，调试 APK SHA-256 `4f76668c076217b182ad180f062bda5c6e3a57a6252288b0ffc685538ca5e61c`。2026-11-24 23:17 安装到小米 Pad 7 Ultra（25032RP42C）。
+
+- 症状：点「分享」弹出「分享图生成失败 · 原因：未知错误，请重试」，服务端其实已经渲染成功（`LibraryShareRender` 状态 READY、POST 返回 202，但没有任何成品图下载请求）。
+- 根因：分享流程从界面协程启动，`shareNativeAsset` 在主线程序列执行；分享图下载和兼容视频下载是阻塞网络调用，却没有切到 IO 线程，触发 `android.os.NetworkOnMainThreadException`。原图回退与高清详情路径本已使用 IO，所以只有分享图/兼容视频失败。
+- 修复：`NativeShare.kt` 中分享 JPEG 与兼容 MP4 的下载包进 `withContext(Dispatchers.IO)`；失败原因映射不变。
+- 真机验证：平板升级 0.9.39 后重新分享，系统分享面板正常打开，网关收到成品下载 `GET /renditions/<id>/content` 200，字节数 1,282,867 与服务端 READY 的 `byteSize` 一致，无异常。兼容视频分享同样切到 IO，但本轮未单独实测视频分享。手机当时未连接，仍为 0.9.38，重连后需补装 0.9.39。该路径暂无自动化测试，以真机端到端验证为准。
+
 ## 0.9.38 失败重试保留目录归属（2026-11-24）
 
 本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode55、versionName 0.9.38，调试 APK SHA-256 `1c726b38b2363bc80d73c332fd2e6cd3bb3d90a52abd87445538bf9b6e9575ae`。2026-11-24 23:00 用 `adb push` + `pm install -r` 安装到小米 25128PNA1C（Android 17）；23:10 同法把小米 Pad 7 Ultra（25032RP42C，原 0.9.37）升级到 0.9.38，账号、设置与图库保留，启动后照片网格正常加载（网关 21 次 GET 均为 200，仅启动瞬间一次 `auth/me` 401 后恢复）；平板未配置自动备份，本轮未改动。

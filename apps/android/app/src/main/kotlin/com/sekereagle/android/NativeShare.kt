@@ -149,13 +149,16 @@ private suspend fun shareImageFile(
     if (temporary.exists()) temporary.delete()
     try {
         val contentPath = repo.startShareRender(mode, asset, cancellation, onStage)
-        temporary.outputStream().use { output ->
-            repo.connection.downloadShareRendition(
-                contentPath,
-                output,
-                cancellation,
-                onProgress,
-            )
+        // Share runs from the UI coroutine; the blocking download must leave the main thread.
+        withContext(Dispatchers.IO) {
+            temporary.outputStream().use { output ->
+                repo.connection.downloadShareRendition(
+                    contentPath,
+                    output,
+                    cancellation,
+                    onProgress,
+                )
+            }
         }
         cancellation.check()
         if (!temporary.renameTo(cached)) throw IOException("无法保存分享图，请检查存储空间")
@@ -181,14 +184,16 @@ private suspend fun preparePlayback(
         File(directory, directoryId).apply { mkdirs() }.let { folder ->
             File(folder, NativeSharePolicy.playbackFileName(asset.name))
         }
-    target.outputStream().use { output ->
-        repo.connection.downloadOriginal(
-            playback,
-            asset.playbackSize,
-            "video/mp4",
-            output,
-            cancellation,
-        ) { total -> onProgress(total, asset.playbackSize) }
+    withContext(Dispatchers.IO) {
+        target.outputStream().use { output ->
+            repo.connection.downloadOriginal(
+                playback,
+                asset.playbackSize,
+                "video/mp4",
+                output,
+                cancellation,
+            ) { total -> onProgress(total, asset.playbackSize) }
+        }
     }
     cancellation.check()
     return target
