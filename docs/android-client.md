@@ -2,7 +2,7 @@
 
 ## 0.9.38 失败重试保留目录归属（2026-11-24）
 
-本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode55、versionName 0.9.38，调试 APK SHA-256 `1c726b38b2363bc80d73c332fd2e6cd3bb3d90a52abd87445538bf9b6e9575ae`。2026-11-24 23:00 用 `adb push` + `pm install -r` 安装到小米 25128PNA1C（Android 17）。
+本机安装包为 `apps/android/app/build/outputs/apk/debug/app-debug.apk`，versionCode55、versionName 0.9.38，调试 APK SHA-256 `1c726b38b2363bc80d73c332fd2e6cd3bb3d90a52abd87445538bf9b6e9575ae`。2026-11-24 23:00 用 `adb push` + `pm install -r` 安装到小米 25128PNA1C（Android 17）；23:10 同法把小米 Pad 7 Ultra（25032RP42C，原 0.9.37）升级到 0.9.38，账号、设置与图库保留，启动后照片网格正常加载（网关 21 次 GET 均为 200，仅启动瞬间一次 `auth/me` 401 后恢复）；平板未配置自动备份，本轮未改动。
 
 - 症状：备份列表有 20 个失败项，点「立即备份」或「重试失败」都不再产生任何上传请求，状态停在「备份完成」。服务端同期已无错误。
 - 根因：`MediaCatalog.selected(uri)` 在重试时重新读取文件，但把条目目录写成空字符串；按目录规则（如 `/DCIM/`）重新匹配时返回空模式，20 个失败项被静默跳过，本轮处理为 0。该缺陷与服务器无关，0.9.31–0.9.37 均存在。
