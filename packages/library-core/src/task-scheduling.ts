@@ -1,4 +1,9 @@
-import { PHOTO_SOURCE_DETAILS_PROCESSOR_VERSION } from './media-job-contract';
+import {
+  MEDIA_JOB_LANES,
+  PHOTO_SOURCE_DETAILS_PROCESSOR_VERSION,
+  type MediaJobKind,
+  type ProcessingLane,
+} from './media-job-contract';
 import type { ComputeRuntime } from './compute-runtime';
 export interface BackgroundSchedule {
   mode: string;
@@ -57,6 +62,31 @@ export const TASK_FAMILIES = [
   'IMPORTS',
 ] as const;
 export type TaskFamily = (typeof TASK_FAMILIES)[number];
+
+export interface MediaTaskDescriptor {
+  kind: MediaJobKind;
+  family: TaskFamily;
+  lane: ProcessingLane;
+}
+
+/** One row per media protocol kind; routes and SQL consume this instead of guessing. */
+export const MEDIA_TASK_DESCRIPTORS: readonly MediaTaskDescriptor[] = [
+  { kind: 'RENDER_EDITED_COPY', family: 'BROWSE', lane: MEDIA_JOB_LANES.RENDER_EDITED_COPY },
+  { kind: 'GENERATE_RENDITIONS', family: 'BROWSE', lane: MEDIA_JOB_LANES.GENERATE_RENDITIONS },
+  { kind: 'GENERATE_THUMBNAIL', family: 'BROWSE', lane: MEDIA_JOB_LANES.GENERATE_THUMBNAIL },
+  { kind: 'GENERATE_PREVIEW', family: 'BROWSE', lane: MEDIA_JOB_LANES.GENERATE_PREVIEW },
+  { kind: 'PROBE_MEDIA', family: 'BROWSE', lane: MEDIA_JOB_LANES.PROBE_MEDIA },
+  { kind: 'EXTRACT_COLOR_PALETTE', family: 'COLOR', lane: MEDIA_JOB_LANES.EXTRACT_COLOR_PALETTE },
+  {
+    kind: 'GENERATE_IMAGE_PYRAMID',
+    family: 'PYRAMID',
+    lane: MEDIA_JOB_LANES.GENERATE_IMAGE_PYRAMID,
+  },
+  { kind: 'GENERATE_AI_TAGS', family: 'BROWSE', lane: MEDIA_JOB_LANES.GENERATE_AI_TAGS },
+  { kind: 'GENERATE_EMBEDDING', family: 'EMBEDDING', lane: MEDIA_JOB_LANES.GENERATE_EMBEDDING },
+  { kind: 'ANALYZE_PHOTO_FACES', family: 'FACES', lane: MEDIA_JOB_LANES.ANALYZE_PHOTO_FACES },
+  { kind: 'PURGE_ASSET', family: 'CLEANUP', lane: MEDIA_JOB_LANES.PURGE_ASSET },
+];
 export type TaskWaitReason =
   | 'DEPENDENCY'
   | 'DEPENDENCY_FAILED'
@@ -146,11 +176,7 @@ export const MEDIA_FAMILY_RULES: ReadonlyArray<{
   { version: PHOTO_SOURCE_DETAILS_PROCESSOR_VERSION, family: 'DETAILS' },
   { prefix: 'video-playback-', family: 'VIDEO' },
   { prefix: 'camera-video-playback-', family: 'VIDEO' },
-  { kind: 'GENERATE_EMBEDDING', family: 'EMBEDDING' },
-  { kind: 'ANALYZE_PHOTO_FACES', family: 'FACES' },
-  { kind: 'EXTRACT_COLOR_PALETTE', family: 'COLOR' },
-  { kind: 'GENERATE_IMAGE_PYRAMID', family: 'PYRAMID' },
-  { kind: 'PURGE_ASSET', family: 'CLEANUP' },
+  ...MEDIA_TASK_DESCRIPTORS.map(({ kind, family }) => ({ kind, family })),
 ];
 export function mediaTaskFamily(kind: string, version: string): TaskFamily {
   return (

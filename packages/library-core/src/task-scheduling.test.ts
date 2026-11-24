@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { backgroundScheduleAllows, nextBackgroundTime, mediaTaskFamily } from './task-scheduling';
+import {
+  backgroundScheduleAllows,
+  nextBackgroundTime,
+  mediaTaskFamily,
+  MEDIA_TASK_DESCRIPTORS,
+} from './task-scheduling';
+import { MEDIA_JOB_KINDS, MEDIA_JOB_LANES } from './media-job-contract';
 
 test('one background schedule handles overnight windows and pause without affecting data', () => {
   const settings = { mode: 'NIGHT', nightStart: '23:00', nightEnd: '06:00' };
@@ -26,6 +32,12 @@ test('same-day and equal boundaries use the same eligibility and next time', () 
 });
 
 test('video playback and source details are separate from immediately needed browsing', () => {
+  for (const kind of MEDIA_JOB_KINDS) {
+    const descriptor = MEDIA_TASK_DESCRIPTORS.find((entry) => entry.kind === kind);
+    assert.ok(descriptor, `${kind} must have a task descriptor`);
+    assert.equal(descriptor.lane, MEDIA_JOB_LANES[kind], `${kind} lane must match its descriptor`);
+    assert.equal(mediaTaskFamily(kind, 'unmatched-version'), descriptor.family);
+  }
   assert.equal(mediaTaskFamily('GENERATE_PREVIEW', 'video-playback-v1'), 'VIDEO');
   assert.equal(mediaTaskFamily('GENERATE_PREVIEW', 'photo-source-details-v1'), 'DETAILS');
   assert.equal(mediaTaskFamily('GENERATE_RENDITIONS', 'rendition-v2'), 'BROWSE');
