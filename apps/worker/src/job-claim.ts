@@ -19,7 +19,9 @@ export interface ClaimFindManyInput {
   where: {
     lane: EagleProcessingLane;
     processorVersion?: { notIn: string[] };
-    kind?: { not?: EagleMediaJobKind; in?: EagleMediaJobKind[] } | EagleMediaJobKind;
+    kind?:
+      | { not?: EagleMediaJobKind; in?: EagleMediaJobKind[]; notIn?: EagleMediaJobKind[] }
+      | EagleMediaJobKind;
     AND: [
       {
         OR: Array<{ dependsOnJobId: null } | { dependsOnJob: { status: 'COMPLETED' } }>;
@@ -68,6 +70,8 @@ interface ClaimMediaJobOptions {
   now?: Date;
   excludedProcessorVersions?: string[];
   allowedJobKinds?: readonly EagleMediaJobKind[];
+  /** Kinds another live worker owns; kept out of this claim pass until its heartbeat expires. */
+  excludedJobKinds?: readonly EagleMediaJobKind[];
   laneOrder?: readonly EagleProcessingLane[];
   canClaimBackground(
     ownerId: string,
@@ -112,6 +116,7 @@ async function claimNextUncontendedMediaJob(
     const kindFilter = {
       not: 'GENERATE_AI_TAGS' as const,
       ...(options.allowedJobKinds ? { in: [...options.allowedJobKinds] } : {}),
+      ...(options.excludedJobKinds?.length ? { notIn: [...options.excludedJobKinds] } : {}),
     };
     const candidates = await (
       options.selectCandidates ?? ((input) => client.eagleAssetProcessingJob.findMany(input))
@@ -138,6 +143,7 @@ async function claimNextUncontendedMediaJob(
 
     for (const candidate of candidates) {
       if (candidate.kind === 'GENERATE_AI_TAGS') continue;
+      if (options.excludedJobKinds?.includes(candidate.kind)) continue;
       if (
         isBackgroundFamily(mediaTaskFamily(candidate.kind, candidate.processorVersion)) &&
         !(await options.canClaimBackground(

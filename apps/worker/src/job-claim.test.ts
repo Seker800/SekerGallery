@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { EagleAssetProcessingJob } from '@prisma/client';
-import { claimNextMediaJob } from './job-claim';
+import { claimNextMediaJob, type ClaimFindManyInput } from './job-claim';
 
 function job(
   id: string,
@@ -433,4 +433,31 @@ test('a newer lease version remains claimable during an overlapping cohort', asy
     unblock(false);
   }
   assert.equal(await first, null);
+});
+
+test('excluded kinds are filtered from the query and never claimed', async () => {
+  const edit = job('edit', 'INTERACTIVE', { kind: 'RENDER_EDITED_COPY' });
+  let kindFilter: { notIn?: string[] } | undefined;
+  const client = {
+    eagleAssetProcessingJob: {
+      findMany: async (input: ClaimFindManyInput) => {
+        kindFilter = input.where.kind as { notIn?: string[] } | undefined;
+        return [edit];
+      },
+      updateMany: async () => {
+        throw new Error('An excluded kind must not be claimed');
+      },
+      findUniqueOrThrow: async () => edit,
+    },
+  };
+  const claimed = await claimNextMediaJob(client, {
+    now: new Date('2026-08-17T00:05:00.000Z'),
+    onLeaseExhausted: async () => {
+      throw new Error('Unexpected exhausted lease');
+    },
+    canClaimBackground: async () => true,
+    excludedJobKinds: ['RENDER_EDITED_COPY'],
+  });
+  assert.equal(claimed, null);
+  assert.deepEqual(kindFilter?.notIn, ['RENDER_EDITED_COPY']);
 });

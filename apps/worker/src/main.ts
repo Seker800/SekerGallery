@@ -64,6 +64,11 @@ import {
 } from './scheduled-media-candidates';
 import { taskPolicyAllowsSql } from '@sekereagle/library-persistence';
 import { claimNextMediaJob } from './job-claim';
+import {
+  dedicatedEditRendererOnline,
+  deferredJobKinds,
+  EDIT_RENDER_FRESH_MS,
+} from './edit-render-deferral';
 import { EmbeddingClient } from './embedding-client';
 import {
   JobWakeScheduler,
@@ -196,6 +201,7 @@ async function heartbeat(): Promise<void> {
       embedding: embeddingReadiness,
       background: runBackgroundProcessing,
       jobKinds: allowedJobKinds ? [...allowedJobKinds] : null,
+      editRendererDedicated: process.env.EAGLE_EDIT_RENDERER_DEDICATED === '1',
       video: runVideoTranscoding,
       tagBuilds: runTagBuilds,
       smartFolders:
@@ -255,6 +261,24 @@ const selectors = {
   ),
 };
 const claimSequence: Record<MediaResource, number> = { LOCAL: 0, EMBEDDING: 0, REMOTE_MEDIA: 0 };
+const EDIT_RENDER_DEFERRAL_CACHE_MS = 10_000;
+let editRendererDeferral: { at: number; online: boolean } | null = null;
+/**
+ * The dedicated NAS edit renderer owns interactive RAW renders while its heartbeat is fresh.
+ * After it goes quiet this worker resumes claiming them, so one box is never a hard dependency.
+ */
+async function dedicatedEditRendererIsOnline(): Promise<boolean> {
+  if (process.env.EAGLE_EDIT_RENDERER_DEDICATED === '1') return false;
+  if (editRendererDeferral && Date.now() - editRendererDeferral.at < EDIT_RENDER_DEFERRAL_CACHE_MS)
+    return editRendererDeferral.online;
+  const rows = await prisma.eagleProcessingWorkerHeartbeat.findMany({
+    where: { heartbeatAt: { gt: new Date(Date.now() - EDIT_RENDER_FRESH_MS) } },
+    select: { workerId: true, heartbeatAt: true, capabilities: true },
+  });
+  const online = dedicatedEditRendererOnline(rows, workerId);
+  editRendererDeferral = { at: Date.now(), online };
+  return online;
+}
 async function claimJob(resource: MediaResource): Promise<EagleAssetProcessingJob | null> {
   if (
     stopping ||
@@ -277,6 +301,7 @@ async function claimJob(resource: MediaResource): Promise<EagleAssetProcessingJo
       selectCandidates: (input) => selectors[resource](input, age),
       canClaimBackground: canClaimBackgroundForOwner,
       allowedJobKinds: claimKinds,
+      excludedJobKinds: deferredJobKinds(await dedicatedEditRendererIsOnline()),
       excludedProcessorVersions: runVideoTranscoding ? [] : [VIDEO_PLAYBACK_PROCESSOR_VERSION],
       laneOrder: resource === 'EMBEDDING' ? ['BACKGROUND'] : mediaLaneOrder(sequence),
     });
