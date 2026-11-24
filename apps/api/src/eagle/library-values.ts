@@ -24,6 +24,34 @@ export function privateVisibilityWhere(includePrivate: boolean): { isPrivate?: f
   return includePrivate ? {} : { isPrivate: false };
 }
 
+export type VisibleAssetVariant = 'live' | 'trash' | 'media' | 'frozen-task';
+
+/**
+ * One owner/mode/privacy predicate. `media` keeps trashed bytes readable until
+ * purge; `frozen-task` keeps transferred members accessible to an open task.
+ */
+export function visibleAssetWhere(
+  ownerId: string,
+  libraryMode: 'MATERIAL' | 'PHOTO',
+  includePrivate: boolean,
+  variant: VisibleAssetVariant = 'live',
+): Prisma.EagleAssetWhereInput {
+  const scope = {
+    ownerId,
+    libraryMode,
+    ...privateVisibilityWhere(includePrivate),
+  };
+  if (variant === 'trash') return { ...scope, deletedAt: { not: null }, purgeAfter: null };
+  if (variant === 'media') return { ...scope, purgeAfter: null };
+  if (variant === 'frozen-task')
+    return {
+      ...scope,
+      deletedAt: null,
+      OR: [{ purgeAfter: null }, { transferredAt: { not: null } }],
+    };
+  return { ...scope, deletedAt: null };
+}
+
 export function normalizeName(value: string, maxLength: number, label: string): string {
   const name = value.normalize('NFKC').trim();
   if (!name || name.length > maxLength) throw new BadRequestException(`${label}长度无效。`);

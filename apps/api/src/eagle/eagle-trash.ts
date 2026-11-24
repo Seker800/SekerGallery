@@ -3,8 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import type { Prisma } from '@prisma/client';
 import type { LibraryIdentity } from './library-mode';
 import { resolveLivePhotoMotions } from './live-photo-projection';
-const privateVisibilityWhere = (includePrivate: boolean) =>
-  includePrivate ? {} : { isPrivate: false };
+import { privateVisibilityWhere } from './library-values';
 /** Shared transaction primitive; callers may compose audit writes atomically. */
 export async function setEagleTrash(
   transaction: Prisma.TransactionClient,

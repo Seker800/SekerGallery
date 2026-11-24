@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EagleImageSearchService } from '../eagle/eagle-image-search.service';
 import { EagleLibraryTransferService } from '../eagle/eagle-library-transfer.service';
 import { setEagleTrash, resolveEagleTrashTargets } from '../eagle/eagle-trash';
+import { visibleAssetWhere } from '../eagle/library-values';
 import { lockOwnerPrivacyProjection } from '../eagle/eagle-privacy.service';
 import { filenameSignals, haversineKm, inferCity, type AgentCity } from './photo-agent-rules';
 import type {
@@ -47,11 +48,8 @@ const snapshotOf = (asset: {
   rowVersion: asset.rowVersion,
   metadataAt: metadataAt(asset),
 });
-const scope = (ownerId: string, includePrivate: boolean) => ({
-  ownerId,
-  libraryMode: 'PHOTO' as const,
-  ...(includePrivate ? {} : { isPrivate: false }),
-});
+const scope = (ownerId: string, includePrivate: boolean) =>
+  visibleAssetWhere(ownerId, 'PHOTO', includePrivate, 'live');
 const select = {
   id: true,
   originalName: true,
@@ -1170,7 +1168,8 @@ export class PhotoAgentService {
       if (s.kind === 'CITY') {
         const result = await tx.eaglePhotoLocation.deleteMany({
           where: {
-            ...scope(ownerId, true),
+            ownerId,
+            libraryMode: 'PHOTO',
             assetId: s.assetId,
             suggestionId,
             rowVersion: op.locationVersion,

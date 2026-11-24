@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { assertOwnedObjectKey } from '../storage/object-key';
 import { ObjectStorageService } from '../storage/object-storage.service';
 import { renderShareImage, shareImageBudget, type RenderedShareImage } from './eagle-share-image';
+import { visibleAssetWhere } from './library-values';
 
 @Injectable()
 export class EagleMediaService {
@@ -30,11 +31,8 @@ export class EagleMediaService {
   ) {
     const asset = await this.prisma.eagleAsset.findFirst({
       where: {
-        ownerId,
+        ...visibleAssetWhere(ownerId, this.libraryMode, includePrivate, 'media'),
         id: assetId,
-        purgeAfter: null,
-        ...(includePrivate ? {} : { isPrivate: false }),
-        libraryMode: this.libraryMode,
       },
       select: { originalObjectKey: true, originalName: true, mimeType: true, byteSize: true },
     });
@@ -50,11 +48,8 @@ export class EagleMediaService {
   async getOriginalMetadata(ownerId: string, assetId: string, includePrivate = false) {
     const asset = await this.prisma.eagleAsset.findFirst({
       where: {
-        ownerId,
+        ...visibleAssetWhere(ownerId, this.libraryMode, includePrivate, 'media'),
         id: assetId,
-        purgeAfter: null,
-        ...(includePrivate ? {} : { isPrivate: false }),
-        libraryMode: this.libraryMode,
       },
       select: { byteSize: true },
     });
@@ -70,11 +65,8 @@ export class EagleMediaService {
   ): Promise<RenderedShareImage> {
     const asset = await this.prisma.eagleAsset.findFirst({
       where: {
-        ownerId,
+        ...visibleAssetWhere(ownerId, this.libraryMode, includePrivate, 'media'),
         id: assetId,
-        purgeAfter: null,
-        ...(includePrivate ? {} : { isPrivate: false }),
-        libraryMode: this.libraryMode,
       },
       select: { originalObjectKey: true, mimeType: true },
     });
@@ -112,7 +104,7 @@ export class EagleMediaService {
         assetId,
         id: renditionId,
         status: 'READY',
-        asset: { purgeAfter: null, ...(includePrivate ? {} : { isPrivate: false }) },
+        asset: visibleAssetWhere(ownerId, this.libraryMode, includePrivate, 'media'),
         libraryMode: this.libraryMode,
       },
       select: {
@@ -158,11 +150,8 @@ export class EagleMediaService {
   async getPyramidDescriptor(ownerId: string, assetId: string, includePrivate = false) {
     const asset = await this.prisma.eagleAsset.findFirst({
       where: {
-        ownerId,
+        ...visibleAssetWhere(ownerId, this.libraryMode, includePrivate, 'media'),
         id: assetId,
-        purgeAfter: null,
-        ...(includePrivate ? {} : { isPrivate: false }),
-        libraryMode: this.libraryMode,
       },
       select: {
         mediaRevision: true,
@@ -213,7 +202,7 @@ export class EagleMediaService {
         ownerId,
         assetId,
         status: 'READY',
-        asset: { purgeAfter: null, ...(includePrivate ? {} : { isPrivate: false }) },
+        asset: visibleAssetWhere(ownerId, this.libraryMode, includePrivate, 'media'),
         libraryMode: this.libraryMode,
       },
       select: {

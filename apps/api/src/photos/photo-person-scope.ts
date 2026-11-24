@@ -1,15 +1,11 @@
 import { NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { visibleAssetWhere } from '../eagle/library-values';
 import { facePreviewSelect, serializePreview } from './photo-preview';
 export const visiblePhotoAssets = (
   ownerId: string,
   includePrivate: boolean,
-): Prisma.EagleAssetWhereInput => ({
-  ownerId,
-  libraryMode: 'PHOTO',
-  deletedAt: null,
-  ...(!includePrivate ? { isPrivate: false } : {}),
-});
+): Prisma.EagleAssetWhereInput => visibleAssetWhere(ownerId, 'PHOTO', includePrivate, 'live');
 export const visiblePhotoPeople = (
   ownerId: string,
   includePrivate: boolean,
