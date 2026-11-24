@@ -162,7 +162,7 @@ test('all ranked waves retain weak matches and scope while decisions stay exclud
   }
 });
 
-test('count-sorted unnamed pages and atomic multi-person merge preserve scope and versions', async () => {
+test('similarity-ranked review and count-sorted unnamed pages preserve scope and versions', async () => {
   const owner = randomUUID(),
     foreign = randomUUID();
   const accounts = [owner, foreign];
@@ -250,15 +250,10 @@ test('count-sorted unnamed pages and atomic multi-person merge preserve scope an
     });
     const review = await new PhotoPersonReviewService(db, {}).suggestions(owner, false);
     assert.equal(review.items[0].first.photoCount, 30);
-    assert.equal(
-      review.items[0].second.photoCount,
-      29,
-      'a large group outranks closer singleton matches',
-    );
+    assert.equal(review.items[0].second.photoCount, 28);
     assert(
-      review.items.every(
-        (p, i, rows) => i === 0 || rows[i - 1].first.photoCount >= p.first.photoCount,
-      ),
+      review.items.every((p, i, rows) => i === 0 || rows[i - 1].similarity >= p.similarity),
+      'review pairs stay similarity-ranked',
     );
     // One photo with two current detections is still one photo, and obsolete faces are excluded.
     await db.eaglePhotoFace.createMany({
