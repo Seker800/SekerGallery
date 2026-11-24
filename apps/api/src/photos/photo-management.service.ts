@@ -31,7 +31,7 @@ import {
   serializePersonPreview,
 } from './photo-person-scope';
 import { mergeSelectedPeople } from './photo-person-merge';
-import { normalizeEmbedding } from '@sekereagle/vector-core';
+import { meanPrototype } from '@sekereagle/vector-core';
 
 const visible = visiblePhotoAssets;
 
@@ -46,16 +46,8 @@ async function refreshPersonPrototype(
     orderBy: { confidence: 'desc' },
     take: 32,
   });
-  const embeddings = faces
-    .map((face) => face.embedding)
-    .filter((embedding) => embedding.length === 128);
-  if (!embeddings.length) return;
-  const prototype = normalizeEmbedding(
-    Array.from(
-      { length: 128 },
-      (_, index) => embeddings.reduce((sum, row) => sum + row[index]!, 0) / embeddings.length,
-    ),
-  );
+  const prototype = meanPrototype(faces.map((face) => face.embedding));
+  if (!prototype.length) return;
   await tx.eaglePhotoPerson.update({ where: { id: personId }, data: { prototype } });
 }
 
@@ -183,10 +175,7 @@ export class PhotoManagementService {
       timeZone,
       includePrivate,
     );
-    const months = new Map<
-      string,
-      { month: string; count: number; cursor: string }
-    >();
+    const months = new Map<string, { month: string; count: number; cursor: string }>();
     for (const day of days) {
       const month = day.date.slice(0, 7);
       const boundary = zonedNextMonthStart(month, timeZone);

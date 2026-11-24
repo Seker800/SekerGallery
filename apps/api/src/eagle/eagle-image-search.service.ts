@@ -5,7 +5,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EagleEmbeddingClient } from './eagle-embedding-client';
 import type { EagleAssetSort } from './eagle-asset-order';
 import { LIBRARY_MODE } from './library-mode';
-import { EAGLE_EMBEDDING_DIMENSIONS, EAGLE_EMBEDDING_MODEL } from './eagle-vector-semantics';
+import {
+  EAGLE_EMBEDDING_DIMENSIONS,
+  EAGLE_EMBEDDING_INSTRUCTION_VERSION,
+  EAGLE_EMBEDDING_MODEL,
+  EAGLE_EMBEDDING_PREPROCESSING_VERSION,
+  EAGLE_EMBEDDING_REVISION,
+  EAGLE_EMBEDDING_SPACE_ID,
+} from './eagle-vector-semantics';
 
 export type ImageSearchContext =
   { status: 'READY'; spaceId: string; vector: string } | { status: 'UNAVAILABLE'; spaceId: string };
@@ -15,7 +22,6 @@ export interface ImageSearchPosition {
   similarity: number;
   libraryAddedAt: string;
 }
-const DEFAULT_REVISION = '9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda';
 const CACHE_TTL = 5 * 60 * 1000,
   CACHE_LIMIT = 128;
 
@@ -31,8 +37,8 @@ export class EagleImageSearchService {
     @Inject(LIBRARY_MODE) private readonly libraryMode: LibraryMode,
   ) {}
   prepare(ownerId: string, query: string): Promise<ImageSearchContext> {
-    const spaceId = process.env.MLX_EMBEDDING_SPACE_ID ?? 'qwen3-vl-embedding-2b-1024-v1';
-    const revision = process.env.MLX_EMBEDDING_REVISION ?? DEFAULT_REVISION;
+    const spaceId = process.env.MLX_EMBEDDING_SPACE_ID ?? EAGLE_EMBEDDING_SPACE_ID;
+    const revision = process.env.MLX_EMBEDDING_REVISION ?? EAGLE_EMBEDDING_REVISION;
     const text = query.normalize('NFKC').trim();
     const key = JSON.stringify([ownerId, this.libraryMode, spaceId, revision, text]);
     const cached = this.cache.get(key);
@@ -67,8 +73,8 @@ export class EagleImageSearchService {
       space.revision !== revision ||
       space.dimensions !== EAGLE_EMBEDDING_DIMENSIONS ||
       !space.normalized ||
-      space.instructionVersion !== 'image-retrieval-v1' ||
-      space.preprocessingVersion !== 'preview-webp-v1'
+      space.instructionVersion !== EAGLE_EMBEDDING_INSTRUCTION_VERSION ||
+      space.preprocessingVersion !== EAGLE_EMBEDDING_PREPROCESSING_VERSION
     )
       return unavailable;
     try {

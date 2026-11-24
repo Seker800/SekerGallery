@@ -1,3 +1,4 @@
+import { EAGLE_EMBEDDING_SPACE_ID } from '@sekereagle/vector-core';
 import {
   BadRequestException,
   ConflictException,
@@ -97,7 +98,7 @@ export class LibrarySmartFolderService {
             { ownerId, libraryMode: this.libraryMode },
             folder.id,
             semantic,
-            process.env.MLX_EMBEDDING_SPACE_ID ?? 'qwen3-vl-embedding-2b-1024-v1',
+            process.env.MLX_EMBEDDING_SPACE_ID ?? EAGLE_EMBEDDING_SPACE_ID,
             EAGLE_SEMANTIC_THRESHOLDS[semantic.breadth],
           );
         return folder;
@@ -172,7 +173,7 @@ export class LibrarySmartFolderService {
             { ownerId, libraryMode: this.libraryMode },
             folderId,
             semantic,
-            process.env.MLX_EMBEDDING_SPACE_ID ?? 'qwen3-vl-embedding-2b-1024-v1',
+            process.env.MLX_EMBEDDING_SPACE_ID ?? EAGLE_EMBEDDING_SPACE_ID,
             semantic ? EAGLE_SEMANTIC_THRESHOLDS[semantic.breadth] : undefined,
           );
         }

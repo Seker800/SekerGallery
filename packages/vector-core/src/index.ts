@@ -1,5 +1,19 @@
 export const EAGLE_EMBEDDING_DIMENSIONS = 1024;
 export const EAGLE_EMBEDDING_MODEL = 'Qwen/Qwen3-VL-Embedding-2B';
+export const EAGLE_EMBEDDING_REVISION = '9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda';
+export const EAGLE_EMBEDDING_SPACE_ID = 'qwen3-vl-embedding-2b-1024-v1';
+export const EAGLE_EMBEDDING_INSTRUCTION_VERSION = 'image-retrieval-v1';
+export const EAGLE_EMBEDDING_PREPROCESSING_VERSION = 'preview-webp-v1';
+
+export const EAGLE_EMBEDDING_IDENTITY = Object.freeze({
+  id: EAGLE_EMBEDDING_SPACE_ID,
+  model: EAGLE_EMBEDDING_MODEL,
+  revision: EAGLE_EMBEDDING_REVISION,
+  dimensions: EAGLE_EMBEDDING_DIMENSIONS,
+  normalized: true,
+  instructionVersion: EAGLE_EMBEDDING_INSTRUCTION_VERSION,
+  preprocessingVersion: EAGLE_EMBEDDING_PREPROCESSING_VERSION,
+});
 
 export interface TagPrototypeCandidate {
   tagId: string;
@@ -38,6 +52,35 @@ export function normalizeEmbedding(vector: readonly number[]): number[] {
   const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
   if (norm <= Number.EPSILON) throw new Error('Embedding cannot be a zero vector.');
   return vector.map((value) => value / norm);
+}
+
+/** Gradual prototype update used when a new face is confirmed. */
+export function blendPrototype(
+  prototype: readonly number[],
+  embedding: readonly number[],
+  blend: number,
+): number[] {
+  if (!prototype.length || prototype.length !== embedding.length)
+    return normalizeEmbedding(embedding);
+  return normalizeEmbedding(
+    prototype.map((value, index) => value * (1 - blend) + embedding[index]! * blend),
+  );
+}
+
+/** Mean of same-dimensional prototypes, normalized; merging and top-N refresh share it. */
+export function meanPrototype(vectors: readonly (readonly number[])[], dimensions = 128): number[] {
+  const usable = vectors.filter(
+    (vector) =>
+      vector.length === dimensions &&
+      vector.every((value) => Number.isFinite(value) && value >= -1.001 && value <= 1.001),
+  );
+  if (!usable.length) return [];
+  return normalizeEmbedding(
+    Array.from(
+      { length: dimensions },
+      (_, index) => usable.reduce((sum, vector) => sum + vector[index]!, 0) / usable.length,
+    ),
+  );
 }
 
 export function validateEmbedding(vector: readonly number[], dimensions: number): number[] {

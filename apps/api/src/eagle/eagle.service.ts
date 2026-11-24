@@ -1,3 +1,4 @@
+import { EAGLE_EMBEDDING_SPACE_ID } from '@sekereagle/vector-core';
 import { readBatchEditRenderContext } from './eagle-batch-edit';
 import { runLibraryTransaction } from './eagle-library-command';
 import { isDatabaseBusy } from '@sekereagle/library-persistence';
@@ -823,7 +824,7 @@ export class EagleService {
         status: 'READY',
         text: intent.text,
         breadth: intent.breadth,
-        spaceId: process.env.MLX_EMBEDDING_SPACE_ID ?? 'qwen3-vl-embedding-2b-1024-v1',
+        spaceId: process.env.MLX_EMBEDDING_SPACE_ID ?? EAGLE_EMBEDDING_SPACE_ID,
         threshold: EAGLE_SEMANTIC_THRESHOLDS[intent.breadth],
       },
       select: { id: true, folderId: true },

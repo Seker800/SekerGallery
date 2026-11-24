@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { syncAssetPrivacy } from '@sekereagle/library-persistence';
-import { normalizeEmbedding } from '@sekereagle/vector-core';
+import { meanPrototype } from '@sekereagle/vector-core';
 
 export async function mergeSelectedPeople(
   tx: Prisma.TransactionClient,
@@ -52,23 +52,14 @@ export async function mergeSelectedPeople(
       skipDuplicates: true,
     });
   const marksAssetsPrivate = people.some((p) => p.marksAssetsPrivate);
-  const prototypes = people
-    .map((person) => person.prototype)
-    .filter((prototype) => prototype.length === 128);
-  const prototype = prototypes.length
-    ? normalizeEmbedding(
-        Array.from(
-          { length: 128 },
-          (_, index) => prototypes.reduce((sum, row) => sum + row[index]!, 0) / prototypes.length,
-        ),
-      )
-    : undefined;
+  const prototype = meanPrototype(people.map((person) => person.prototype));
+  const mergedPrototype = prototype.length ? prototype : undefined;
   const target = await tx.eaglePhotoPerson.update({
     where: { id: targetId },
     data: {
       marksAssetsPrivate,
       rowVersion: { increment: 1 },
-      ...(prototype ? { prototype } : {}),
+      ...(mergedPrototype ? { prototype: mergedPrototype } : {}),
     },
     select: { id: true, rowVersion: true, marksAssetsPrivate: true },
   });

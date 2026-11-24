@@ -1,5 +1,13 @@
 import { createPrismaAdapter } from '@sekereagle/library-persistence';
 import {
+  EAGLE_EMBEDDING_DIMENSIONS,
+  EAGLE_EMBEDDING_INSTRUCTION_VERSION,
+  EAGLE_EMBEDDING_MODEL,
+  EAGLE_EMBEDDING_PREPROCESSING_VERSION,
+  EAGLE_EMBEDDING_REVISION,
+  EAGLE_EMBEDDING_SPACE_ID,
+} from '@sekereagle/vector-core';
+import {
   assertOwnedObjectKey,
   PHOTO_SOURCE_DETAILS_PROCESSOR_VERSION,
 } from '@sekereagle/library-core';
@@ -124,11 +132,10 @@ const remoteMediaClient = new RemoteMediaClient(
   process.env.MLX_EMBEDDING_URL ?? 'http://host.docker.internal:11435',
   process.env.MLX_EMBEDDING_TOKEN ?? '',
 );
-const embeddingSpaceId = process.env.MLX_EMBEDDING_SPACE_ID ?? 'qwen3-vl-embedding-2b-1024-v1';
-const embeddingModel = process.env.MLX_EMBEDDING_MODEL ?? 'Qwen/Qwen3-VL-Embedding-2B';
-const embeddingRevision =
-  process.env.MLX_EMBEDDING_REVISION ?? '9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda';
-const embeddingDimensions = 1024;
+const embeddingSpaceId = process.env.MLX_EMBEDDING_SPACE_ID ?? EAGLE_EMBEDDING_SPACE_ID;
+const embeddingModel = process.env.MLX_EMBEDDING_MODEL ?? EAGLE_EMBEDDING_MODEL;
+const embeddingRevision = process.env.MLX_EMBEDDING_REVISION ?? EAGLE_EMBEDDING_REVISION;
+const embeddingDimensions = EAGLE_EMBEDDING_DIMENSIONS;
 const embeddingClient = new EmbeddingClient({
   baseUrl: process.env.MLX_EMBEDDING_URL ?? 'http://host.docker.internal:11435',
   token: process.env.MLX_EMBEDDING_TOKEN ?? '',
@@ -150,8 +157,8 @@ const embeddingIdentity = Object.freeze({
   revision: embeddingRevision,
   dimensions: embeddingDimensions,
   normalized: true,
-  instructionVersion: 'image-retrieval-v1',
-  preprocessingVersion: 'preview-webp-v1',
+  instructionVersion: EAGLE_EMBEDDING_INSTRUCTION_VERSION,
+  preprocessingVersion: EAGLE_EMBEDDING_PREPROCESSING_VERSION,
 });
 
 async function heartbeat(): Promise<void> {

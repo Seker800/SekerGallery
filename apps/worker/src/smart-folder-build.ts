@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { retryDelayMs } from '@sekereagle/library-core';
+import { EAGLE_EMBEDDING_DIMENSIONS } from '@sekereagle/vector-core';
 import { embeddingBackoff } from './embedding-retry';
 import { Prisma, type PrismaClient, type EagleSmartFolderSemanticSnapshot } from '@prisma/client';
 import {
@@ -17,7 +18,7 @@ import {
 export function validateQueryVector(vector: readonly number[]) {
   const norm = vector.reduce((sum, value) => sum + value * value, 0);
   if (
-    vector.length !== 1024 ||
+    vector.length !== EAGLE_EMBEDDING_DIMENSIONS ||
     vector.some((value) => !Number.isFinite(value)) ||
     Math.abs(norm - 1) > 0.01
   )

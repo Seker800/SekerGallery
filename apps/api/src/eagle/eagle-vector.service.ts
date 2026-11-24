@@ -14,7 +14,11 @@ import type {
   ListUnclassifiedVectorAssetsDto,
   ListVectorSuggestionsDto,
 } from './eagle-vector.dto';
-import { EAGLE_EMBEDDING_DIMENSIONS, EAGLE_EMBEDDING_MODEL } from './eagle-vector-semantics';
+import {
+  EAGLE_EMBEDDING_DIMENSIONS,
+  EAGLE_EMBEDDING_MODEL,
+  EAGLE_EMBEDDING_REVISION,
+} from './eagle-vector-semantics';
 import { refreshUnclassifiedSuggestions } from './eagle-vector.persistence';
 import { EMBEDDING_PROCESSOR_VERSION, RENDITION_PROCESSOR_VERSION } from './media-job-plan';
 import { reviewSavedSuggestions } from './eagle-vector-review';
@@ -413,8 +417,7 @@ export class EagleVectorService {
         }) !== null;
       const matchesContract =
         payload.model === EAGLE_EMBEDDING_MODEL &&
-        payload.revision ===
-          (process.env.MLX_EMBEDDING_REVISION ?? '9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda') &&
+        payload.revision === (process.env.MLX_EMBEDDING_REVISION ?? EAGLE_EMBEDDING_REVISION) &&
         payload.dimensions === EAGLE_EMBEDDING_DIMENSIONS &&
         (payload.metal === true || pool);
       return {

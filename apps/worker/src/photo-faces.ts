@@ -3,7 +3,11 @@ import { lockOwnerPrivacyProjection, syncAssetPrivacy } from '@sekereagle/librar
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { EagleAssetProcessingJob, PrismaClient } from '@prisma/client';
-import { normalizeEmbedding } from '@sekereagle/vector-core';
+import {
+  PHOTO_FACE_AUTO_MERGE_THRESHOLD,
+  PHOTO_FACE_PROTOTYPE_BLEND,
+} from '@sekereagle/library-core';
+import { blendPrototype } from '@sekereagle/vector-core';
 import { FACE_MODEL_VERSION, type FaceDetection } from './face-inference';
 export {
   cosineSimilarity,
@@ -17,19 +21,11 @@ interface FacePublication {
   job: EagleAssetProcessingJob;
   detections: FaceDetection[];
 }
-/** A person's prototype follows confirmed-looking faces instead of freezing the first one. */
-const PROTOTYPE_BLEND = 0.2;
 export function blendFacePrototype(
   prototype: readonly number[],
   embedding: readonly number[],
 ): number[] {
-  if (!prototype.length || prototype.length !== embedding.length)
-    return normalizeEmbedding(embedding);
-  return normalizeEmbedding(
-    prototype.map(
-      (value, index) => value * (1 - PROTOTYPE_BLEND) + embedding[index]! * PROTOTYPE_BLEND,
-    ),
-  );
+  return blendPrototype(prototype, embedding, PHOTO_FACE_PROTOTYPE_BLEND);
 }
 /** pgvector nearest prototype inside the same transaction, excluding already assigned people. */
 async function nearestPersonId(
@@ -51,7 +47,7 @@ async function nearestPersonId(
     ORDER BY prototype::vector <=> ${vector}::vector
     LIMIT 32
   `);
-  return rows[0] && rows[0].score >= 0.45 ? rows[0] : undefined;
+  return rows[0] && rows[0].score >= PHOTO_FACE_AUTO_MERGE_THRESHOLD ? rows[0] : undefined;
 }
 const publishers = new WeakMap<
   PrismaClient,

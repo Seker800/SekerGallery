@@ -1,12 +1,18 @@
 import { Prisma } from '@prisma/client';
-import { PHOTO_FACE_MODEL_VERSION } from '@sekereagle/library-core';
+import {
+  PHOTO_FACE_MODEL_VERSION,
+  PHOTO_FACE_REVIEW_MIN_SIMILARITY,
+  PHOTO_FACE_REVIEW_SAMPLE_LIMIT,
+} from '@sekereagle/library-core';
 import { normalizeEmbedding } from '@sekereagle/vector-core';
 
-export const PERSON_REVIEW_SAMPLE_LIMIT = 3;
+export const PERSON_REVIEW_SAMPLE_LIMIT = PHOTO_FACE_REVIEW_SAMPLE_LIMIT;
 /** Review only plausible splits; named people are merged manually from the directory. */
 export const PERSON_REVIEW_MIN_SIMILARITY = (() => {
-  const raw = Number(process.env.PHOTO_PEOPLE_REVIEW_MIN_SIMILARITY ?? 0.3);
-  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 0.3;
+  const raw = Number(
+    process.env.PHOTO_PEOPLE_REVIEW_MIN_SIMILARITY ?? PHOTO_FACE_REVIEW_MIN_SIMILARITY,
+  );
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : PHOTO_FACE_REVIEW_MIN_SIMILARITY;
 })();
 
 type ReviewPair = { firstId: string; secondId: string; firstCount?: bigint; secondCount?: bigint };

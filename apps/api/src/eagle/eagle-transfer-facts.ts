@@ -1,4 +1,10 @@
-import { EAGLE_EMBEDDING_MODEL } from '@sekereagle/vector-core';
+import {
+  EAGLE_EMBEDDING_DIMENSIONS,
+  EAGLE_EMBEDDING_INSTRUCTION_VERSION,
+  EAGLE_EMBEDDING_MODEL,
+  EAGLE_EMBEDDING_PREPROCESSING_VERSION,
+  EAGLE_EMBEDDING_REVISION,
+} from '@sekereagle/vector-core';
 import { ConflictException } from '@nestjs/common';
 import {
   Prisma,
@@ -422,8 +428,8 @@ export async function copyTransferFacts(
     FROM "EagleAssetEmbedding" e JOIN "EagleEmbeddingSpace" s ON s.id=e."spaceId"
     WHERE e."ownerId"=${ownerId} AND e."libraryMode"=${source.libraryMode}::"LibraryMode" AND e."assetId"=${source.id}
       AND e."assetRevision"=${source.mediaRevision} AND e.status IN ('PENDING','RUNNING','READY','FAILED') AND e.embedding IS NOT NULL
-      AND s."isCurrent" AND s.normalized AND s.dimensions=1024 AND s.model=${EAGLE_EMBEDDING_MODEL}
-      AND s."instructionVersion"='image-retrieval-v1' AND s."preprocessingVersion"='preview-webp-v1'  AND e."l2Norm" BETWEEN 0.99 AND 1.01
+      AND s."isCurrent" AND s.normalized AND s.revision=${EAGLE_EMBEDDING_REVISION} AND s.dimensions=${EAGLE_EMBEDDING_DIMENSIONS} AND s.model=${EAGLE_EMBEDDING_MODEL}
+      AND s."instructionVersion"=${EAGLE_EMBEDDING_INSTRUCTION_VERSION} AND s."preprocessingVersion"=${EAGLE_EMBEDDING_PREPROCESSING_VERSION}  AND e."l2Norm" BETWEEN 0.99 AND 1.01
     RETURNING id
   `);
   return {
