@@ -1,3 +1,4 @@
+import { TAG_BUILD_FAILURE_LIMIT } from '@sekereagle/library-core';
 import { Prisma, type EagleTagSemanticBuild, type PrismaClient } from '@prisma/client';
 import {
   backgroundScheduleSql,
@@ -53,7 +54,7 @@ export async function claimNextTagBuild(
         data: { status: 'FAILED', failureCode },
       });
     };
-    if (candidate.attempts >= 12) {
+    if (candidate.attempts >= TAG_BUILD_FAILURE_LIMIT) {
       const exhausted = await transaction.eagleTagSemanticBuild.updateMany({
         where: {
           id: candidate.id,

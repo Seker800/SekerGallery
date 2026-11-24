@@ -37,6 +37,7 @@ export * from './photo-edit-recipe';
 export * from './photo-edit-advanced';
 export * from './photo-capture-metadata';
 export * from './task-scheduling';
+export * from './task-retry';
 export * from './photo-statistics-lens';
 export * from './asset-operations';
 

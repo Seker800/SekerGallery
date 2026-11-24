@@ -79,11 +79,11 @@ test('empty queue and exhausted attempts converge without starting another build
   const empty = fixture(null);
   assert.equal(await claimNextTagBuild(empty.client as never, now), null);
   assert.equal(empty.writes.length, 0);
-  const exhausted = fixture({ ...candidate, attempts: 12 });
+  const exhausted = fixture({ ...candidate, attempts: 5 });
   assert.equal(await claimNextTagBuild(exhausted.client as never, now), null);
   assert.equal((exhausted.writes[0]!.data as { status: string }).status, 'FAILED');
   assert.equal(exhausted.retired.length, 1);
-  const lost = fixture({ ...candidate, attempts: 12 }, 0);
+  const lost = fixture({ ...candidate, attempts: 5 }, 0);
   await claimNextTagBuild(lost.client as never, now);
   assert.equal(lost.retired.length, 0);
 });

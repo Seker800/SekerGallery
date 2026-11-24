@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { TAG_BUILD_FAILURE_LIMIT, retryDelayMs } from '@sekereagle/library-core';
 import { Prisma, type EagleTagSemanticBuild } from '@prisma/client';
 import { unreviewedSuggestionEvidenceSql } from '@sekereagle/library-persistence';
 import { boundedInteger, boundedNumber } from './bounded';
@@ -299,8 +300,11 @@ export async function failTagSemanticBuild(
   }
 
   const message = error instanceof Error ? error.message.slice(0, 1000) : 'UNKNOWN_TAG_BUILD_ERROR';
-  const terminal = build.attempts >= 5 || message === 'TAG_RECOMMENDATION_DISABLED';
-  const delaySeconds = Math.min(3_600, 2 ** Math.min(build.attempts, 12));
+  const terminal =
+    build.attempts >= TAG_BUILD_FAILURE_LIMIT || message === 'TAG_RECOMMENDATION_DISABLED';
+  const delaySeconds = Math.ceil(
+    retryDelayMs(build.attempts, { baseMs: 1000, capMs: 3_600_000, exponentCap: 12 }) / 1000,
+  );
   await context.prisma.$transaction(async (transaction) => {
     const held = await transaction.eagleTagSemanticBuild.updateMany({
       where: { id: build.id, status: 'PROCESSING', leaseVersion: build.leaseVersion },

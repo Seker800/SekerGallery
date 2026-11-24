@@ -1,3 +1,5 @@
+import { retryDelayMs } from './task-retry';
+
 /** Media execution commands and lease guards; independent of dashboard presentation. */
 export const MEDIA_LEASE_MS = 10 * 60 * 1000;
 export const MEDIA_FAILURE_LIMIT = 12;
@@ -88,7 +90,12 @@ export function mediaFailure(
     : {
         status: 'PENDING' as const,
         availableAt: new Date(
-          now.getTime() + Math.min(3600, 2 ** Math.min(job.attempts, MEDIA_FAILURE_LIMIT)) * 1000,
+          now.getTime() +
+            retryDelayMs(job.attempts, {
+              baseMs: 1000,
+              capMs: 3_600_000,
+              exponentCap: MEDIA_FAILURE_LIMIT,
+            }),
         ),
         lockedAt: null,
         lastError: input.message.slice(0, 1000),

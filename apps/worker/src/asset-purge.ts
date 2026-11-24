@@ -1,3 +1,4 @@
+import { retryDelayMs } from '@sekereagle/library-core';
 import {
   Prisma,
   type EagleAssetProcessingJob,
@@ -126,7 +127,12 @@ export async function drainObjectDeletion(
             status: 'PENDING',
             lockedAt: null,
             availableAt: new Date(
-              Date.now() + Math.min(3600, 2 ** Math.min(12, claim.attempts)) * 1000,
+              Date.now() +
+                retryDelayMs(claim.attempts, {
+                  baseMs: 1000,
+                  capMs: 3_600_000,
+                  exponentCap: 12,
+                }),
             ),
             lastError: 'OBJECT_DELETION_RETRY',
           },

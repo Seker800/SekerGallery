@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { retryDelayMs } from '@sekereagle/library-core';
 import { Prisma, type PrismaClient, type EaglePhotoMapState } from '@prisma/client';
 
 const MAX_LEVEL = 21;
@@ -209,7 +210,12 @@ export async function runPhotoMapBuildStep(client: PrismaClient) {
         attempts: { increment: 1 },
         lastError: 'INDEX_BUILD_FAILED',
         availableAt: new Date(
-          Date.now() + Math.min(900000, 30000 * 2 ** Math.min(claim.attempts, 5)),
+          Date.now() +
+            retryDelayMs(claim.attempts, {
+              baseMs: 30_000,
+              capMs: 900_000,
+              exponentCap: 5,
+            }),
         ),
       },
     });

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { retryDelayMs } from '@sekereagle/library-core';
 import { embeddingBackoff } from './embedding-retry';
 import { Prisma, type PrismaClient, type EagleSmartFolderSemanticSnapshot } from '@prisma/client';
 import {
@@ -25,7 +26,15 @@ export function validateQueryVector(vector: readonly number[]) {
 export function smartFolderRetry(attempts: number, now = new Date()) {
   return {
     status: attempts >= 5 ? 'FAILED' : 'PENDING',
-    availableAt: new Date(now.getTime() + Math.min(900, 30 * 2 ** (attempts - 1)) * 1000),
+    availableAt: new Date(
+      now.getTime() +
+        retryDelayMs(attempts, {
+          baseMs: 30_000,
+          capMs: 900_000,
+          exponentOffset: -1,
+          exponentCap: 10,
+        }),
+    ),
   };
 }
 
