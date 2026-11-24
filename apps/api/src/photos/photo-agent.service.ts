@@ -100,9 +100,8 @@ export class PhotoAgentService {
     const ids = [...new Set(frozen.map((asset) => asset.id))];
     const count = await this.prisma.eagleAsset.count({
       where: {
-        ...scope(ownerId, includePrivate),
+        ...visibleAssetWhere(ownerId, 'PHOTO', includePrivate, 'frozen-task'),
         id: { in: ids },
-        OR: [{ purgeAfter: null }, { transferredAt: { not: null } }],
       },
     });
     if (count !== ids.length) throw new NotFoundException('整理任务中的照片不存在。');
@@ -237,9 +236,8 @@ export class PhotoAgentService {
     const frozen = task.scope as unknown as Snapshot[];
     const assets = await tx.eagleAsset.findMany({
       where: {
-        ...scope(ownerId, includePrivate),
+        ...visibleAssetWhere(ownerId, 'PHOTO', includePrivate, 'frozen-task'),
         id: { in: frozen.map((a) => a.id) },
-        OR: [{ purgeAfter: null }, { transferredAt: { not: null } }],
       },
       select,
     });
@@ -285,9 +283,8 @@ export class PhotoAgentService {
     const accessible = ids.length
       ? await this.prisma.eagleAsset.findMany({
           where: {
-            ...scope(ownerId, includePrivate),
+            ...visibleAssetWhere(ownerId, 'PHOTO', includePrivate, 'frozen-task'),
             id: { in: ids },
-            OR: [{ purgeAfter: null }, { transferredAt: { not: null } }],
           },
           select: { id: true },
         })

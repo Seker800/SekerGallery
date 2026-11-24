@@ -28,7 +28,6 @@ test('frozen task scope keeps transferred members visible', () => {
     ownerId: 'owner',
     libraryMode: 'PHOTO',
     isPrivate: false,
-    deletedAt: null,
     OR: [{ purgeAfter: null }, { transferredAt: { not: null } }],
   });
 });

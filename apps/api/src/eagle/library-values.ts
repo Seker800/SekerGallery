@@ -44,11 +44,7 @@ export function visibleAssetWhere(
   if (variant === 'trash') return { ...scope, deletedAt: { not: null }, purgeAfter: null };
   if (variant === 'media') return { ...scope, purgeAfter: null };
   if (variant === 'frozen-task')
-    return {
-      ...scope,
-      deletedAt: null,
-      OR: [{ purgeAfter: null }, { transferredAt: { not: null } }],
-    };
+    return { ...scope, OR: [{ purgeAfter: null }, { transferredAt: { not: null } }] };
   return { ...scope, deletedAt: null };
 }
 

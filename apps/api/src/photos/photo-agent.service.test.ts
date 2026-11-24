@@ -52,7 +52,6 @@ test('task list batches visibility and suggestions while preserving per-task cou
       ownerId: 'owner',
       libraryMode: 'PHOTO',
       isPrivate: false,
-      deletedAt: null,
       id: { in: ['visible', 'shared', 'hidden'] },
       OR: [{ purgeAfter: null }, { transferredAt: { not: null } }],
     },
