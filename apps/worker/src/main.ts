@@ -52,6 +52,7 @@ import {
   Prisma,
   PrismaClient,
   type EagleAssetProcessingJob,
+  type EagleMediaJobKind,
   type EagleTagSemanticBuild,
   type LibraryMode,
 } from '@prisma/client';
@@ -65,11 +66,11 @@ import {
 import { taskPolicyAllowsSql } from '@sekereagle/library-persistence';
 import { claimNextMediaJob } from './job-claim';
 import {
-  assertDedicatedEditRendererConfig,
-  dedicatedEditRendererOnline,
+  assertDedicatedMediaNodeConfig,
+  dedicatedMediaKindsOnline,
   deferredJobKinds,
-  EDIT_RENDER_FRESH_MS,
-} from './edit-render-deferral';
+  DEDICATED_MEDIA_FRESH_MS,
+} from './dedicated-media-deferral';
 import { EmbeddingClient } from './embedding-client';
 import {
   JobWakeScheduler,
@@ -119,10 +120,8 @@ const runBackgroundProcessing = backgroundProcessingEnabled(
   process.env.EAGLE_BACKGROUND_PROCESSING_ENABLED,
 );
 const configuredJobKinds = parseProcessingJobKinds(process.env.EAGLE_PROCESSING_JOB_KINDS);
-assertDedicatedEditRendererConfig(
-  process.env.EAGLE_EDIT_RENDERER_DEDICATED === '1',
-  configuredJobKinds,
-);
+const dedicatedMediaNode = process.env.EAGLE_DEDICATED_MEDIA_NODE === '1';
+assertDedicatedMediaNodeConfig(dedicatedMediaNode, configuredJobKinds);
 const facesConfigured = Boolean(process.env.PHOTO_FACE_PYTHON && process.env.PHOTO_FACE_MODEL_DIR);
 let allowedJobKinds = availableProcessingJobKinds(configuredJobKinds, facesConfigured);
 const runTagBuilds = runBackgroundProcessing && configuredJobKinds === undefined;
@@ -206,7 +205,7 @@ async function heartbeat(): Promise<void> {
       embedding: embeddingReadiness,
       background: runBackgroundProcessing,
       jobKinds: allowedJobKinds ? [...allowedJobKinds] : null,
-      editRendererDedicated: process.env.EAGLE_EDIT_RENDERER_DEDICATED === '1',
+      dedicatedMediaKinds: dedicatedMediaNode && allowedJobKinds ? [...allowedJobKinds] : null,
       video: runVideoTranscoding,
       tagBuilds: runTagBuilds,
       smartFolders:
@@ -266,23 +265,24 @@ const selectors = {
   ),
 };
 const claimSequence: Record<MediaResource, number> = { LOCAL: 0, EMBEDDING: 0, REMOTE_MEDIA: 0 };
-const EDIT_RENDER_DEFERRAL_CACHE_MS = 10_000;
-let editRendererDeferral: { at: number; online: boolean } | null = null;
+const DEDICATED_DEFERRAL_CACHE_MS = 10_000;
+let dedicatedDeferral: { at: number; kinds: Set<EagleMediaJobKind> } | null = null;
 /**
- * The dedicated NAS edit renderer owns interactive RAW renders while its heartbeat is fresh.
- * After it goes quiet this worker resumes claiming them, so one box is never a hard dependency.
+ * The dedicated NAS media node owns its advertised kinds while its heartbeat is
+ * fresh. After it goes quiet this worker resumes them, so one box is never a hard
+ * dependency for uploads, edits or cleanup.
  */
-async function dedicatedEditRendererIsOnline(): Promise<boolean> {
-  if (process.env.EAGLE_EDIT_RENDERER_DEDICATED === '1') return false;
-  if (editRendererDeferral && Date.now() - editRendererDeferral.at < EDIT_RENDER_DEFERRAL_CACHE_MS)
-    return editRendererDeferral.online;
+async function dedicatedKindsToDefer(): Promise<Set<EagleMediaJobKind>> {
+  if (dedicatedMediaNode) return new Set();
+  if (dedicatedDeferral && Date.now() - dedicatedDeferral.at < DEDICATED_DEFERRAL_CACHE_MS)
+    return dedicatedDeferral.kinds;
   const rows = await prisma.eagleProcessingWorkerHeartbeat.findMany({
-    where: { heartbeatAt: { gt: new Date(Date.now() - EDIT_RENDER_FRESH_MS) } },
+    where: { heartbeatAt: { gt: new Date(Date.now() - DEDICATED_MEDIA_FRESH_MS) } },
     select: { workerId: true, heartbeatAt: true, capabilities: true },
   });
-  const online = dedicatedEditRendererOnline(rows, workerId);
-  editRendererDeferral = { at: Date.now(), online };
-  return online;
+  const kinds = dedicatedMediaKindsOnline(rows, workerId);
+  dedicatedDeferral = { at: Date.now(), kinds };
+  return kinds;
 }
 async function claimJob(resource: MediaResource): Promise<EagleAssetProcessingJob | null> {
   if (
@@ -306,7 +306,7 @@ async function claimJob(resource: MediaResource): Promise<EagleAssetProcessingJo
       selectCandidates: (input) => selectors[resource](input, age),
       canClaimBackground: canClaimBackgroundForOwner,
       allowedJobKinds: claimKinds,
-      excludedJobKinds: deferredJobKinds(await dedicatedEditRendererIsOnline()),
+      excludedJobKinds: deferredJobKinds(await dedicatedKindsToDefer(), claimKinds),
       excludedProcessorVersions: runVideoTranscoding ? [] : [VIDEO_PLAYBACK_PROCESSOR_VERSION],
       laneOrder: resource === 'EMBEDDING' ? ['BACKGROUND'] : mediaLaneOrder(sequence),
     });
