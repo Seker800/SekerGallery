@@ -295,7 +295,9 @@ try {
     stdio: 'inherit',
   });
   run(process.execPath, ['--test', 'scripts/testing/photo-person-ranked.test.mjs'], {
-    env,
+    // This fixture asserts that every weak pair is traversed; the product review
+    // threshold (0.30) would filter all synthetic orthogonal vectors.
+    env: { ...env, PHOTO_PEOPLE_REVIEW_MIN_SIMILARITY: '0' },
     stdio: 'inherit',
   });
   // Queue claim tests run after other fixtures to avoid competing for their leases.
