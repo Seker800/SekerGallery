@@ -25,3 +25,15 @@ export function dedicatedEditRendererOnline(
 export function deferredJobKinds(online: boolean): readonly EagleMediaJobKind[] {
   return online ? ['RENDER_EDITED_COPY'] : [];
 }
+
+/** A dedicated node that also claims other kinds would defeat the yield rule. */
+export function assertDedicatedEditRendererConfig(
+  dedicated: boolean,
+  configuredKinds: readonly string[] | undefined,
+): void {
+  if (!dedicated) return;
+  if (configuredKinds?.length === 1 && configuredKinds[0] === 'RENDER_EDITED_COPY') return;
+  throw new Error(
+    'EAGLE_EDIT_RENDERER_DEDICATED requires EAGLE_PROCESSING_JOB_KINDS=RENDER_EDITED_COPY only',
+  );
+}

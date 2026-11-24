@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assertDedicatedEditRendererConfig,
   dedicatedEditRendererOnline,
   deferredJobKinds,
   EDIT_RENDER_FRESH_MS,
@@ -36,4 +37,14 @@ test('a stale or self heartbeat never defers edit renders', () => {
 test('only the explicit dedicated flag defers; plain workers keep the kind claimable', () => {
   const rows = [heartbeat('other', 0, { jobKinds: ['RENDER_EDITED_COPY'] })];
   assert.equal(dedicatedEditRendererOnline(rows, 'mac-worker', now.getTime()), false);
+});
+
+test('the dedicated flag requires exactly the edit render kind', () => {
+  assert.doesNotThrow(() => assertDedicatedEditRendererConfig(true, ['RENDER_EDITED_COPY']));
+  assert.throws(() => assertDedicatedEditRendererConfig(true, undefined), /RENDER_EDITED_COPY/);
+  assert.throws(
+    () => assertDedicatedEditRendererConfig(true, ['RENDER_EDITED_COPY', 'GENERATE_EMBEDDING']),
+    /RENDER_EDITED_COPY/,
+  );
+  assert.doesNotThrow(() => assertDedicatedEditRendererConfig(false, undefined));
 });

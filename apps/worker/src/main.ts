@@ -65,6 +65,7 @@ import {
 import { taskPolicyAllowsSql } from '@sekereagle/library-persistence';
 import { claimNextMediaJob } from './job-claim';
 import {
+  assertDedicatedEditRendererConfig,
   dedicatedEditRendererOnline,
   deferredJobKinds,
   EDIT_RENDER_FRESH_MS,
@@ -118,6 +119,10 @@ const runBackgroundProcessing = backgroundProcessingEnabled(
   process.env.EAGLE_BACKGROUND_PROCESSING_ENABLED,
 );
 const configuredJobKinds = parseProcessingJobKinds(process.env.EAGLE_PROCESSING_JOB_KINDS);
+assertDedicatedEditRendererConfig(
+  process.env.EAGLE_EDIT_RENDERER_DEDICATED === '1',
+  configuredJobKinds,
+);
 const facesConfigured = Boolean(process.env.PHOTO_FACE_PYTHON && process.env.PHOTO_FACE_MODEL_DIR);
 let allowedJobKinds = availableProcessingJobKinds(configuredJobKinds, facesConfigured);
 const runTagBuilds = runBackgroundProcessing && configuredJobKinds === undefined;
