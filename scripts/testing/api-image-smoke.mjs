@@ -326,7 +326,7 @@ try {
     assert.equal((await fetchWithTimeout(`${origin}${path}`)).status, 401);
   const smokeEmail = `image-smoke-${randomUUID()}@example.test`;
   const smokePassword = randomBytes(18).toString('hex');
-  run([
+  const ownerId = run([
     'run',
     '--rm',
     '--pull',
@@ -341,8 +341,9 @@ try {
     image,
     'node',
     '-e',
-    "const bcrypt=require('bcrypt');const {PrismaClient}=require('@prisma/client');const {createPrismaAdapter}=require('@sekereagle/library-persistence');const d=new PrismaClient({adapter:createPrismaAdapter()});d.user.create({data:{email:process.env.SEED_EMAIL,passwordHash:bcrypt.hashSync(process.env.SEED_PASSWORD,10),role:'USER'}}).finally(()=>d.$disconnect()).catch(()=>process.exit(1))",
+    "const bcrypt=require('bcrypt');const {PrismaClient}=require('@prisma/client');const {createPrismaAdapter}=require('@sekereagle/library-persistence');const d=new PrismaClient({adapter:createPrismaAdapter()});d.user.create({data:{email:process.env.SEED_EMAIL,passwordHash:bcrypt.hashSync(process.env.SEED_PASSWORD,10),role:'USER'}}).then((user)=>console.log(user.id)).finally(()=>d.$disconnect()).catch(()=>process.exit(1))",
   ]);
+  assert.match(ownerId, /^[a-f0-9-]{36}$/);
   const browserOrigin = 'http://localhost:8180';
   const login = await fetchWithTimeout(`${origin}/api/auth/login`, {
     method: 'POST',
@@ -380,6 +381,37 @@ try {
   });
   assert.equal(afterCreate.status, 200);
   assert.ok((await afterCreate.json()).some((tag) => tag.systemKey === 'FAVORITE'));
+  // Compiled packages are also checked by real requests: an older library-core
+  // makes object-key validation undefined, so thumbnail content returns 500.
+  const thumbnailFixture = JSON.parse(
+    run([
+      'run',
+      '--rm',
+      '--pull',
+      'never',
+      '--network',
+      prefix,
+      '--workdir',
+      '/sekereagle/apps/api',
+      ...envArgs,
+      '--env',
+      `SEED_OWNER=${ownerId}`,
+      image,
+      'node',
+      '-e',
+      "const {randomUUID}=require('node:crypto');const {PrismaClient}=require('@prisma/client');const {createPrismaAdapter}=require('@sekereagle/library-persistence');const {S3Client,PutObjectCommand}=require('@aws-sdk/client-s3');const db=new PrismaClient({adapter:createPrismaAdapter()});const s3=new S3Client({endpoint:process.env.S3_ENDPOINT,region:process.env.S3_REGION,forcePathStyle:true,credentials:{accessKeyId:process.env.S3_ACCESS_KEY_ID,secretAccessKey:process.env.S3_SECRET_ACCESS_KEY}});(async()=>{const ownerId=process.env.SEED_OWNER,id=randomUUID(),renditionId=randomUUID(),bytes=Buffer.from('rendition-content-smoke');const originalKey='users/'+ownerId+'/assets/'+id+'/original.jpg',renditionKey='users/'+ownerId+'/assets/'+id+'/renditions/'+renditionId+'.webp';await s3.send(new PutObjectCommand({Bucket:process.env.S3_BUCKET,Key:originalKey,Body:bytes,ContentType:'image/jpeg'}));await s3.send(new PutObjectCommand({Bucket:process.env.S3_BUCKET,Key:renditionKey,Body:bytes,ContentType:'image/webp'}));await db.eagleAsset.create({data:{id,ownerId,libraryMode:'MATERIAL',originalName:'smoke.jpg',displayName:'Smoke',normalizedDisplayName:'smoke',mimeType:'image/jpeg',format:'jpeg',byteSize:bytes.length,originalObjectKey:originalKey,lifecycleStatus:'READY',mediaRevision:1}});await db.eagleAssetRendition.create({data:{id:renditionId,assetId:id,ownerId,libraryMode:'MATERIAL',kind:'THUMBNAIL',variant:'default',revision:1,storageKey:renditionKey,mimeType:'image/webp',byteSize:bytes.length,status:'READY'}});console.log(JSON.stringify({id,renditionId}));})().finally(()=>db.$disconnect()).catch(()=>process.exit(1))",
+    ]),
+  );
+  const renditionPath = `/api/eagle/assets/${thumbnailFixture.id}/renditions/${thumbnailFixture.renditionId}`;
+  assert.equal((await fetchWithTimeout(`${origin}${renditionPath}`)).status, 401);
+  const thumbnail = await fetchWithTimeout(`${origin}${renditionPath}`, { headers: { cookie } });
+  assert.equal(thumbnail.status, 200, 'authenticated thumbnail content');
+  assert.equal(await thumbnail.text(), 'rendition-content-smoke');
+  const thumbnailContent = await fetchWithTimeout(`${origin}${renditionPath}/content`, {
+    headers: { cookie },
+  });
+  assert.equal(thumbnailContent.status, 200, 'authenticated thumbnail content path');
+  assert.equal(await thumbnailContent.text(), 'rendition-content-smoke');
   if (process.argv.includes('--request-frequency-check')) {
     const pgPort = run(['port', pg, '5432']).split(':').at(-1);
     const fixture = spawnSync(process.execPath, ['scripts/testing/request-frequency.test.mjs'], {
@@ -500,6 +532,7 @@ try {
       readiness: 200,
       unauthenticatedPeople: 401,
       authenticatedManualTags: true,
+      authenticatedThumbnailContent: true,
       independentExecutorWithoutApiSecrets: true,
       executorGracefulExit: 0,
       ...(readerCheck
