@@ -29,8 +29,8 @@ Web 最近覆盖：`main-22b9e92b`（11-24 17:10）→ `main-d3568fc9`（11-23 1
 11-24 22:36 热修：`main-22b9e92b` 是用旧镜像逐个替换 dist 组装的，但漏换
 `packages/library-core` 与 `packages/photo-render-core`，缩略图等内容接口因
 `assertOwnedObjectKey` 未定义返回 500。现用 `main-238a228d` 整体替换全部运行时 dist，
-并加入启动期导出校验与镜像产物哈希门禁；web 与数据库结构未变。详见
-[发布归档](history/releases/2026-11.md)。
+并加入启动期导出校验与镜像产物哈希门禁；web 与数据库结构未变。切换后素材与照片网格
+缩略图均已恢复，照片页由用户刷新确认。详见 [发布归档](history/releases/2026-11.md)。
 
 ## 进程入口
 
