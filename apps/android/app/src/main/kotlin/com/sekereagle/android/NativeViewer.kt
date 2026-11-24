@@ -65,6 +65,7 @@ fun NativeViewer(
     var shareBytes by remember { mutableLongStateOf(0L) }
     var shareSize by remember { mutableLongStateOf(-1L) }
     var shareFallback by remember { mutableStateOf(false) }
+    var shareFallbackReason by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -78,6 +79,7 @@ fun NativeViewer(
         stackOpen = false
         tagsOpen = false
         shareFallback = false
+        shareFallbackReason = ""
         error = null
         if (pager.settledPage >= state.items.size - 4) model.load(true)
     }
@@ -87,6 +89,7 @@ fun NativeViewer(
     fun startShare(allowOriginal: Boolean) {
         shareBusy = true
         shareFallback = false
+        shareFallbackReason = ""
         shareStage = "正在准备分享…"
         shareBytes = 0L
         shareSize = -1L
@@ -108,6 +111,7 @@ fun NativeViewer(
             } catch (reason: kotlinx.coroutines.CancellationException) {
                 throw reason
             } catch (reason: NativeShareFallbackRequired) {
+                shareFallbackReason = reason.message.orEmpty()
                 shareFallback = true
             } catch (reason: Exception) {
                 error = reason.message ?: "分享失败，请重试"
@@ -324,8 +328,9 @@ fun NativeViewer(
             title = { Text(if (asset.video) "兼容视频准备失败" else "分享图生成失败") },
             text = {
                 Text(
-                    if (asset.video) "没有自动发送原视频。要改发原文件吗？"
-                    else "没有自动发送可能带位置信息的原图。要改发原图吗？"
+                    (if (asset.video) "没有自动发送原视频。要改发原文件吗？"
+                    else "没有自动发送可能带位置信息的原图。要改发原图吗？") +
+                        (if (shareFallbackReason.isEmpty()) "" else "\n\n原因：$shareFallbackReason")
                 )
             },
             dismissButton = {

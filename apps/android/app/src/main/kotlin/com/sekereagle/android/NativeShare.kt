@@ -53,7 +53,7 @@ internal suspend fun shareNativeAsset(
         } catch (reason: Exception) {
             if (reason is CancellationException) throw reason
             if (reason is NativeSession.Failure && reason.status == 401) throw reason
-            if (!fallbackOriginal) throw NativeShareFallbackRequired("分享图生成失败，未自动发送原图")
+            if (!fallbackOriginal) throw NativeShareFallbackRequired(failureReason(reason))
             onStage("分享图生成失败，正在改发原图…")
             source = NativeSharePolicy.Source.ORIGINAL
             file =
@@ -84,8 +84,7 @@ internal suspend fun shareNativeAsset(
         } catch (reason: Exception) {
             if (reason is CancellationException) throw reason
             if (reason is NativeSession.Failure && reason.status == 401) throw reason
-            if (!fallbackOriginal)
-                throw NativeShareFallbackRequired("兼容视频不可用，未自动发送原文件")
+            if (!fallbackOriginal) throw NativeShareFallbackRequired(failureReason(reason))
             onStage("兼容视频暂不可用，正在准备原文件…")
             source = NativeSharePolicy.Source.ORIGINAL
             file =
@@ -225,6 +224,16 @@ private suspend fun prepareOriginal(
             target
         }
 }
+
+/** Plain-language cause for the fallback dialog; never carries URLs or credentials. */
+private fun failureReason(reason: Exception): String =
+    when (reason) {
+        is java.net.SocketTimeoutException -> "等待服务器响应超时"
+        is NativeSession.Failure ->
+            reason.message.orEmpty().ifEmpty { "服务器暂时无法处理请求（${reason.status}）" }
+        is IOException -> reason.message?.takeUnless { it.contains("://") } ?: "网络或文件读取失败"
+        else -> "未知错误，请重试"
+    }
 
 private fun cleanupShared(directory: File) {
     val now = System.currentTimeMillis()

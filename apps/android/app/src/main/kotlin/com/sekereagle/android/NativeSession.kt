@@ -4,6 +4,7 @@ import android.content.Context
 import com.sekereagle.android.core.BackupPolicy
 import com.sekereagle.android.core.NativeCookies
 import com.sekereagle.android.core.NativeGalleryPolicy
+import com.sekereagle.android.core.NativeRequestPolicy
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
@@ -417,10 +418,7 @@ class NativeSession private constructor(context: Context, val origin: String) : 
             onConnection(connection)
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 15_000
-            connection.readTimeout =
-                if (path.matches(Regex("/api/(eagle|photos)/uploads/[a-fA-F0-9-]{36}/complete")))
-                    660_000
-                else 30_000
+            connection.readTimeout = NativeRequestPolicy.readTimeoutMillis(path)
             connection.requestMethod = method
             connection.setRequestProperty("Origin", origin)
             connection.setRequestProperty("Cookie", cookie)
