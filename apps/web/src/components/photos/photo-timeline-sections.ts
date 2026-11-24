@@ -21,7 +21,7 @@ export function getPhotoTimelineDay(
           asset.createdAt,
         ];
   const date = candidates.find((value) => value && Number.isFinite(Date.parse(value)));
-  return date ? localDayKey(date!, timeZone) : undefined;
+  return date ? localDayKey(date, timeZone) : undefined;
 }
 
 export function createPhotoTimelineSectionKeys(

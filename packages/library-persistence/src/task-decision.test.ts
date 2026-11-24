@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Prisma } from '@prisma/client';
-import { MEDIA_LEASE_MS } from '@sekereagle/library-core';
+import { MEDIA_BROWSE_BLOCKING_KINDS, MEDIA_LEASE_MS } from '@sekereagle/library-core';
 import {
   mediaTaskFactsSql,
   taskBackoffFactsSql,
@@ -50,5 +50,6 @@ test('SQL adapters retain common background families, lease cutoff and browsing 
   const blocking = mediaBlocksAssetReadySql(Prisma.sql`kind`, Prisma.sql`version`);
   assert.ok(blocking.values.includes('GENERATE_RENDITIONS'));
   // Edited copies must not turn their original source into failed/processing browsing.
-  assert.ok(!blocking.values.includes('RENDER_EDITED_COPY'));
+  assert.ok(MEDIA_BROWSE_BLOCKING_KINDS.includes('GENERATE_RENDITIONS'));
+  assert.ok(!(MEDIA_BROWSE_BLOCKING_KINDS as readonly string[]).includes('RENDER_EDITED_COPY'));
 });

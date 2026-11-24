@@ -71,10 +71,7 @@ test('content preflight takes identity from authentication and never returns an 
   );
   const input = { contentSha256: 'a'.repeat(64), size: 12 };
   assert.deepEqual(
-    await controller.checkContent(
-      { sub: 'owner', canViewPrivate: false } as never,
-      input,
-    ),
+    await controller.checkContent({ sub: 'owner', canViewPrivate: false } as never, input),
     { exists: true, privateMatch: false },
   );
   assert.deepEqual(calls, [['owner', input]]);

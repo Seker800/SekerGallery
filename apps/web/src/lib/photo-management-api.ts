@@ -155,11 +155,7 @@ export interface PhotoTimelineDay {
   count: number;
   offset: number;
 }
-export const getPhotoTimeline = (
-  sort: EagleAssetSort,
-  timeZone: string,
-  signal?: AbortSignal,
-) =>
+export const getPhotoTimeline = (sort: EagleAssetSort, timeZone: string, signal?: AbortSignal) =>
   request<{ days: PhotoTimelineDay[]; months: PhotoTimelineMonth[]; total: number }>(
     `${base}/timeline?sort=${sort}&timeZone=${encodeURIComponent(timeZone)}`,
     { signal },

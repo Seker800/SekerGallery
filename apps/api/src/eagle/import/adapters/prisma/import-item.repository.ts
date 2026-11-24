@@ -762,8 +762,7 @@ export class ImportItemRepository {
         ? {
             sessionId: session.id,
             status: session.status,
-            partSizeBytes:
-              session.partSize ?? chooseUploadPartSize(Number(item.byteSize)),
+            partSizeBytes: session.partSize ?? chooseUploadPartSize(Number(item.byteSize)),
             createdAt: session.createdAt,
             updatedAt: session.updatedAt,
             expiresAt: new Date(session.createdAt.getTime() + 24 * 60 * 60 * 1_000),

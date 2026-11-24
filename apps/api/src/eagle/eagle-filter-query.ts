@@ -303,10 +303,7 @@ function buildBigIntFilter(rule: EagleFilterRule, multiplier: number): Prisma.Bi
   }
 }
 
-function buildDateFilter(
-  rule: EagleFilterRule,
-  timeZone?: string,
-): Prisma.DateTimeFilter {
+function buildDateFilter(rule: EagleFilterRule, timeZone?: string): Prisma.DateTimeFilter {
   if (rule.operator === 'WITHIN_DAYS') {
     const days = readNumberValues(rule)[0]!;
     if (days <= 0 || days > 36500) throw new BadRequestException('最近天数必须大于 0。');

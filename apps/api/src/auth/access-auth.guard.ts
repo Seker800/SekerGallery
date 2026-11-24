@@ -36,14 +36,18 @@ export class AccessAuthGuard implements CanActivate {
     request.user = await this.sessions.verifyAccessToken(token);
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method))
       this.browserOrigin.canActivate(context);
-    const mode = Reflect.getMetadata(LIBRARY_MODE, context.getClass?.() ?? Object);
+    const mode = Reflect.getMetadata(LIBRARY_MODE, context.getClass?.() ?? Object) as unknown;
     if (mode !== 'PHOTO' && mode !== 'MATERIAL') {
       // Unknown routes must not inherit another mode's unlock; asset controllers declare their mode.
       request.user.canViewPrivate = false;
       request.user.privacyVisibleUntil = null;
       return true;
     }
-    const visibleUntil = await this.privacyVisibility.readGrant(request.user.sub, request, mode);
+    const visibleUntil = await this.privacyVisibility.readGrant(
+      request.user.sub,
+      request,
+      mode === 'PHOTO' ? 'PHOTO' : 'MATERIAL',
+    );
     request.user.canViewPrivate = visibleUntil !== null;
     request.user.privacyVisibleUntil = visibleUntil?.toISOString() ?? null;
     return true;

@@ -274,7 +274,7 @@ describe('EagleSmartFolderDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: '保存智能文件夹' }));
       expect(onSave).toHaveBeenCalledWith({
         name: 'KIT',
-        query: { version: 2, conditions: [] },
+        query: { version: 2, conditions: [], timeZone: expect.any(String) },
       });
     },
   );

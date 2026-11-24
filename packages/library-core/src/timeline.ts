@@ -50,10 +50,7 @@ function offsetFormatter(timeZone: string) {
   return formatter;
 }
 
-export function localDayKey(
-  value: Date | string | number,
-  timeZone: string,
-): string | undefined {
+export function localDayKey(value: Date | string | number, timeZone: string): string | undefined {
   const date = value instanceof Date ? value : new Date(value);
   if (!Number.isFinite(date.getTime()) || !isValidTimeZone(timeZone)) return undefined;
   const parts = dayFormatter(timeZone).formatToParts(date);

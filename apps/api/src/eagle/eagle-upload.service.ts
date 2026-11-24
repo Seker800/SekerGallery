@@ -340,8 +340,7 @@ export class EagleUploadService {
     const size = Number(session.size);
     const partCount = Math.max(1, Math.ceil(size / partSize));
     for (const part of parts) {
-      const expected =
-        part.partNumber < partCount ? partSize : size - (partCount - 1) * partSize;
+      const expected = part.partNumber < partCount ? partSize : size - (partCount - 1) * partSize;
       if (part.partNumber > partCount || (part.size > 0 && part.size !== expected)) {
         throw new ConflictException('已上传分片与当前上传会话的分片大小不一致，请重新上传该文件。');
       }
